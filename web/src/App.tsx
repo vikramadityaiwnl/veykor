@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import heroImg from "./assets/hero.png";
 import reactLogo from "./assets/react.svg";
 import viteLogo from "./assets/vite.svg";
@@ -6,6 +6,24 @@ import "./App.css";
 
 function App() {
   const [count, setCount] = useState(0);
+  const [health, setHealth] = useState("checking…");
+  const [visits, setVisits] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("/api/health")
+      .then((r) => r.json())
+      .then((d) => setHealth(`${d.status} · db ${d.db}`))
+      .catch(() => setHealth("unreachable"));
+    fetch("/api/visits")
+      .then((r) => r.json())
+      .then((d) => setVisits(d.count))
+      .catch(() => setVisits(null));
+  }, []);
+
+  const bump = async () => {
+    const r = await fetch("/api/visits", { method: "POST" });
+    setVisits((await r.json()).count);
+  };
 
   return (
     <>
@@ -28,6 +46,25 @@ function App() {
         >
           Count is {count}
         </button>
+        <div
+          style={{
+            marginTop: 24,
+            padding: 16,
+            border: "1px solid #333",
+            borderRadius: 12,
+            textAlign: "left",
+          }}
+        >
+          <p style={{ margin: "0 0 8px" }}>
+            Backend: <strong>{health}</strong>
+          </p>
+          <p style={{ margin: "0 0 12px" }}>
+            Visitor count: <strong>{visits ?? "…"}</strong>
+          </p>
+          <button type="button" className="counter" onClick={bump}>
+            Increment visits
+          </button>
+        </div>
       </section>
 
       <div className="ticks"></div>
