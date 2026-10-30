@@ -7,9 +7,14 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "astryx": "node node_modules/@astryxdesign/cli/clients/cli/bin/astryx.mjs"
   },
   "dependencies": {
+    "@astryxdesign/cli": "^0.7.4",
+    "@astryxdesign/core": "^0.7.4",
+    "@astryxdesign/theme-neutral": "^0.7.4",
+    "@stylexjs/stylex": "^0.19.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
