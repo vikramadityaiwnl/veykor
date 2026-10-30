@@ -1,4 +1,26 @@
-import { Heading } from '@astryxdesign/core/Heading';
-import { VStack } from '@astryxdesign/core/VStack';
-function App() { return <VStack minHeight="100svh" justify="center" hAlign="center"><Heading level={1} weight="semibold">veykor</Heading></VStack>; }
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { AuthPage } from "./auth/auth-page";
+import { ProtectedLayout } from "./auth/auth-routes";
+import { useAuthSession } from "./auth/use-auth-session";
+import { OrganizationsPage } from "./organizations";
+
+function App() {
+  useAuthSession();
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<AuthPage />} />
+        <Route path="/auth" element={<AuthPage />} />
+
+        <Route element={<ProtectedLayout />}>
+          <Route path="/organizations" element={<OrganizationsPage />} />
+        </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
 export default App;

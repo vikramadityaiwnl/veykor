@@ -8,9 +8,12 @@
     "dev:web": "npm run dev --prefix web",
     "dev:server": "npm run dev --prefix server",
     "build": "npm run typecheck --prefix shared && npm run build --prefix web && npm run build --prefix server",
-    "install:all": "npm install --prefix shared && npm install --prefix web && npm install --prefix server"
+    "install:all": "npm install --prefix shared && npm install --prefix web && npm install --prefix server",
+    "format": "prettier --write \"web/src/**/*.{ts,tsx}\" \"server/src/**/*.ts\" \"server/tests/**/*.ts\" \"shared/**/*.{ts,tsx}\" AGENTS.md",
+    "format:check": "prettier --check \"web/src/**/*.{ts,tsx}\" \"server/src/**/*.ts\" \"server/tests/**/*.ts\" \"shared/**/*.{ts,tsx}\" AGENTS.md"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "prettier": "^3.9.10"
   }
 }

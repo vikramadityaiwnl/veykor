@@ -17,3 +17,9 @@ logs/
 !.vscode/extensions.json
 .idea
 .DS_Store
+
+.env
+.env.*
+!.env.example
+
+*.tsbuildinfo

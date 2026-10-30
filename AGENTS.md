@@ -44,6 +44,16 @@ upgrade --from <old version> --apply run after a dependency bump
 - Name every file in kebab-case, using lowercase words separated by hyphens (for example, `user-profile.tsx`). Conventional lowercase configuration names such as `package.json` and `tsconfig.json` are fine.
 - Name React components in PascalCase, with the first character uppercase (for example, `App`, `UserProfile`). Keep the file name kebab-case even when the exported component is PascalCase.
 
+### Formatting and readability
+
+- Do not add explanatory code comments. Use clear names, structure, and whitespace instead. Preserve machine-readable directives required by tooling.
+- Write code for a person who enjoys reading it. Match the surrounding formatting and preserve intentional whitespace when editing existing code.
+- Use Prettier for consistent two-space indentation, double quotes, semicolons, trailing commas, and multiline wrapping. Run `npm run format` after changes and `npm run format:check` to verify formatting.
+- Leave a blank line after imports, between top-level declarations, and between distinct logical steps inside a function. Separate state declarations, derived values, handlers, effects, and the JSX return into readable groups.
+- Expand functions, conditional branches, async handlers, and substantial JSX into multiple lines. Use braces for control-flow branches; do not compress a component or several statements onto one line.
+- Keep JSX props on separate lines when the element has several props. Separate major JSX sections with blank lines so the page structure is easy to scan.
+- Prettier handles mechanical formatting; retain meaningful blank lines and clear grouping manually. Do not remove that spacing to make a file shorter.
+
 ### Component props
 
 - Give a component its own `Props` interface and accept one explicitly typed `props` object. If a module holds multiple components, use a distinct `<ComponentName>Props` interface for each. Read values as `props.x` and `props.y`; do not destructure the props parameter.

@@ -14,10 +14,15 @@
     "@astryxdesign/cli": "^0.7.4",
     "@astryxdesign/core": "^0.7.4",
     "@astryxdesign/theme-neutral": "^0.7.4",
-    "@veykor/shared": "file:../shared",
+    "@fortawesome/fontawesome-svg-core": "^7.3.1",
+    "@fortawesome/free-solid-svg-icons": "^7.3.1",
+    "@fortawesome/react-fontawesome": "^3.5.0",
     "@stylexjs/stylex": "^0.19.1",
+    "@veykor/shared": "file:../shared",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.5",
+    "zustand": "^5.0.16"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

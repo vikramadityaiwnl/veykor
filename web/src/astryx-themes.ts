@@ -10,6 +10,6 @@ import "@astryxdesign/theme-neutral/fonts.css";
 export const themes = {
   neutral: _astryxTheme0,
 } as const;
-export type ThemeSlug = keyof typeof themes;
 
+export type ThemeSlug = keyof typeof themes;
 export const defaultThemeSlug: keyof typeof themes = "neutral";
