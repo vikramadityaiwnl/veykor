@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
+import type { VisitsResponse } from "@veykor/shared";
 import { db } from "../db/client.js";
 import { visits } from "../db/schema.js";
 
@@ -37,6 +38,10 @@ function incrementCount(): number {
   });
 }
 
+function createResponse(count: number): VisitsResponse {
+  return { count };
+}
+
 export const visitsRoute = new Hono()
-  .get("/", (c) => c.json({ count: readCount() }))
-  .post("/", (c) => c.json({ count: incrementCount() }, 201));
+  .get("/", (c) => c.json(createResponse(readCount())))
+  .post("/", (c) => c.json(createResponse(incrementCount()), 201));

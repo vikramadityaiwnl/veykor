@@ -11,7 +11,7 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": [
-    "index.ts",
+    "index.d.ts",
     "contracts/**/*.ts",
     "helpers/**/*.ts",
     "types/**/*.ts"
