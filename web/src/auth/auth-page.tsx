@@ -1,14 +1,7 @@
 import { useRef, useState, type ChangeEvent } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import {
-  faPeopleGroup,
-  faListCheck,
-  faServer,
-  faPen,
-  faSun,
-  faMoon,
-} from "@fortawesome/free-solid-svg-icons";
+import { faPeopleGroup, faListCheck, faServer, faPen, faSun, faMoon } from "@fortawesome/free-solid-svg-icons";
 import { Avatar } from "@astryxdesign/core/Avatar";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";

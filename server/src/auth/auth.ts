@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { getConnInfo } from "@hono/node-server/conninfo";
+import { isHostRequest } from "./host-access.js";
 import { Hono, type Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
@@ -32,25 +32,6 @@ const publicUser = (user: typeof users.$inferSelect): AuthUser => ({
   username: user.username,
   photo: user.photo,
 });
-
-function localRegistration(c: Context): boolean {
-  const hostname = new URL(c.req.url).hostname;
-  const origin = c.req.header("Origin");
-
-  if (
-    origin &&
-    !["localhost", "127.0.0.1", "[::1]"].includes(new URL(origin).hostname)
-  ) {
-    return false;
-  }
-
-  const address = getConnInfo(c).remote.address;
-
-  return (
-    ["localhost", "127.0.0.1", "[::1]"].includes(hostname) &&
-    ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address ?? "")
-  );
-}
 
 export const csrfProtection = createMiddleware(async (c, next) => {
   c.header("Cache-Control", "no-store");
@@ -155,7 +136,7 @@ async function startSession(
 
   return c.json({
     user: publicUser(user),
-    registrationAllowed: localRegistration(c),
+    registrationAllowed: isHostRequest(c),
     expiresAt,
   });
 }
@@ -207,13 +188,13 @@ authRoute.get("/status", async (c) => {
   return c.json({
     user: authenticated ? c.get("user") : null,
     expiresAt: authenticated ? c.get("expiresAt") : null,
-    registrationAllowed: localRegistration(c),
+    registrationAllowed: isHostRequest(c),
   });
 });
 
 for (const action of ["register", "login"] as const) {
   authRoute.post("/" + action, async (c) => {
-    if (action === "register" && !localRegistration(c)) {
+    if (action === "register" && !isHostRequest(c)) {
       return c.json(
         { error: "Account creation is available only on localhost" },
         403,

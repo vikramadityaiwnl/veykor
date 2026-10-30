@@ -47,7 +47,7 @@ veykor is an open-source, AI-native development environment where developers wor
 ### Commands
 
 ```sh
-npm run dev:web       # Start the frontend
-npm run dev:server    # Start the backend
+npm run dev --prefix web       # Start the frontend
+npm run dev --prefix server    # Start the backend
 npm run build         # Build the project
 ```

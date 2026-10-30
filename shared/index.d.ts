@@ -4,3 +4,5 @@ export type {
   AuthStatus,
   AuthCredentials,
 } from "./contracts/index.js";
+
+export type { ConfigurationUsersResponse } from "./contracts/index.js";

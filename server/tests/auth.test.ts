@@ -1,3 +1,4 @@
+import type { AuthStatus, ConfigurationUsersResponse } from "@veykor/shared";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -59,7 +60,11 @@ test("multi-user auth, isolated sessions, persistence, CSRF, expiration and LAN 
     body?: unknown,
     cookie?: string,
     extra: Record<string, string> = {},
-  ) {
+  ): Promise<
+    Omit<Response, "json"> & {
+      json: () => Promise<AuthStatus & ConfigurationUsersResponse>;
+    }
+  > {
     return fetch(origin + "/api/" + path, {
       ...(body !== undefined
         ? { method: "POST", body: JSON.stringify(body) }
@@ -71,7 +76,11 @@ test("multi-user auth, isolated sessions, persistence, CSRF, expiration and LAN 
         ...(cookie ? { Cookie: cookie } : {}),
         ...extra,
       },
-    });
+    }) as Promise<
+      Omit<Response, "json"> & {
+        json: () => Promise<AuthStatus & ConfigurationUsersResponse>;
+      }
+    >;
   }
 
   const credentials = { username: "alex", password: "a-strong-test-password" };
@@ -131,13 +140,40 @@ test("multi-user auth, isolated sessions, persistence, CSRF, expiration and LAN 
       .get("set-cookie")!
       .split(";")[0];
 
+    const configuration = await request("configuration/users");
+
+    assert.equal(configuration.status, 200);
+    assert.equal(configuration.headers.get("cache-control"), "no-store");
+    assert.deepEqual((await configuration.json()).users, [
+      { id: firstUser.id, username: "alex", photo: null },
+      { id: otherUser.id, username: "brother", photo: null },
+    ]);
+
+    const deniedHeaders: Record<string, string>[] = [
+      { Origin: "http://192.168.1.10:5173" },
+      { "X-Forwarded-For": "192.168.1.10" },
+      { "Sec-Fetch-Site": "cross-site" },
+    ];
+
+    for (const headers of deniedHeaders) {
+      const denied = await request(
+        "configuration/users",
+        undefined,
+        undefined,
+        headers,
+      );
+
+      assert.equal(denied.status, 403, JSON.stringify(headers));
+      assert.equal((await denied.json()).users, undefined);
+    }
+
     assert.notEqual(otherUser.id, firstUser.id);
     assert.equal(
-      (await (await request("me", undefined, cookie)).json()).user.username,
+      (await (await request("me", undefined, cookie)).json()).user!.username,
       "alex",
     );
     assert.equal(
-      (await (await request("me", undefined, otherCookie)).json()).user
+      (await (await request("me", undefined, otherCookie)).json()).user!
         .username,
       "brother",
     );

@@ -48,6 +48,7 @@ upgrade --from <old version> --apply run after a dependency bump
 
 - Do not add explanatory code comments. Use clear names, structure, and whitespace instead. Preserve machine-readable directives required by tooling.
 - Write code for a person who enjoys reading it. Match the surrounding formatting and preserve intentional whitespace when editing existing code.
+- Development and build commands automatically format tracked changes and new supported files with `scripts/format-changed.mjs`. Use `npm run format` and `npm run format:check` for explicit formatting and verification. Keep import declarations on one line; the local Prettier plugin enforces this.
 - Use Prettier for consistent two-space indentation, double quotes, semicolons, trailing commas, and multiline wrapping. Run `npm run format` after changes and `npm run format:check` to verify formatting.
 - Leave a blank line after imports, between top-level declarations, and between distinct logical steps inside a function. Separate state declarations, derived values, handlers, effects, and the JSX return into readable groups.
 - Expand functions, conditional branches, async handlers, and substantial JSX into multiple lines. Use braces for control-flow branches; do not compress a component or several statements onto one line.

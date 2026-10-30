@@ -3,6 +3,7 @@ import { AuthPage } from "./auth/auth-page";
 import { ProtectedLayout } from "./auth/auth-routes";
 import { useAuthSession } from "./auth/use-auth-session";
 import { OrganizationsPage } from "./organizations";
+import { ConfigurationPage } from "./configuration/configuration-page";
 
 function App() {
   useAuthSession();
@@ -12,6 +13,7 @@ function App() {
       <Routes>
         <Route path="/" element={<AuthPage />} />
         <Route path="/auth" element={<AuthPage />} />
+        <Route path="/configuration" element={<ConfigurationPage />} />
 
         <Route element={<ProtectedLayout />}>
           <Route path="/organizations" element={<OrganizationsPage />} />
