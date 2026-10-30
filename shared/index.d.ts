@@ -1,1 +1,1 @@
-export type { HealthResponse, VisitsResponse } from "./contracts/index.js";
+export type { HealthResponse } from "./contracts/index.js";
