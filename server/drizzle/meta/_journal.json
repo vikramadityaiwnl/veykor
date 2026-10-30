@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1793296511517,
+      "tag": "0000_even_oracle",
+      "breakpoints": true
+    }
+  ]
+}
