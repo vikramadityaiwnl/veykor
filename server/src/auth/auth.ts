@@ -38,11 +38,11 @@ export const csrfProtection = createMiddleware(async (c, next) => {
 
   if (!["GET", "HEAD", "OPTIONS"].includes(c.req.method)) {
     const origin = c.req.header("Origin");
-    const expected = authConfig.origins;
+    const sameOrigin = origin === new URL(c.req.url).origin;
 
     if (
       !origin ||
-      !expected.includes(origin) ||
+      (!sameOrigin && !authConfig.origins.includes(origin)) ||
       c.req.header("X-Veykor-Request") !== "1" ||
       c.req.header("Sec-Fetch-Site") === "cross-site"
     ) {
