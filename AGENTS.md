@@ -23,9 +23,9 @@ RULES:
 - No <div> — components handle all layout and spacing.
 - Read `astryx docs layout` before changing a template's frame.
 - Dense data = rows (Table, List/Item), not Card-wrapped lists. Badge = counts only.
-- Style with component props first, then tokens (var(--color-_|--spacing-_|--radius-\*)). No raw hex/px. No StyleX/Tailwind compiler here — don't use xstyle/utility classes directly. Some templates use StyleX and need a compiler plugin; see `astryx docs styling-overview`.
+- Style with component props first, then tokens (var(--color-_|--spacing-_|--radius-\*)). No raw hex/px. Tailwind is compiled through the Vite plugin; use inline className utilities for custom styling. Do not use xstyle directly. Some templates use StyleX and need a compiler plugin; see `astryx docs styling-overview`.
 - Palettes and custom colors go through the theme, never :root overrides. Run `astryx theme add <slug>` to import; `theme eject <slug>` only forks source. See `astryx docs theme`.
-- SELF-CHECK: re-read the file; replace any raw <div>/<span>, imported .css/@apply, or hardcoded #hex/px with the component or a token.
+- SELF-CHECK: re-read the file; replace any raw <div>/<span>, @apply, or hardcoded #hex/px with the component or a token.
 
 `astryx help` lists every command. Key ones beyond the workflow:
 search "<query>" find any component / hook / doc / template

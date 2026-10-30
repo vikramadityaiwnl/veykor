@@ -6,6 +6,8 @@ import {
   faListCheck,
   faServer,
   faPen,
+  faSun,
+  faMoon,
 } from "@fortawesome/free-solid-svg-icons";
 import { Avatar } from "@astryxdesign/core/Avatar";
 import { Banner } from "@astryxdesign/core/Banner";
@@ -20,102 +22,13 @@ import { TextInput } from "@astryxdesign/core/TextInput";
 import { VStack } from "@astryxdesign/core/VStack";
 import { SessionLoading } from "./auth-routes";
 import { useAuthStore } from "./auth-store";
-import logo from "../../../assets/logo-rounded.png";
-
-const layoutStyles = `
-  .auth-page {
-    --veykor-icon-size: var(--spacing-4);
-    --veykor-icon-size-small: var(--spacing-3);
-
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    background: var(--color-background-body);
-  }
-
-  .auth-story,
-  .auth-entry {
-    min-width: 0;
-    padding: clamp(var(--spacing-6), 6vw, calc(var(--spacing-12) * 2));
-  }
-
-  .auth-story {
-    background: var(--color-background-surface);
-    border-inline-end: var(--border-width) solid var(--color-border);
-  }
-
-  .auth-story-content {
-    width: 100%;
-    max-width: 30rem;
-  }
-
-  .auth-proof-icon {
-    width: var(--veykor-icon-size);
-    height: var(--veykor-icon-size);
-    flex-shrink: 0;
-    color: var(--color-icon-secondary);
-  }
-
-  .auth-avatar-edit {
-    width: var(--veykor-icon-size);
-    height: var(--veykor-icon-size);
-    color: var(--color-icon-primary);
-    pointer-events: none;
-  }
-
-  .auth-story-heading {
-    max-width: 18ch;
-    font-size: var(--text-display-3-size);
-    line-height: var(--text-display-3-leading);
-    letter-spacing: -0.025em;
-  }
-
-  .auth-brand {
-    width: var(--spacing-10);
-    height: var(--spacing-10);
-    object-fit: contain;
-    border-radius: var(--radius-element);
-  }
-
-  .auth-form input {
-    font-size: max(1rem, var(--text-body-size));
-  }
-
-  .auth-form-control {
-    min-height: var(--spacing-12);
-  }
-
-  .auth-submit {
-    min-height: var(--spacing-12);
-  }
-
-  @media (max-width: 48rem) {
-    .auth-page {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .auth-story {
-      border-inline-end: none;
-      border-block-end: var(--border-width) solid var(--color-border);
-      padding-block: var(--spacing-8);
-    }
-
-    .auth-story-heading {
-      max-width: 18ch;
-      font-size: var(--text-heading-1-size);
-      line-height: var(--text-heading-1-leading);
-      letter-spacing: -0.025em;
-    }
-
-    .auth-story-content {
-      gap: var(--spacing-4);
-    }
-
-    .auth-entry {
-      padding-block: var(--spacing-10);
-    }
-  }
-`;
+import logoDark from "../../../assets/logo-dark.png";
+import logoLight from "../../../assets/logo-light.png";
+import { useThemeStore } from "../theme-store";
 
 export function AuthPage() {
+  const mode = useThemeStore((state) => state.mode);
+  const toggleTheme = useThemeStore((state) => state.toggle);
   const status = useAuthStore((state) => state.status);
   const submitCredentials = useAuthStore((state) => state.submit);
 
@@ -219,23 +132,50 @@ export function AuthPage() {
 
   return (
     <>
-      <style>{layoutStyles}</style>
-
-      <Grid role="main" columns={2} minHeight="100svh" className="auth-page">
-        <VStack as="section" className="auth-story" justify="center">
-          <VStack className="auth-story-content" gap={8}>
+      <Grid
+        role="main"
+        columns={2}
+        minHeight="100svh"
+        className="relative grid-cols-1! grid-rows-[auto_1fr] bg-(--color-background-body) md:grid-cols-2! md:grid-rows-1"
+      >
+        <HStack className="absolute top-4 right-4 z-10">
+          <Button
+            label={
+              mode === "dark" ? "Switch to light theme" : "Switch to dark theme"
+            }
+            tooltip={
+              mode === "dark" ? "Switch to light theme" : "Switch to dark theme"
+            }
+            isIconOnly
+            icon={<FontAwesomeIcon icon={mode === "dark" ? faSun : faMoon} />}
+            clickAction={toggleTheme}
+          />
+        </HStack>
+        <VStack
+          as="section"
+          className="min-w-0 px-6 pt-8 md:border-r md:border-solid md:border-(--color-border) md:bg-(--color-background-surface) md:p-[clamp(var(--spacing-6),6vw,calc(var(--spacing-12)*2))]"
+          justify="center"
+        >
+          <VStack
+            className="w-full max-w-120 gap-(--spacing-4)! md:gap-(--spacing-8)!"
+            gap={8}
+          >
             <HStack gap={3} vAlign="center">
-              <img className="auth-brand" src={logo} alt="" />
+              <img
+                className="size-(--spacing-10) rounded-(--radius-element) object-contain"
+                src={mode === "dark" ? logoDark : logoLight}
+                alt=""
+              />
               <Text size="xl" weight="semibold">
                 veykor
               </Text>
             </HStack>
 
-            <VStack gap={6}>
+            <VStack gap={6} className="hidden! md:flex!">
               <Heading
                 level={1}
                 weight="semibold"
-                className="auth-story-heading"
+                className="max-w-[18ch] text-(length:--text-heading-1-size)! leading-(--text-heading-1-leading)! tracking-tight md:text-(length:--text-display-3-size)! md:leading-(--text-display-3-leading)!"
               >
                 Build together.
                 <br />
@@ -249,11 +189,11 @@ export function AuthPage() {
               </Text>
             </VStack>
 
-            <VStack as="ul" gap={4} style={{ listStyle: "none" }}>
+            <VStack as="ul" gap={4} className="hidden! list-none md:flex!">
               <HStack as="li" gap={3} vAlign="start">
                 <FontAwesomeIcon
                   icon={faPeopleGroup}
-                  className="auth-proof-icon"
+                  className="size-(--spacing-4) shrink-0 text-(--color-icon-secondary)"
                   aria-hidden="true"
                 />
                 <Text>Collaborate with specialized agents</Text>
@@ -262,7 +202,7 @@ export function AuthPage() {
               <HStack as="li" gap={3} vAlign="start">
                 <FontAwesomeIcon
                   icon={faListCheck}
-                  className="auth-proof-icon"
+                  className="size-(--spacing-4) shrink-0 text-(--color-icon-secondary)"
                   aria-hidden="true"
                 />
                 <Text>Delegate tasks and review the results</Text>
@@ -271,7 +211,7 @@ export function AuthPage() {
               <HStack as="li" gap={3} vAlign="start">
                 <FontAwesomeIcon
                   icon={faServer}
-                  className="auth-proof-icon"
+                  className="size-(--spacing-4) shrink-0 text-(--color-icon-secondary)"
                   aria-hidden="true"
                 />
                 <Text>Work on your own infrastructure</Text>
@@ -282,11 +222,11 @@ export function AuthPage() {
 
         <VStack
           as="section"
-          className="auth-entry"
+          className="min-w-0 justify-start! px-6 py-12 md:justify-center! md:p-[clamp(var(--spacing-6),6vw,calc(var(--spacing-12)*2))]"
           justify="center"
           hAlign="center"
         >
-          <VStack width="100%" maxWidth="25rem" gap={8}>
+          <VStack className="w-full max-w-100" gap={8}>
             <VStack gap={3}>
               <Heading level={2} weight="semibold">
                 {creating ? "Start with you." : "Welcome back."}
@@ -299,7 +239,7 @@ export function AuthPage() {
             </VStack>
 
             <form
-              className="auth-form"
+              className="[&_input]:text-base"
               onSubmit={(event) => {
                 event.preventDefault();
                 void submit();
@@ -324,7 +264,7 @@ export function AuthPage() {
                         status={
                           <FontAwesomeIcon
                             icon={faPen}
-                            className="auth-avatar-edit"
+                            className="pointer-events-none size-(--spacing-4) text-(--color-icon-primary)"
                             aria-hidden="true"
                           />
                         }
@@ -362,7 +302,7 @@ export function AuthPage() {
                     isLabelHidden
                     size="lg"
                     width="100%"
-                    controlClassName="auth-form-control"
+                    controlClassName="min-h-(--spacing-12)"
                     isRequired
                     isDisabled={busy}
                   />
@@ -382,7 +322,7 @@ export function AuthPage() {
                     }
                     size="lg"
                     width="100%"
-                    controlClassName="auth-form-control"
+                    controlClassName="min-h-(--spacing-12)"
                     isRequired
                     isDisabled={busy}
                   />
@@ -402,7 +342,7 @@ export function AuthPage() {
                 )}
 
                 <Button
-                  className="auth-submit"
+                  className="min-h-(--spacing-12)"
                   label={creating ? "Create account" : "Sign in"}
                   type="submit"
                   variant="primary"
