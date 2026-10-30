@@ -11,8 +11,11 @@ export const healthRoute = new Hono().get("/", (c) => {
       status: "degraded",
       db: "disconnected",
     };
+
     return c.json(response, 503);
   }
+
   const response: HealthResponse = { status: "ok", db: "connected" };
+
   return c.json(response);
 });

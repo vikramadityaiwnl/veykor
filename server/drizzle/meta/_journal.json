@@ -8,6 +8,20 @@
       "when": 1793296511517,
       "tag": "0000_even_oracle",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1793353808886,
+      "tag": "0001-auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793354028939,
+      "tag": "0002-remove-visits",
+      "breakpoints": true
     }
   ]
 }
