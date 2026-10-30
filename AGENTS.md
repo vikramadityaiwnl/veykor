@@ -93,7 +93,7 @@ function App(props: Props) {
 
 ### Git and pull requests
 
-- Write commit subjects in Conventional Commits form: `<type>(<optional-scope>): <summary>` (for example, `feat(web): add sign-in flow`). Omit the scope when it adds no useful context. Do not commit when the user has asked to review changes first or has not authorized a commit.
+- Write commit subjects in Conventional Commits form: `<type>(<optional-scope>): <summary>` (for example, `feat(web): add sign-in flow`). Omit the scope when it adds no useful context. Keep every commit message to that single subject line, at most 72 characters, with no body, matching the short style of the existing history. Do not commit when the user has asked to review changes first or has not authorized a commit.
 - For a pull request, determine the base from the branch's parent in the branch/PR chain. In a stacked chain, target the immediate parent branch. Use an explicitly requested target when supplied; if the parent cannot be determined confidently, ask rather than defaulting to `main`.
 - Summarize the complete branch relative to the selected base, including all commits and changes on the branch, not only work from the current session. Review the full branch diff before creating the PR.
 - Create the pull request against that base and merge it into that same base once required checks and review conditions pass, unless the user specifies a different target or asks to leave it open.
