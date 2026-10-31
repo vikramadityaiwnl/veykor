@@ -1,35 +1,26 @@
 import { useSearchParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faGear, faPlug } from "@fortawesome/free-solid-svg-icons";
+import { faGear, faHeartPulse, faPlug } from "@fortawesome/free-solid-svg-icons";
 import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { VStack } from "@astryxdesign/core/VStack";
 import { WorkspacePageHeader } from "../workspace/components/workspace-page-header";
 import { SettingsGeneralPanel } from "./components/settings-general-panel";
 import { SettingsProvidersPanel } from "./components/settings-providers-panel";
+import { SettingsStatusPanel } from "./components/settings-status-panel";
 
-const headers: Record<string, { title: string; description: string }> = {
-  general: {
-    title: "General settings",
-    description:
-      "Workspace preferences that apply to every project and chat session in veykor. These are the defaults everything else builds on.",
-  },
-  providers: {
-    title: "Providers",
-    description:
-      "The command-line AI tools veykor can use for chat, detected on this host with their installed versions.",
-  },
-};
+type SettingsTab = "general" | "providers" | "status";
 
 export function SettingsPage() {
   const [params, setParams] = useSearchParams();
 
-  const tab = params.get("tab") === "providers" ? "providers" : "general";
+  const rawTab = params.get("tab");
 
-  const header = headers[tab];
+  const tab: SettingsTab =
+    rawTab === "providers" || rawTab === "status" ? rawTab : "general";
 
   function changeTab(value: string) {
-    if (value === "providers") {
-      setParams({ tab: "providers" });
+    if (value === "providers" || value === "status") {
+      setParams({ tab: value });
       return;
     }
 
@@ -39,8 +30,8 @@ export function SettingsPage() {
   return (
     <VStack gap={4} padding={6} className="min-h-0 flex-1 overflow-hidden">
       <WorkspacePageHeader
-        title={header.title}
-        description={header.description}
+        title="Settings"
+        description="Workspace preferences, provider tools, and host status for this veykor server."
       />
 
       <TabList
@@ -67,12 +58,23 @@ export function SettingsPage() {
             <FontAwesomeIcon icon={faPlug} size="sm" aria-hidden="true" />
           }
         />
+
+        <Tab
+          value="status"
+          label="Status"
+          panelId="settings-panel-status"
+          selectedIcon={
+            <FontAwesomeIcon icon={faHeartPulse} size="sm" aria-hidden="true" />
+          }
+        />
       </TabList>
 
       {tab === "general" ? (
         <SettingsGeneralPanel />
-      ) : (
+      ) : tab === "providers" ? (
         <SettingsProvidersPanel />
+      ) : (
+        <SettingsStatusPanel />
       )}
     </VStack>
   );

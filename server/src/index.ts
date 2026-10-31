@@ -8,6 +8,7 @@ import { configurationRoute } from "./routes/configuration.js";
 import { sidebarRoute } from "./routes/sidebar.js";
 import { projectsRoute } from "./routes/projects.js";
 import { settingsRoute } from "./routes/settings.js";
+import { statusRoute } from "./routes/status.js";
 import { chatRoute } from "./routes/chat.js";
 
 runMigrations();
@@ -25,6 +26,8 @@ app.route("/api/sidebar", sidebarRoute);
 app.route("/api/projects", projectsRoute);
 
 app.route("/api/settings", settingsRoute);
+
+app.route("/api/status", statusRoute);
 
 app.route("/api/chat", chatRoute);
 

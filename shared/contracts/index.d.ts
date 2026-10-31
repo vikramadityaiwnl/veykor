@@ -39,3 +39,11 @@ export type {
 } from "./chat/index.js";
 
 export type { SettingsProvider, SettingsResponse } from "./settings/index.js";
+
+export type {
+  StatusCpu,
+  StatusDatabase,
+  StatusMemory,
+  StatusStorage,
+  SystemStatusResponse,
+} from "./status/index.js";

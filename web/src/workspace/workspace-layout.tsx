@@ -18,11 +18,9 @@ import { SidebarSections } from "./components/sidebar-sections";
 import { WorkspaceSidebarFooter } from "./components/workspace-sidebar-footer";
 import { WorkspaceSidebarHeader } from "./components/workspace-sidebar-header";
 import { WorkspaceSidebarTopContent } from "./components/workspace-sidebar-top-content";
-
 import { ChatThreadHeader } from "./components/chat-thread-header";
 import { DeleteChatDialog } from "./components/delete-chat-dialog";
 import { useChatRuntimeStore } from "./chat-runtime-store";
-
 import { RenameChatDialog } from "./components/rename-chat-dialog";
 
 const commandPaletteSource = createStaticSource([]);

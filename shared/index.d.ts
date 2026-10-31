@@ -42,3 +42,11 @@ export type {
 } from "./contracts/index.js";
 
 export type { SettingsProvider, SettingsResponse } from "./contracts/index.js";
+
+export type {
+  StatusCpu,
+  StatusDatabase,
+  StatusMemory,
+  StatusStorage,
+  SystemStatusResponse,
+} from "./contracts/index.js";

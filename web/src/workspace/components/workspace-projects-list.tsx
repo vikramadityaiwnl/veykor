@@ -7,7 +7,6 @@ import { SideNavItem } from "@astryxdesign/core/SideNav";
 import { VStack } from "@astryxdesign/core/VStack";
 import type { ChatSession } from "../chat-sessions-store";
 import { WorkspaceSectionEmpty } from "./workspace-section-empty";
-
 import { ChatSessionItem } from "./chat-session-item";
 
 interface Props {
