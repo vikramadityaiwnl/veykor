@@ -15,8 +15,6 @@ import { TextInput } from "@astryxdesign/core/TextInput";
 import { VStack } from "@astryxdesign/core/VStack";
 import { SessionLoading } from "./auth-routes";
 import { useAuthStore } from "./auth-store";
-import logoDark from "../../../assets/logo-dark.png";
-import logoLight from "../../../assets/logo-light.png";
 import { useThemeStore } from "../theme-store";
 
 export function AuthPage() {
@@ -155,8 +153,8 @@ export function AuthPage() {
           >
             <HStack gap={3} vAlign="center">
               <img
-                className="size-(--spacing-10) rounded-(--radius-element) object-contain"
-                src={mode === "dark" ? logoDark : logoLight}
+                className="size-(--spacing-10) object-contain dark:invert"
+                src="/logo.svg"
                 alt=""
               />
               <Text size="xl" weight="semibold">

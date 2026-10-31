@@ -11,20 +11,15 @@ import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { TopNav } from "@astryxdesign/core/TopNav";
 import { VStack } from "@astryxdesign/core/VStack";
-import { defaultProjectId, workspaceProjects, type WorkspaceProject } from "./workspace-data";
-import logoDark from "../../../assets/logo-dark.png";
-import logoLight from "../../../assets/logo-light.png";
-import { useThemeStore } from "../theme-store";
+import { workspaceProjects, type WorkspaceProject } from "./workspace-data";
 
 export interface WorkspaceOutletContext {
   project: WorkspaceProject | null;
 }
 
 export function WorkspaceLayout() {
-  const mode = useThemeStore((state) => state.mode);
-
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
-    defaultProjectId,
+    null,
   );
   const [query, setQuery] = useState("");
 
@@ -50,8 +45,8 @@ export function WorkspaceLayout() {
             <SideNavHeading
               icon={
                 <img
-                  className="size-(--spacing-8) rounded-(--radius-element) object-contain"
-                  src={mode === "dark" ? logoDark : logoLight}
+                  className="size-(--spacing-8) object-contain dark:invert"
+                  src="/logo.svg"
                   alt=""
                 />
               }
@@ -143,30 +138,34 @@ export function WorkspaceLayout() {
               </HStack>
             }
           >
-            {visibleProjects.map((item) => (
-              <SideNavItem
-                key={item.id}
-                label={item.name}
-                icon={
-                  <FontAwesomeIcon
-                    icon={faFolder}
-                    className="size-(--spacing-4)"
-                    aria-hidden="true"
-                  />
-                }
-                isSelected={item.id === selectedProjectId}
-                onClick={() => {
-                  setSelectedProjectId(item.id);
-                }}
-                collapsible={
-                  item.id === defaultProjectId
-                    ? true
-                    : { defaultIsCollapsed: true }
-                }
-              >
-                <SideNavItem label="No sessions yet" isDisabled size="sm" />
-              </SideNavItem>
-            ))}
+            {visibleProjects.length === 0 ? (
+              <SideNavItem label="No projects yet" isDisabled size="sm" />
+            ) : (
+              visibleProjects.map((item) => (
+                <SideNavItem
+                  key={item.id}
+                  label={item.name}
+                  icon={
+                    <FontAwesomeIcon
+                      icon={faFolder}
+                      className="size-(--spacing-4)"
+                      aria-hidden="true"
+                    />
+                  }
+                  isSelected={item.id === selectedProjectId}
+                  onClick={() => {
+                    setSelectedProjectId(item.id);
+                  }}
+                  collapsible={
+                    item.id === selectedProjectId
+                      ? true
+                      : { defaultIsCollapsed: true }
+                  }
+                >
+                  <SideNavItem label="No sessions yet" isDisabled size="sm" />
+                </SideNavItem>
+              ))
+            )}
           </SideNavSection>
         </SideNav>
       }

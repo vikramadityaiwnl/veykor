@@ -1,33 +1,26 @@
 import { useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faChevronDown, faCube, faPaperclip, faPeopleGroup } from "@fortawesome/free-solid-svg-icons";
+import { faChevronDown, faCube, faPaperclip } from "@fortawesome/free-solid-svg-icons";
 import { Avatar } from "@astryxdesign/core/Avatar";
 import { Button } from "@astryxdesign/core/Button";
 import { Center } from "@astryxdesign/core/Center";
 import { ChatComposer, ChatLayout, ChatMessage, ChatMessageBubble, ChatMessageList } from "@astryxdesign/core/Chat";
-import { Divider } from "@astryxdesign/core/Divider";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import type { WorkspaceOutletContext } from "./workspace-layout";
-import { teamAgents } from "./workspace-data";
-import logoDark from "../../../assets/logo-dark.png";
-import logoLight from "../../../assets/logo-light.png";
-import { useThemeStore } from "../theme-store";
 
-interface DummyMessage {
+interface SentMessage {
   id: number;
-  sender: "user" | "assistant";
   text: string;
 }
 
 export function ProjectHomePage() {
   const { project } = useOutletContext<WorkspaceOutletContext>();
-  const mode = useThemeStore((state) => state.mode);
 
-  const [messages, setMessages] = useState<DummyMessage[]>([]);
+  const [messages, setMessages] = useState<SentMessage[]>([]);
   const nextId = useRef(1);
 
   const title = project
@@ -45,18 +38,9 @@ export function ProjectHomePage() {
       return;
     }
 
-    const userId = nextId.current++;
-    const replyId = nextId.current++;
+    const id = nextId.current++;
 
-    setMessages((prev) => [
-      ...prev,
-      { id: userId, sender: "user", text },
-      {
-        id: replyId,
-        sender: "assistant",
-        text: "This is a dummy preview. Agent replies will appear here once projects are wired up.",
-      },
-    ]);
+    setMessages((prev) => [...prev, { id, text }]);
   }
 
   return (
@@ -67,33 +51,14 @@ export function ProjectHomePage() {
         <Center>
           <VStack gap={6} hAlign="center">
             <img
-              className="size-(calc(var(--spacing-12)*2)) object-contain"
-              src={mode === "dark" ? logoDark : logoLight}
+              className="size-(calc(var(--spacing-12)*2)) object-contain dark:invert"
+              src="/logo.svg"
               alt=""
             />
 
             <Heading level={1} weight="semibold" className="text-center">
               {title}
             </Heading>
-
-            <HStack gap={4} vAlign="center" wrap="wrap" hAlign="center">
-              {teamAgents.map((agent) => (
-                <HStack key={agent.id} gap={2} vAlign="center">
-                  <Avatar name={agent.name} size="sm" />
-                  <Text>{agent.name}</Text>
-                </HStack>
-              ))}
-
-              <Divider orientation="vertical" />
-
-              <Button
-                label="Edit team"
-                variant="ghost"
-                icon={
-                  <FontAwesomeIcon icon={faPeopleGroup} aria-hidden="true" />
-                }
-              />
-            </HStack>
           </VStack>
         </Center>
       }
@@ -139,19 +104,10 @@ export function ProjectHomePage() {
           {messages.map((message) => (
             <ChatMessage
               key={message.id}
-              sender={message.sender}
-              avatar={
-                <Avatar
-                  name={message.sender === "user" ? "You" : "Lead"}
-                  size="md"
-                />
-              }
+              sender="user"
+              avatar={<Avatar name="You" size="md" />}
             >
-              <ChatMessageBubble
-                name={message.sender === "user" ? "You" : "Lead"}
-              >
-                {message.text}
-              </ChatMessageBubble>
+              <ChatMessageBubble name="You">{message.text}</ChatMessageBubble>
             </ChatMessage>
           ))}
         </ChatMessageList>
