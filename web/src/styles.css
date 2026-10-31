@@ -3,3 +3,19 @@
 @import "tailwindcss/utilities.css" layer(utilities) important;
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+::selection {
+  background-color: color-mix(
+    in srgb,
+    var(--color-text-primary) 15%,
+    transparent
+  );
+}
+
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}

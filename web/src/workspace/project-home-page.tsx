@@ -1,16 +1,12 @@
 import { useRef, useState } from "react";
-import { useOutletContext } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faChevronDown, faCube, faPaperclip } from "@fortawesome/free-solid-svg-icons";
+import { faChevronDown, faCube, faMicrophone, faPaperclip } from "@fortawesome/free-solid-svg-icons";
 import { Avatar } from "@astryxdesign/core/Avatar";
 import { Button } from "@astryxdesign/core/Button";
 import { Center } from "@astryxdesign/core/Center";
 import { ChatComposer, ChatLayout, ChatMessage, ChatMessageBubble, ChatMessageList } from "@astryxdesign/core/Chat";
-import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
-import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
-import type { WorkspaceOutletContext } from "./workspace-layout";
 
 interface SentMessage {
   id: number;
@@ -18,18 +14,8 @@ interface SentMessage {
 }
 
 export function ProjectHomePage() {
-  const { project } = useOutletContext<WorkspaceOutletContext>();
-
   const [messages, setMessages] = useState<SentMessage[]>([]);
   const nextId = useRef(1);
-
-  const title = project
-    ? `What should we build in ${project.name}?`
-    : "What should we build today?";
-
-  const caption = project
-    ? "Your team shares this project's memory."
-    : "This conversation lives outside any project.";
 
   function submit(value: string) {
     const text = value.trim();
@@ -49,24 +35,19 @@ export function ProjectHomePage() {
       scrollButton={null}
       emptyState={
         <Center>
-          <VStack gap={6} hAlign="center">
-            <img
-              className="size-(calc(var(--spacing-12)*2)) object-contain dark:invert"
-              src="/logo.svg"
-              alt=""
-            />
-
-            <Heading level={1} weight="semibold" className="text-center">
-              {title}
-            </Heading>
-          </VStack>
+          <img
+            className="size-[calc(var(--spacing-12)*2)] object-contain dark:invert"
+            src="/logo.svg"
+            alt=""
+          />
         </Center>
       }
       composer={
-        <VStack gap={2}>
+        <VStack gap={2} className="mx-auto w-full max-w-4xl px-4">
           <ChatComposer
             onSubmit={submit}
             placeholder="Describe what you'd like to build..."
+            elevation="none"
             footerActions={
               <HStack gap={1} vAlign="center">
                 <Button
@@ -89,13 +70,17 @@ export function ProjectHomePage() {
                 />
               </HStack>
             }
+            sendActions={
+              <Button
+                label="Use microphone"
+                isIconOnly
+                variant="ghost"
+                icon={
+                  <FontAwesomeIcon icon={faMicrophone} aria-hidden="true" />
+                }
+              />
+            }
           />
-
-          <HStack hAlign="center">
-            <Text type="supporting" color="secondary">
-              {caption}
-            </Text>
-          </HStack>
         </VStack>
       }
     >
