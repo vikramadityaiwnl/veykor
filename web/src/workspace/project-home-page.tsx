@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useOutletContext } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faChevronDown, faCube, faMicrophone, faPaperclip } from "@fortawesome/free-solid-svg-icons";
 import { Avatar } from "@astryxdesign/core/Avatar";
@@ -7,15 +7,35 @@ import { Center } from "@astryxdesign/core/Center";
 import { ChatComposer, ChatLayout, ChatMessage, ChatMessageBubble, ChatMessageList } from "@astryxdesign/core/Chat";
 import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
+import { useChatSessionsStore, type SessionMessage } from "./chat-sessions-store";
+import type { WorkspaceOutletContext } from "./workspace-layout";
+import { useSidebarSectionsStore } from "./sidebar-sections-store";
 
-interface SentMessage {
-  id: number;
-  text: string;
-}
+const noMessages: SessionMessage[] = [];
 
 export function ProjectHomePage() {
-  const [messages, setMessages] = useState<SentMessage[]>([]);
-  const nextId = useRef(1);
+  const project = useOutletContext<WorkspaceOutletContext>().project;
+  const activeSessionId = useChatSessionsStore(
+    (state) => state.activeSessionId,
+  );
+  const messages = useChatSessionsStore((state) =>
+    activeSessionId
+      ? (state.messages[activeSessionId] ?? noMessages)
+      : noMessages,
+  );
+  const addMessage = useChatSessionsStore((state) => state.addMessage);
+  const ensureChatSession = useChatSessionsStore(
+    (state) => state.ensureChatSession,
+  );
+  const ensureProjectSession = useChatSessionsStore(
+    (state) => state.ensureProjectSession,
+  );
+  const defaultChatsSectionId = useSidebarSectionsStore(
+    (state) =>
+      state.sections.find((section) => section.isFixed)?.id ??
+      state.sections.find((section) => section.kind === "chats")?.id ??
+      null,
+  );
 
   function submit(value: string) {
     const text = value.trim();
@@ -24,9 +44,25 @@ export function ProjectHomePage() {
       return;
     }
 
-    const id = nextId.current++;
+    if (activeSessionId) {
+      addMessage(activeSessionId, text);
+      return;
+    }
 
-    setMessages((prev) => [...prev, { id, text }]);
+    if (project) {
+      const session = ensureProjectSession(project.id);
+
+      addMessage(session.id, text);
+      return;
+    }
+
+    if (!defaultChatsSectionId) {
+      return;
+    }
+
+    const session = ensureChatSession(defaultChatsSectionId);
+
+    addMessage(session.id, text);
   }
 
   return (

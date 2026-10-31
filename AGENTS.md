@@ -76,6 +76,18 @@ function App(props: Props) {
 }
 ```
 
+### Component files
+
+- Keep one exported function component in each file. Each feature folder owns its composing layout or screen file directly (for example, `web/src/workspace/workspace-layout.tsx`); every smaller rendering piece it composes lives beside it in that feature's `components/` folder, one kebab-case file per component (for example, `web/src/workspace/components/sidebar-sections.tsx`).
+- The layout file wires stores, router state, and dialogs and renders the feature frame; it must not define rendering pieces inline. Split a growing piece into its own file in `components/` instead of adding another rendering component to the layout or to a sibling file, so each file carries only the context its one component needs.
+- Non-rendering code such as stores, data, and helpers stays outside `components/` in its owning domain folder.
+
+### Backend default state
+
+- Give new database fields a database default in the schema and its migration, and seed any default rows a new account needs when the account is created (or in the migration for existing accounts).
+- Always return a complete default state from the backend instead of `null` or omitted fields: empty arrays, empty strings, `0`, and `false` for empty values. The UI renders that shape directly and must not need optional chaining or null checks to handle an empty result.
+- Project creation is host-only: `POST /api/projects` rejects non-host requests with 403 via `isHostRequest`, and the UI hides project creation affordances when `registrationAllowed` is false. Reads, renames, sections, chats, and sessions stay open to any authenticated user.
+
 ### Shared code
 
 - Group shared files by domain/concern (for example, `auth/` or `visits/`); keep a small concern in one file instead of creating an unnecessary folder.

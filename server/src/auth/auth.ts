@@ -10,6 +10,7 @@ import { and, eq, gt, lte } from "drizzle-orm";
 import type { AuthUser, AuthCredentials } from "@veykor/shared";
 import { db } from "../db/client.js";
 import { users, sessions, loginLimits } from "../db/schema.js";
+import { insertDefaultSidebarSections } from "../db/sidebar-sections.js";
 import { authConfig } from "./config.js";
 
 export type AuthEnv = {
@@ -270,6 +271,8 @@ for (const action of ["register", "login"] as const) {
       if (!user) {
         return c.json({ error: "Username is already taken" }, 409);
       }
+
+      insertDefaultSidebarSections(user.id);
 
       return startSession(c, user);
     }
