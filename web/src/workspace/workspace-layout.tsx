@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faEllipsis, faGear } from "@fortawesome/free-solid-svg-icons";
 import type { Project, SidebarSection } from "@veykor/shared";
@@ -103,9 +103,13 @@ export function WorkspaceLayout() {
   const renameProjectTarget =
     projects.find((item) => item.id === renameProjectId) ?? null;
 
+  const location = useLocation();
+
   const contentTitle = activeSession?.title ?? project?.name ?? null;
 
   const contentLabel = activeSession ? "Session" : "Project";
+
+  const isHome = location.pathname === "/";
 
   function selectProject(id: string) {
     setSelectedProjectId(id);
@@ -272,7 +276,7 @@ export function WorkspaceLayout() {
       }
     >
       <VStack minHeight="100%" gap={0}>
-        {contentTitle ? (
+        {isHome && contentTitle ? (
           <TopNav
             label={contentLabel}
             startContent={contentTitle}

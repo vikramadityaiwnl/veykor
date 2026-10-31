@@ -21,3 +21,9 @@ export type {
   CreateProjectInput,
   UpdateProjectInput,
 } from "./contracts/index.js";
+
+export type {
+  ProviderCliId,
+  ProviderCliStatus,
+  CliStatusResponse,
+} from "./contracts/index.js";

@@ -7,6 +7,7 @@ import { healthRoute } from "./routes/health.js";
 import { configurationRoute } from "./routes/configuration.js";
 import { sidebarRoute } from "./routes/sidebar.js";
 import { projectsRoute } from "./routes/projects.js";
+import { providersRoute } from "./routes/providers.js";
 
 runMigrations();
 
@@ -21,6 +22,8 @@ app.route("/api/configuration", configurationRoute);
 app.route("/api/sidebar", sidebarRoute);
 
 app.route("/api/projects", projectsRoute);
+
+app.route("/api/providers", providersRoute);
 
 app.get("/api/me", requireAuth, (c) => c.json({ user: c.get("user") }));
 
