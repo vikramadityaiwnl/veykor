@@ -5,6 +5,11 @@ import { Hono } from "hono";
 import { dbPath, runMigrations } from "./db/client.js";
 import { healthRoute } from "./routes/health.js";
 import { configurationRoute } from "./routes/configuration.js";
+import { sidebarRoute } from "./routes/sidebar.js";
+import { projectsRoute } from "./routes/projects.js";
+import { settingsRoute } from "./routes/settings.js";
+import { statusRoute } from "./routes/status.js";
+import { chatRoute } from "./routes/chat.js";
 
 runMigrations();
 
@@ -15,6 +20,16 @@ app.use("/api/*", csrfProtection);
 app.route("/api/auth", authRoute);
 
 app.route("/api/configuration", configurationRoute);
+
+app.route("/api/sidebar", sidebarRoute);
+
+app.route("/api/projects", projectsRoute);
+
+app.route("/api/settings", settingsRoute);
+
+app.route("/api/status", statusRoute);
+
+app.route("/api/chat", chatRoute);
 
 app.get("/api/me", requireAuth, (c) => c.json({ user: c.get("user") }));
 

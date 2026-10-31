@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { sign } from "hono/jwt";
@@ -65,18 +65,21 @@ test("multi-user auth, isolated sessions, persistence, CSRF, expiration and LAN 
       json: () => Promise<AuthStatus & ConfigurationUsersResponse>;
     }
   > {
-    return fetch(origin + "/api/" + path, {
-      ...(body !== undefined
-        ? { method: "POST", body: JSON.stringify(body) }
-        : {}),
-      headers: {
-        Origin: origin,
-        "Content-Type": "application/json",
-        "X-Veykor-Request": "1",
-        ...(cookie ? { Cookie: cookie } : {}),
-        ...extra,
+    return fetch(
+      (extra.Host ? "http://" + extra.Host : origin) + "/api/" + path,
+      {
+        ...(body !== undefined
+          ? { method: "POST", body: JSON.stringify(body) }
+          : {}),
+        headers: {
+          Origin: origin,
+          "Content-Type": "application/json",
+          "X-Veykor-Request": "1",
+          ...(cookie ? { Cookie: cookie } : {}),
+          ...extra,
+        },
       },
-    }) as Promise<
+    ) as Promise<
       Omit<Response, "json"> & {
         json: () => Promise<AuthStatus & ConfigurationUsersResponse>;
       }
@@ -140,7 +143,13 @@ test("multi-user auth, isolated sessions, persistence, CSRF, expiration and LAN 
       .get("set-cookie")!
       .split(";")[0];
 
-    const configuration = await request("configuration/users");
+    assert.equal((await request("configuration/users")).status, 401);
+
+    const configuration = await request(
+      "configuration/users",
+      undefined,
+      cookie,
+    );
 
     assert.equal(configuration.status, 200);
     assert.equal(configuration.headers.get("cache-control"), "no-store");
@@ -200,6 +209,64 @@ test("multi-user auth, isolated sessions, persistence, CSRF, expiration and LAN 
     const secondCookie = login.headers.get("set-cookie")!.split(";")[0];
 
     assert.notEqual(secondCookie, cookie);
+
+    const networkAddress = Object.values(networkInterfaces())
+      .flatMap((entries) => entries ?? [])
+      .find((entry) => !entry.internal && entry.family === "IPv4")?.address;
+
+    if (networkAddress) {
+      const lanHeaders = {
+        Origin: `http://${networkAddress}:${port}`,
+        Host: `${networkAddress}:${port}`,
+      };
+
+      const lanLogin = await request(
+        "auth/login",
+        credentials,
+        undefined,
+        lanHeaders,
+      );
+
+      assert.equal(lanLogin.status, 200);
+      assert.equal((await lanLogin.json()).registrationAllowed, false);
+
+      const lanCookie = lanLogin.headers.get("set-cookie")!.split(";")[0];
+      const lanStatus = await request(
+        "auth/status",
+        undefined,
+        lanCookie,
+        lanHeaders,
+      );
+
+      assert.equal((await lanStatus.json()).user!.username, "alex");
+      assert.equal(
+        (await request("auth/register", credentials, undefined, lanHeaders))
+          .status,
+        403,
+      );
+      assert.equal(
+        (await request("configuration/users", undefined, lanCookie, lanHeaders))
+          .status,
+        403,
+      );
+      assert.equal(
+        (await request("auth/logout", {}, lanCookie, lanHeaders)).status,
+        200,
+      );
+
+      for (const headers of [
+        { ...lanHeaders, Origin: "http://192.168.0.103:5174" },
+        { ...lanHeaders, Origin: "https://evil.example" },
+        { ...lanHeaders, "X-Veykor-Request": "" },
+        { ...lanHeaders, "Sec-Fetch-Site": "cross-site" },
+      ]) {
+        assert.equal(
+          (await request("auth/login", credentials, undefined, headers)).status,
+          403,
+        );
+      }
+    }
+
     await stop();
     await start();
     assert.equal((await request("me", undefined, cookie)).status, 200);

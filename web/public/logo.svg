@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 880" fill="currentColor">
+  <title>veykor</title>
+  <g transform="translate(10 10)">
+    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path stroke-width="28" d="M430 52 682 178 808 430 682 682 430 808 178 682 52 430 178 178Z" />
+      <path stroke-width="28" d="M430 52V808M52 430H808M178 178 682 682M682 178 178 682" />
+    </g>
+    <circle cx="430" cy="52" r="60" />
+    <circle cx="682" cy="178" r="60" />
+    <circle cx="808" cy="430" r="60" />
+    <circle cx="682" cy="682" r="60" />
+    <circle cx="430" cy="808" r="60" />
+    <circle cx="178" cy="682" r="60" />
+    <circle cx="52" cy="430" r="60" />
+    <circle cx="178" cy="178" r="60" />
+    <circle cx="430" cy="430" r="110" />
+  </g>
+</svg>

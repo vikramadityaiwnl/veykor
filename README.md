@@ -44,10 +44,15 @@ veykor is an open-source, AI-native development environment where developers wor
 
 5. Open [http://localhost:5173](http://localhost:5173).
 
+   To sign in from another device on the same network, open the Network URL printed by Vite. Sign-in accepts requests from the app’s own origin without listing each network address in configuration. Configuration and account creation are available only through localhost on the hosting computer.
+
 ### Commands
 
 ```sh
 npm run dev --prefix web       # Start the frontend
 npm run dev --prefix server    # Start the backend
-npm run build         # Build the project
+npm run build                 # Build the project
+npm run test --prefix server   # Run backend tests
+npm run format                # Format files
+npm run format:check          # Check formatting
 ```

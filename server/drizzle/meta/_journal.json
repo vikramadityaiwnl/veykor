@@ -22,6 +22,41 @@
       "when": 1793354028939,
       "tag": "0002-remove-visits",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1793456554076,
+      "tag": "0003_awesome_mister_fear",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793460056698,
+      "tag": "0004_thick_wiccan",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793463027200,
+      "tag": "0005_opposite_sersi",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793468624176,
+      "tag": "0006_legal_mastermind",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1793474480415,
+      "tag": "0007-chat-history",
+      "breakpoints": true
     }
   ]
 }

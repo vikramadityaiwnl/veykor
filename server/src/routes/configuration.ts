@@ -2,10 +2,11 @@ import { Hono } from "hono";
 import { asc } from "drizzle-orm";
 import type { ConfigurationUsersResponse } from "@veykor/shared";
 import { isHostRequest } from "../auth/host-access.js";
+import { requireAuth, type AuthEnv } from "../auth/auth.js";
 import { db } from "../db/client.js";
 import { users } from "../db/schema.js";
 
-export const configurationRoute = new Hono();
+export const configurationRoute = new Hono<AuthEnv>();
 
 configurationRoute.use("*", async (c, next) => {
   if (!isHostRequest(c)) {
@@ -20,6 +21,8 @@ configurationRoute.use("*", async (c, next) => {
 
   await next();
 });
+
+configurationRoute.use("*", requireAuth);
 
 configurationRoute.get("/users", (c) => {
   const result: ConfigurationUsersResponse = {

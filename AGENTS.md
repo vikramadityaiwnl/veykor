@@ -48,7 +48,7 @@ upgrade --from <old version> --apply run after a dependency bump
 
 - Do not add explanatory code comments. Use clear names, structure, and whitespace instead. Preserve machine-readable directives required by tooling.
 - Write code for a person who enjoys reading it. Match the surrounding formatting and preserve intentional whitespace when editing existing code.
-- Development and build commands automatically format tracked changes and new supported files with `scripts/format-changed.mjs`. Use `npm run format` and `npm run format:check` for explicit formatting and verification. Keep import declarations on one line; the local Prettier plugin enforces this.
+- Development and build commands automatically format tracked changes and new supported files with `scripts/format-changed.mjs`. Use `npm run format` and `npm run format:check` for explicit formatting and verification. Keep import declarations on one line; the local Prettier plugin enforces this. Keep consecutive imports together with no blank lines between them; the blank line goes after the whole import block, not inside it.
 - Use Prettier for consistent two-space indentation, double quotes, semicolons, trailing commas, and multiline wrapping. Run `npm run format` after changes and `npm run format:check` to verify formatting.
 - Leave a blank line after imports, between top-level declarations, and between distinct logical steps inside a function. Separate state declarations, derived values, handlers, effects, and the JSX return into readable groups.
 - Expand functions, conditional branches, async handlers, and substantial JSX into multiple lines. Use braces for control-flow branches; do not compress a component or several statements onto one line.
@@ -76,6 +76,18 @@ function App(props: Props) {
 }
 ```
 
+### Component files
+
+- Keep one exported function component in each file. Each feature folder owns its composing layout or screen file directly (for example, `web/src/workspace/workspace-layout.tsx`); every smaller rendering piece it composes lives beside it in that feature's `components/` folder, one kebab-case file per component (for example, `web/src/workspace/components/sidebar-sections.tsx`).
+- The layout file wires stores, router state, and dialogs and renders the feature frame; it must not define rendering pieces inline. Split a growing piece into its own file in `components/` instead of adding another rendering component to the layout or to a sibling file, so each file carries only the context its one component needs.
+- Non-rendering code such as stores, data, and helpers stays outside `components/` in its owning domain folder.
+
+### Backend default state
+
+- Give new database fields a database default in the schema and its migration, and seed any default rows a new account needs when the account is created (or in the migration for existing accounts).
+- Always return a complete default state from the backend instead of `null` or omitted fields: empty arrays, empty strings, `0`, and `false` for empty values. The UI renders that shape directly and must not need optional chaining or null checks to handle an empty result.
+- Project creation is host-only: `POST /api/projects` rejects non-host requests with 403 via `isHostRequest`, and the UI hides project creation affordances when `registrationAllowed` is false. Reads, renames, sections, chats, and sessions stay open to any authenticated user.
+
 ### Shared code
 
 - Group shared files by domain/concern (for example, `auth/` or `visits/`); keep a small concern in one file instead of creating an unnecessary folder.
@@ -85,6 +97,10 @@ function App(props: Props) {
 - Re-export the public type-only category APIs from `shared/index.d.ts`; add a runtime `shared/index.ts` only if shared runtime code is introduced. Web and server code should import shared contracts through the `@veykor/shared` package alias, or use a published category/domain barrel, never a relative path into `shared/` or an implementation file. Renaming or moving an internal file should only require changing its barrel export.
 - Keep route implementations and framework-specific route registration in `web/` or `server/`; shared contracts describe the payloads and responses, not router internals. Update the shared definition first when a cross-layer contract changes.
 - `shared/package.json` owns scripts and development dependencies for the shared package. Update its `package-lock.json` whenever its dependencies change; use `npm install --prefix shared` to refresh it. `npm run typecheck --prefix shared` checks the shared source.
+
+### Documentation
+
+- Keep `README.md` focused on the project overview, prerequisites, setup, and commands. Do not add feature implementation details, session reports, or verification audits.
 
 ### Brand and typography
 
