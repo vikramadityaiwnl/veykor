@@ -120,7 +120,7 @@ export function AuthPage() {
   }
 
   if (status.user) {
-    return <Navigate to="/organizations" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return (

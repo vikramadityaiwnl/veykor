@@ -40,5 +40,5 @@ export function ProtectedLayout() {
     return <SessionLoading />;
   }
 
-  return status.user ? <Outlet /> : <Navigate to="/" replace />;
+  return status.user ? <Outlet /> : <Navigate to="/auth" replace />;
 }

@@ -2,7 +2,8 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthPage } from "./auth/auth-page";
 import { ProtectedLayout } from "./auth/auth-routes";
 import { useAuthSession } from "./auth/use-auth-session";
-import { OrganizationsPage } from "./organizations";
+import { WorkspaceLayout } from "./workspace/workspace-layout";
+import { ProjectHomePage } from "./workspace/project-home-page";
 import { ConfigurationPage } from "./configuration/configuration-page";
 
 function App() {
@@ -11,12 +12,13 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<AuthPage />} />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/configuration" element={<ConfigurationPage />} />
 
         <Route element={<ProtectedLayout />}>
-          <Route path="/organizations" element={<OrganizationsPage />} />
+          <Route path="/" element={<WorkspaceLayout />}>
+            <Route index element={<ProjectHomePage />} />
+          </Route>
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
