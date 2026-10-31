@@ -76,6 +76,7 @@ export function WorkspaceProjectsList(props: Props) {
       {props.projects.map((item) => {
         const sessions = sessionsFor(item.id);
         const isExpanded = props.expandedProjectIds.includes(item.id);
+        const folderIcon = isExpanded ? faFolderOpen : faFolder;
 
         return (
           <VStack key={item.id} gap={0} className="group">
@@ -93,14 +94,14 @@ export function WorkspaceProjectsList(props: Props) {
                 label={item.name}
                 icon={
                   <FontAwesomeIcon
-                    icon={faFolder}
+                    icon={folderIcon}
                     size="sm"
                     aria-hidden="true"
                   />
                 }
                 selectedIcon={
                   <FontAwesomeIcon
-                    icon={faFolderOpen}
+                    icon={folderIcon}
                     size="sm"
                     aria-hidden="true"
                   />

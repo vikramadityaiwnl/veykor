@@ -143,7 +143,13 @@ test("multi-user auth, isolated sessions, persistence, CSRF, expiration and LAN 
       .get("set-cookie")!
       .split(";")[0];
 
-    const configuration = await request("configuration/users");
+    assert.equal((await request("configuration/users")).status, 401);
+
+    const configuration = await request(
+      "configuration/users",
+      undefined,
+      cookie,
+    );
 
     assert.equal(configuration.status, 200);
     assert.equal(configuration.headers.get("cache-control"), "no-store");

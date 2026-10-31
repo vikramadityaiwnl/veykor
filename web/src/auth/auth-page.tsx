@@ -32,12 +32,12 @@ export function AuthPage() {
 
   const photoInput = useRef<HTMLInputElement>(null);
   const photoVersion = useRef(0);
-  const creating =
-    searchParams.get("mode") === "setup" &&
-    status?.registrationAllowed === true;
+  const wantsSetup = searchParams.get("mode") === "setup";
+  const creating = wantsSetup && status?.registrationAllowed === true;
+  const setupBlocked = wantsSetup && status?.registrationAllowed === false;
 
   async function submit() {
-    if (busy) {
+    if (busy || setupBlocked) {
       return;
     }
 
@@ -107,7 +107,7 @@ export function AuthPage() {
   }
 
   function toggleSetup() {
-    setSearchParams(creating ? {} : { mode: "setup" });
+    setSearchParams(wantsSetup ? {} : { mode: "setup" });
     setError("");
     setPassword("");
     removePhoto();
@@ -220,10 +220,10 @@ export function AuthPage() {
           <VStack className="w-full max-w-100" gap={8}>
             <VStack gap={3}>
               <Heading level={2} weight="semibold">
-                {creating ? "Start with you." : "Welcome back."}
+                {creating || setupBlocked ? "Start with you." : "Welcome back."}
               </Heading>
               <Text color="secondary">
-                {creating
+                {creating || setupBlocked
                   ? "Create your account to get started."
                   : "Sign in and pick up where you left off."}
               </Text>
@@ -237,7 +237,7 @@ export function AuthPage() {
               }}
             >
               <VStack gap={6}>
-                {creating && (
+                {(creating || setupBlocked) && (
                   <VStack gap={3} hAlign="center">
                     <VStack gap={3} hAlign="center">
                       <Avatar
@@ -246,9 +246,9 @@ export function AuthPage() {
                         src={photo}
                         size={96}
                         tooltip="Edit profile photo"
-                        aria-disabled={busy}
+                        aria-disabled={busy || setupBlocked}
                         onClick={() => {
-                          if (!busy) {
+                          if (!busy && !setupBlocked) {
                             photoInput.current?.click();
                           }
                         }}
@@ -265,7 +265,7 @@ export function AuthPage() {
                         <Button
                           label="Remove photo"
                           variant="ghost"
-                          isDisabled={busy}
+                          isDisabled={busy || setupBlocked}
                           clickAction={removePhoto}
                         />
                       )}
@@ -276,7 +276,7 @@ export function AuthPage() {
                       accept="image/png,image/jpeg,image/webp"
                       aria-label="Profile photo"
                       onChange={pickPhoto}
-                      disabled={busy}
+                      disabled={busy || setupBlocked}
                       hidden
                     />
                   </VStack>
@@ -295,7 +295,7 @@ export function AuthPage() {
                     width="100%"
                     controlClassName="min-h-(--spacing-12)"
                     isRequired
-                    isDisabled={busy}
+                    isDisabled={busy || setupBlocked}
                   />
                   <TextInput
                     label="Password"
@@ -304,20 +304,33 @@ export function AuthPage() {
                     value={password}
                     onChange={setPassword}
                     autoComplete={
-                      creating ? "new-password" : "current-password"
+                      creating || setupBlocked
+                        ? "new-password"
+                        : "current-password"
                     }
                     placeholder="password"
                     isLabelHidden
                     description={
-                      creating ? "Use at least 8 characters." : undefined
+                      creating || setupBlocked
+                        ? "Use at least 8 characters."
+                        : undefined
                     }
                     size="lg"
                     width="100%"
                     controlClassName="min-h-(--spacing-12)"
                     isRequired
-                    isDisabled={busy}
+                    isDisabled={busy || setupBlocked}
                   />
                 </VStack>
+
+                {setupBlocked && (
+                  <Banner
+                    status="error"
+                    title="Account creation unavailable"
+                    description="Account creation is available only on the host computer through localhost."
+                    role="alert"
+                  />
+                )}
 
                 {error && (
                   <Banner
@@ -334,24 +347,26 @@ export function AuthPage() {
 
                 <Button
                   className="min-h-(--spacing-12)"
-                  label={creating ? "Create account" : "Sign in"}
+                  label={
+                    creating || setupBlocked ? "Create account" : "Sign in"
+                  }
                   type="submit"
                   variant="primary"
                   size="lg"
                   width="100%"
                   isLoading={busy}
-                  isDisabled={busy}
+                  isDisabled={busy || setupBlocked}
                 />
               </VStack>
             </form>
 
-            {status.registrationAllowed ? (
+            {status.registrationAllowed || setupBlocked ? (
               <VStack gap={5}>
                 <Divider label="or" />
 
                 <HStack hAlign="center">
                   <Link
-                    href={creating ? "?" : "?mode=setup"}
+                    href={wantsSetup ? "?" : "?mode=setup"}
                     color="primary"
                     isStandalone
                     isDisabled={busy}
@@ -360,7 +375,7 @@ export function AuthPage() {
                       toggleSetup();
                     }}
                   >
-                    {creating ? "Back to sign in" : "Create account"}
+                    {wantsSetup ? "Back to sign in" : "Create account"}
                   </Link>
                 </HStack>
               </VStack>

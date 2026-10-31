@@ -13,9 +13,10 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/auth" element={<AuthPage />} />
-        <Route path="/configuration" element={<ConfigurationPage />} />
 
         <Route element={<ProtectedLayout />}>
+          <Route path="/configuration" element={<ConfigurationPage />} />
+
           <Route path="/" element={<WorkspaceLayout />}>
             <Route index element={<ProjectHomePage />} />
           </Route>
