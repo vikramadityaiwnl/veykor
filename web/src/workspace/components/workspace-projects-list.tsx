@@ -1,5 +1,5 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faComment, faFolder, faFolderOpen, faFolderTree, faPen, faPlus } from "@fortawesome/free-solid-svg-icons";
+import { faFolder, faFolderOpen, faFolderTree, faPen, faPlus } from "@fortawesome/free-solid-svg-icons";
 import type { Project, SidebarSection } from "@veykor/shared";
 import { Button } from "@astryxdesign/core/Button";
 import { ContextMenu, type ContextMenuOption } from "@astryxdesign/core/ContextMenu";
@@ -7,6 +7,8 @@ import { SideNavItem } from "@astryxdesign/core/SideNav";
 import { VStack } from "@astryxdesign/core/VStack";
 import type { ChatSession } from "../chat-sessions-store";
 import { WorkspaceSectionEmpty } from "./workspace-section-empty";
+
+import { ChatSessionItem } from "./chat-session-item";
 
 interface Props {
   projects: Project[];
@@ -16,6 +18,8 @@ interface Props {
   activeSessionId: string | null;
   expandedProjectIds: string[];
   onSelectProject: (id: string) => void;
+  onRenameSession: (session: ChatSession) => void;
+  onDeleteSession: (session: ChatSession) => void;
   onSelectSession: (id: string) => void;
   onAddSession: (projectId: string) => void;
   onRenameProject: (projectId: string) => void;
@@ -139,21 +143,14 @@ export function WorkspaceProjectsList(props: Props) {
                     <WorkspaceSectionEmpty />
                   ) : (
                     sessions.map((session) => (
-                      <SideNavItem
+                      <ChatSessionItem
                         key={session.id}
-                        label={session.title}
+                        session={session}
                         size="sm"
-                        icon={
-                          <FontAwesomeIcon
-                            icon={faComment}
-                            size="sm"
-                            aria-hidden="true"
-                          />
-                        }
                         isSelected={session.id === props.activeSessionId}
-                        onClick={() => {
-                          props.onSelectSession(session.id);
-                        }}
+                        onSelect={props.onSelectSession}
+                        onRename={props.onRenameSession}
+                        onDelete={props.onDeleteSession}
                       />
                     ))
                   )

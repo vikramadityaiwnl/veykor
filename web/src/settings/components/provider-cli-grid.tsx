@@ -10,7 +10,7 @@ import { Spinner } from "@astryxdesign/core/Spinner";
 import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
-import { useProvidersStore } from "../providers-store";
+import { useSettingsStore } from "../settings-store";
 
 const logos: Record<string, { src: string; invertInDark: boolean } | null> = {
   muse: { src: "/providers/muse.svg", invertInDark: false },
@@ -21,10 +21,10 @@ const logos: Record<string, { src: string; invertInDark: boolean } | null> = {
 };
 
 export function ProviderCliGrid() {
-  const providers = useProvidersStore((state) => state.cliProviders);
-  const status = useProvidersStore((state) => state.cliStatus);
-  const error = useProvidersStore((state) => state.cliError);
-  const loadCli = useProvidersStore((state) => state.loadCli);
+  const providers = useSettingsStore((state) => state.providers);
+  const status = useSettingsStore((state) => state.status);
+  const error = useSettingsStore((state) => state.error);
+  const loadCli = useSettingsStore((state) => state.load);
 
   if (status === "error") {
     return (

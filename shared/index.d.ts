@@ -27,3 +27,17 @@ export type {
   ProviderCliStatus,
   CliStatusResponse,
 } from "./contracts/index.js";
+
+export type {
+  ChatModel,
+  ChatProvider,
+  ChatCatalogResponse,
+  ChatUsage,
+  ChatMessage,
+  ChatSession,
+  ChatSessionsResponse,
+  ChatRequest,
+  ChatEvent,
+} from "./contracts/index.js";
+
+export type { SettingsProvider, SettingsResponse } from "./contracts/index.js";

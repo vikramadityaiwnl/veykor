@@ -1,137 +1,157 @@
-import { useOutletContext } from "react-router-dom";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faChevronDown, faCube, faMicrophone, faPaperclip } from "@fortawesome/free-solid-svg-icons";
-import { Avatar } from "@astryxdesign/core/Avatar";
-import { Button } from "@astryxdesign/core/Button";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import type { ProviderCliId } from "@veykor/shared";
 import { Center } from "@astryxdesign/core/Center";
-import { ChatComposer, ChatLayout, ChatMessage, ChatMessageBubble, ChatMessageList } from "@astryxdesign/core/Chat";
-import { HStack } from "@astryxdesign/core/HStack";
+import { ChatLayout } from "@astryxdesign/core/Chat";
+import { Heading } from "@astryxdesign/core/Heading";
 import { VStack } from "@astryxdesign/core/VStack";
-import { useChatSessionsStore, type SessionMessage } from "./chat-sessions-store";
-import type { WorkspaceOutletContext } from "./workspace-layout";
+import { useChatSessionsStore, emptyUsage, type SessionMessage } from "./chat-sessions-store";
 import { useSidebarSectionsStore } from "./sidebar-sections-store";
+import { useSettingsStore } from "../settings/settings-store";
+import type { ChatDraft } from "./chat-draft";
+import { useChatRuntimeStore } from "./chat-runtime-store";
+import { ChatComposerPanel } from "./components/chat-composer-panel";
+import { ConversationMessages } from "./components/conversation-messages";
+import { chatGreeting } from "./chat-greeting";
 
 const noMessages: SessionMessage[] = [];
 
 export function ProjectHomePage() {
-  const project = useOutletContext<WorkspaceOutletContext>().project;
-  const activeSessionId = useChatSessionsStore(
-    (state) => state.activeSessionId,
-  );
+  const [now, setNow] = useState(() => new Date());
+  const navigate = useNavigate();
+  const { sessionId } = useParams();
+  const location = useLocation();
+  const draft = (location.state as { draft?: ChatDraft } | null)?.draft;
+  const [defaultProvider, setDefaultProvider] = useState("");
+  const [defaultModel, setDefaultModel] = useState("");
+  const sessions = useChatSessionsStore((state) => state.sessions);
+  const status = useChatSessionsStore((state) => state.status);
+  const historyError = useChatSessionsStore((state) => state.error);
   const messages = useChatSessionsStore((state) =>
-    activeSessionId
-      ? (state.messages[activeSessionId] ?? noMessages)
-      : noMessages,
+    sessionId ? state.messages[sessionId] || noMessages : noMessages,
   );
-  const addMessage = useChatSessionsStore((state) => state.addMessage);
-  const ensureChatSession = useChatSessionsStore(
-    (state) => state.ensureChatSession,
+  const session = sessions.find((entry) => entry.id === sessionId);
+  const providers = useSettingsStore((state) => state.providers);
+  const loading = useSettingsStore(
+    (state) => state.status === "idle" || state.status === "loading",
   );
-  const ensureProjectSession = useChatSessionsStore(
-    (state) => state.ensureProjectSession,
+  const catalogError = useSettingsStore((state) => state.error);
+  const runningId = useChatRuntimeStore((state) => state.runningSessionId);
+  const runtimeError = useChatRuntimeStore((state) =>
+    state.errorSessionId === sessionId ? state.error : "",
   );
-  const defaultChatsSectionId = useSidebarSectionsStore(
-    (state) =>
-      state.sections.find((section) => section.isFixed)?.id ??
-      state.sections.find((section) => section.kind === "chats")?.id ??
-      null,
-  );
+  const stop = useChatRuntimeStore((state) => state.stop);
+  const sections = useSidebarSectionsStore((state) => state.sections);
+  const defaultSection =
+    sections.find(
+      (section) => section.kind === "chats" && section.id === draft?.sectionId,
+    ) ||
+    sections.find((section) => section.kind === "chats" && section.isFixed) ||
+    sections.find((section) => section.kind === "chats");
+  const providerId =
+    session?.providerId ||
+    defaultProvider ||
+    providers.find((entry) => entry.available)?.id ||
+    "";
+  const provider = providers.find((entry) => entry.id === providerId);
+  const modelId = session?.providerId
+    ? session.modelId
+    : defaultModel || provider?.models[0]?.id || "";
+  const lastReply = messages
+    .filter((message) => message.role === "assistant")
+    .at(-1);
+  const missingSession = !!sessionId && status === "ready" && !session;
+  const ready =
+    status === "ready" &&
+    !missingSession &&
+    (!!session || !!draft?.projectId || !!defaultSection);
 
-  function submit(value: string) {
-    const text = value.trim();
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
 
-    if (!text) {
+    return () => window.clearInterval(timer);
+  }, []);
+
+  function select(providerId: string, modelId: string) {
+    useChatRuntimeStore.setState({ error: "", errorSessionId: "" });
+
+    if (session) {
+      useChatSessionsStore
+        .getState()
+        .configure(session.id, providerId, modelId);
+    } else {
+      setDefaultProvider(providerId);
+      setDefaultModel(modelId);
+    }
+  }
+
+  function submit(text: string, systemPrompt: string) {
+    if (!ready || runningId) {
       return;
     }
-
-    if (activeSessionId) {
-      addMessage(activeSessionId, text);
-      return;
-    }
-
-    if (project) {
-      const session = ensureProjectSession(project.id);
-
-      addMessage(session.id, text);
-      return;
-    }
-
-    if (!defaultChatsSectionId) {
-      return;
-    }
-
-    const session = ensureChatSession(defaultChatsSectionId);
-
-    addMessage(session.id, text);
+    const store = useChatSessionsStore.getState();
+    const target =
+      session ||
+      (draft?.projectId
+        ? store.createProjectSession(draft.projectId)
+        : store.createChatSession(defaultSection!.id));
+    store.addMessage(target.id, text);
+    store.configure(target.id, providerId, modelId);
+    const history = useChatSessionsStore
+      .getState()
+      .messages[target.id].filter((message) => message.text)
+      .map((message) => ({ role: message.role, text: message.text }));
+    navigate(`/chat/${target.id}`);
+    void useChatRuntimeStore.getState().send(target.id, {
+      providerId: providerId as ProviderCliId,
+      modelId,
+      messages: history,
+      systemPrompt,
+    });
   }
 
   return (
     <ChatLayout
       className="min-h-0 flex-1"
-      scrollButton={null}
       emptyState={
         <Center>
-          <img
-            className="size-[calc(var(--spacing-12)*2)] object-contain dark:invert"
-            src="/logo.svg"
-            alt=""
-          />
+          <VStack gap={3} hAlign="center">
+            <img
+              className="size-[calc(var(--spacing-12)*2)] object-contain dark:invert"
+              src="/logo.svg"
+              alt=""
+            />
+            <Heading level={1} weight="semibold">
+              {missingSession
+                ? "Chat not found"
+                : status === "loading"
+                  ? "Loading chats…"
+                  : chatGreeting(now)}
+            </Heading>
+          </VStack>
         </Center>
       }
       composer={
-        <VStack gap={2} className="mx-auto w-full max-w-4xl px-4">
-          <ChatComposer
-            onSubmit={submit}
-            placeholder="Describe what you'd like to build..."
-            elevation="none"
-            footerActions={
-              <HStack gap={1} vAlign="center">
-                <Button
-                  label="Attach a file"
-                  isIconOnly
-                  variant="ghost"
-                  size="sm"
-                  icon={
-                    <FontAwesomeIcon icon={faPaperclip} aria-hidden="true" />
-                  }
-                />
-                <Button
-                  label="Default model"
-                  variant="ghost"
-                  size="sm"
-                  icon={<FontAwesomeIcon icon={faCube} aria-hidden="true" />}
-                  endContent={
-                    <FontAwesomeIcon icon={faChevronDown} aria-hidden="true" />
-                  }
-                />
-              </HStack>
-            }
-            sendActions={
-              <Button
-                label="Use microphone"
-                isIconOnly
-                variant="ghost"
-                icon={
-                  <FontAwesomeIcon icon={faMicrophone} aria-hidden="true" />
-                }
-              />
-            }
-          />
-        </VStack>
+        <ChatComposerPanel
+          key={sessionId || draft?.id || "home"}
+          providers={providers}
+          providerId={providerId}
+          modelId={modelId}
+          loading={loading}
+          isReady={ready}
+          isRunning={runningId === sessionId}
+          isBusy={!!runningId}
+          error={runtimeError || historyError || catalogError}
+          usage={lastReply?.usage || emptyUsage()}
+          hasMessages={messages.some((message) => message.role === "user")}
+          onSelection={select}
+          onSubmit={submit}
+          onStop={stop}
+        />
       }
     >
       {messages.length > 0 ? (
-        <ChatMessageList>
-          {messages.map((message) => (
-            <ChatMessage
-              key={message.id}
-              sender="user"
-              avatar={<Avatar name="You" size="md" />}
-            >
-              <ChatMessageBubble name="You">{message.text}</ChatMessageBubble>
-            </ChatMessage>
-          ))}
-        </ChatMessageList>
+        <ConversationMessages messages={messages} />
       ) : null}
     </ChatLayout>
   );

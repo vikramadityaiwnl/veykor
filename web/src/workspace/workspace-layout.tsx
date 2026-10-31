@@ -1,18 +1,13 @@
 import { useEffect, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faEllipsis, faGear } from "@fortawesome/free-solid-svg-icons";
+import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 import type { Project, SidebarSection } from "@veykor/shared";
 import { AppShell } from "@astryxdesign/core/AppShell";
-import { Button } from "@astryxdesign/core/Button";
 import { CommandPalette } from "@astryxdesign/core/CommandPalette";
-import { HStack } from "@astryxdesign/core/HStack";
 import { SideNav } from "@astryxdesign/core/SideNav";
-import { TopNav } from "@astryxdesign/core/TopNav";
 import { createStaticSource } from "@astryxdesign/core/Typeahead";
 import { VStack } from "@astryxdesign/core/VStack";
 import { useAuthStore } from "../auth/auth-store";
-import { useChatSessionsStore } from "./chat-sessions-store";
+import { useChatSessionsStore, type ChatSession } from "./chat-sessions-store";
 import { useProjectsStore } from "./projects-store";
 import { useSidebarSectionsStore } from "./sidebar-sections-store";
 import { AddProjectDialog } from "./components/add-project-dialog";
@@ -24,6 +19,11 @@ import { WorkspaceSidebarFooter } from "./components/workspace-sidebar-footer";
 import { WorkspaceSidebarHeader } from "./components/workspace-sidebar-header";
 import { WorkspaceSidebarTopContent } from "./components/workspace-sidebar-top-content";
 
+import { ChatThreadHeader } from "./components/chat-thread-header";
+import { RenameChatDialog } from "./components/rename-chat-dialog";
+import { DeleteChatDialog } from "./components/delete-chat-dialog";
+import { useChatRuntimeStore } from "./chat-runtime-store";
+
 const commandPaletteSource = createStaticSource([]);
 
 export interface WorkspaceOutletContext {
@@ -34,6 +34,10 @@ export function WorkspaceLayout() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     null,
   );
+  const [chatDialog, setChatDialog] = useState<{
+    mode: "rename" | "delete";
+    session: ChatSession;
+  } | null>(null);
   const [query, setQuery] = useState("");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -67,15 +71,8 @@ export function WorkspaceLayout() {
   const renameProject = useProjectsStore((state) => state.renameProject);
   const moveProject = useProjectsStore((state) => state.moveProject);
   const sessions = useChatSessionsStore((state) => state.sessions);
-  const messages = useChatSessionsStore((state) => state.messages);
   const activeSessionId = useChatSessionsStore(
     (state) => state.activeSessionId,
-  );
-  const ensureChatSession = useChatSessionsStore(
-    (state) => state.ensureChatSession,
-  );
-  const ensureProjectSession = useChatSessionsStore(
-    (state) => state.ensureProjectSession,
   );
   const selectSession = useChatSessionsStore((state) => state.selectSession);
 
@@ -96,22 +93,38 @@ export function WorkspaceLayout() {
   const activeSession =
     sessions.find((session) => session.id === activeSessionId) ?? null;
 
-  const visibleSessions = sessions.filter(
-    (session) => messages[session.id].length > 0,
-  );
+  const visibleSessions = sessions;
 
   const renameProjectTarget =
     projects.find((item) => item.id === renameProjectId) ?? null;
 
   const location = useLocation();
+  const navigate = useNavigate();
+  const { sessionId } = useParams();
+  const chatStatus = useChatSessionsStore((state) => state.status);
+  const loadChats = useChatSessionsStore((state) => state.load);
 
-  const contentTitle = activeSession?.title ?? project?.name ?? null;
+  useEffect(() => {
+    if (userId !== null) {
+      void loadChats();
+    }
+  }, [userId, loadChats]);
 
-  const contentLabel = activeSession ? "Session" : "Project";
+  useEffect(() => {
+    if (chatStatus === "ready") {
+      selectSession(
+        sessionId && sessions.some((session) => session.id === sessionId)
+          ? sessionId
+          : null,
+      );
+    }
+  }, [sessionId, chatStatus, sessions, selectSession]);
 
-  const isHome = location.pathname === "/";
+  const isHome =
+    location.pathname === "/" || location.pathname.startsWith("/chat/");
 
   function selectProject(id: string) {
+    navigate("/");
     setSelectedProjectId(id);
     selectSession(null);
     setExpandedProjectIds((current) =>
@@ -122,23 +135,31 @@ export function WorkspaceLayout() {
   }
 
   function selectChatSession(id: string) {
+    navigate(`/chat/${id}`);
     selectSession(id);
     setSelectedProjectId(null);
   }
 
   function selectProjectSession(id: string) {
+    navigate(`/chat/${id}`);
     selectSession(id);
     setSelectedProjectId(null);
   }
 
   function addChat(sectionId: string) {
-    ensureChatSession(sectionId);
+    selectSession(null);
     setSelectedProjectId(null);
+    navigate("/", {
+      state: { draft: { id: crypto.randomUUID(), sectionId, projectId: "" } },
+    });
   }
 
   function addProjectSession(projectId: string) {
-    ensureProjectSession(projectId);
+    selectSession(null);
     setSelectedProjectId(null);
+    navigate("/", {
+      state: { draft: { id: crypto.randomUUID(), sectionId: "", projectId } },
+    });
   }
 
   function moveProjectToSection(projectId: string, sectionId: string) {
@@ -218,7 +239,15 @@ export function WorkspaceLayout() {
             onCollapsedChange: setIsSidebarCollapsed,
             hasButton: false,
           }}
-          header={<WorkspaceSidebarHeader isCollapsed={isSidebarCollapsed} />}
+          header={
+            <WorkspaceSidebarHeader
+              isCollapsed={isSidebarCollapsed}
+              onHome={() => {
+                setSelectedProjectId(null);
+                selectSession(null);
+              }}
+            />
+          }
           topContent={
             <WorkspaceSidebarTopContent
               isCollapsed={isSidebarCollapsed}
@@ -242,6 +271,12 @@ export function WorkspaceLayout() {
               error={sectionsStatus === "error" ? sectionsError : ""}
               visibleProjects={visibleProjects}
               sessions={visibleSessions}
+              onRenameSession={(session) =>
+                setChatDialog({ mode: "rename", session })
+              }
+              onDeleteSession={(session) =>
+                setChatDialog({ mode: "delete", session })
+              }
               selectedProjectId={selectedProjectId}
               activeSessionId={activeSessionId}
               expandedProjectIds={expandedProjectIds}
@@ -276,36 +311,64 @@ export function WorkspaceLayout() {
       }
     >
       <VStack minHeight="100%" gap={0}>
-        {isHome && contentTitle ? (
-          <TopNav
-            label={contentLabel}
-            startContent={contentTitle}
-            endContent={
-              <HStack gap={2} vAlign="center">
-                <Button
-                  label="Project settings"
-                  isIconOnly
-                  variant="ghost"
-                  icon={<FontAwesomeIcon icon={faGear} aria-hidden="true" />}
-                />
-                <Button
-                  label="More actions"
-                  isIconOnly
-                  variant="ghost"
-                  icon={
-                    <FontAwesomeIcon icon={faEllipsis} aria-hidden="true" />
-                  }
-                />
-              </HStack>
+        {isHome ? (
+          <ChatThreadHeader
+            title={
+              sessionId && activeSession ? activeSession.title : "New Chat"
+            }
+            onRename={
+              sessionId && activeSession
+                ? () =>
+                    setChatDialog({ mode: "rename", session: activeSession })
+                : undefined
+            }
+            onDelete={
+              sessionId && activeSession
+                ? () =>
+                    setChatDialog({ mode: "delete", session: activeSession })
+                : undefined
             }
           />
         ) : null}
 
-        <Outlet
-          key={`${selectedProjectId ?? "-"}-${activeSessionId ?? "-"}`}
-          context={{ project } satisfies WorkspaceOutletContext}
-        />
+        <Outlet context={{ project } satisfies WorkspaceOutletContext} />
       </VStack>
+      <RenameChatDialog
+        key={`${chatDialog?.session.id}-${chatDialog?.mode}`}
+        session={chatDialog?.mode === "rename" ? chatDialog.session : null}
+        onClose={() => setChatDialog(null)}
+        onSubmit={(title) =>
+          chatDialog
+            ? useChatSessionsStore
+                .getState()
+                .renameSession(chatDialog.session.id, title)
+            : Promise.resolve(false)
+        }
+      />
+      <DeleteChatDialog
+        session={chatDialog?.mode === "delete" ? chatDialog.session : null}
+        onCancel={() => setChatDialog(null)}
+        onConfirm={async () => {
+          if (!chatDialog) {
+            return false;
+          }
+          const targetId = chatDialog.session.id;
+          if (useChatRuntimeStore.getState().runningSessionId === targetId) {
+            useChatRuntimeStore.getState().stop();
+          }
+          const deleted = await useChatSessionsStore
+            .getState()
+            .deleteSession(targetId);
+          if (deleted) {
+            setChatDialog(null);
+            if (sessionId === targetId) {
+              setSelectedProjectId(null);
+              navigate("/");
+            }
+          }
+          return deleted;
+        }}
+      />
       <CommandPalette
         isOpen={isCommandPaletteOpen}
         onOpenChange={setIsCommandPaletteOpen}

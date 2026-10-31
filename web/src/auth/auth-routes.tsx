@@ -1,9 +1,11 @@
+import { useEffect } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Spinner } from "@astryxdesign/core/Spinner";
 import { VStack } from "@astryxdesign/core/VStack";
 import { useAuthStore } from "./auth-store";
+import { useSettingsStore } from "../settings/settings-store";
 
 export function SessionLoading() {
   const error = useAuthStore((state) => state.error);
@@ -35,6 +37,14 @@ export function SessionLoading() {
 
 export function ProtectedLayout() {
   const status = useAuthStore((state) => state.status);
+  const loadSettings = useSettingsStore((state) => state.load);
+  const userId = status?.user?.id;
+
+  useEffect(() => {
+    if (userId !== undefined) {
+      void loadSettings();
+    }
+  }, [userId, loadSettings]);
 
   if (!status) {
     return <SessionLoading />;

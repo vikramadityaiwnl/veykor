@@ -22,6 +22,7 @@ function App() {
 
           <Route path="/" element={<WorkspaceLayout />}>
             <Route index element={<ProjectHomePage />} />
+            <Route path="chat/:sessionId" element={<ProjectHomePage />} />
             <Route path="agent-presets" element={<AgentPresetsPage />} />
             <Route path="memory" element={<MemoryPage />} />
             <Route path="settings" element={<SettingsPage />} />

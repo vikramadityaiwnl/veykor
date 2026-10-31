@@ -43,3 +43,10 @@ export const projects = sqliteTable("projects", {
   position: integer("position").notNull().default(0),
   sectionId: text("section_id"),
 });
+
+export const chatHistories = sqliteTable("chat_histories", {
+  userId: integer("user_id")
+    .primaryKey()
+    .references(() => users.id),
+  sessions: text("sessions").notNull().default("[]"),
+});

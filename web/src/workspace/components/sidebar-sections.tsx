@@ -22,6 +22,8 @@ interface Props {
   expandedProjectIds: string[];
   isHost: boolean;
   onSelectProject: (id: string) => void;
+  onRenameSession: (session: ChatSession) => void;
+  onDeleteSession: (session: ChatSession) => void;
   onSelectChatSession: (id: string) => void;
   onSelectProjectSession: (id: string) => void;
   onAddProject: (sectionId: string) => void;
@@ -58,6 +60,8 @@ export function SidebarSections(props: Props) {
     if (section.kind === "chats") {
       return (
         <WorkspaceChatsList
+          onRenameSession={props.onRenameSession}
+          onDeleteSession={props.onDeleteSession}
           sessions={chatSessions(section.id)}
           activeSessionId={props.activeSessionId}
           onSelectSession={props.onSelectChatSession}
@@ -67,6 +71,8 @@ export function SidebarSections(props: Props) {
 
     return (
       <WorkspaceProjectsList
+        onRenameSession={props.onRenameSession}
+        onDeleteSession={props.onDeleteSession}
         projects={sectionProjects(section.id)}
         projectSections={projectSections()}
         sessions={props.sessions}
