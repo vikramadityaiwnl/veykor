@@ -6,8 +6,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseOpenCodeModels } from "../src/chat/model-catalog.js";
 import { validChatRequest } from "../src/chat/chat-runner.js";
+import { toolEvents } from "../src/chat/tool-events.js";
 import { runCli } from "../src/chat/cli-process.js";
-import type { ChatEvent, ChatSession, SettingsResponse } from "@veykor/shared";
+import type { ChatEvent, ChatSession, SettingsResponse, ChatToolCall } from "@veykor/shared";
 
 const input = {
   providerId: "claude",
@@ -46,6 +47,117 @@ test("chat validation and OpenCode metadata preserve unknown versus free prices"
   assert.equal(models[0].pricingAvailable, true);
   assert.equal(models[0].inputPrice, 0);
   assert.equal(models[1].pricingAvailable, false);
+});
+
+test("tool events preserve identities and terminal states across CLI formats", () => {
+  const tools = new Map<string, ChatToolCall>();
+  assert.deepEqual(
+    toolEvents(
+      "opencode",
+      {
+        type: "tool_use",
+        part: {
+          id: "read-1",
+          tool: "read",
+          state: { status: "running", input: { filePath: "readme.md" } },
+        },
+      },
+      tools,
+    )[0],
+    {
+      id: "read-1",
+      name: "read",
+      target: "readme.md",
+      status: "running",
+      result: "",
+      errorMessage: "",
+    },
+  );
+  assert.equal(
+    toolEvents(
+      "opencode",
+      {
+        type: "tool_use",
+        part: {
+          id: "read-1",
+          tool: "read",
+          state: { status: "completed", output: "File contents" },
+        },
+      },
+      tools,
+    )[0].status,
+    "complete",
+  );
+  assert.equal(tools.size, 1);
+  assert.equal(tools.get("read-1")!.target, "readme.md");
+  toolEvents(
+    "claude",
+    {
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "tool-2",
+            name: "Read",
+            input: { path: "app.tsx" },
+          },
+        ],
+      },
+    },
+    tools,
+  );
+  const result = toolEvents(
+    "claude",
+    {
+      type: "user",
+      message: {
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "tool-2",
+            content: "Denied",
+            is_error: true,
+          },
+        ],
+      },
+    },
+    tools,
+  )[0];
+  assert.equal(result.name, "Read");
+  assert.equal(result.target, "app.tsx");
+  assert.equal(result.status, "error");
+  assert.equal(
+    toolEvents(
+      "codex",
+      {
+        type: "item.completed",
+        item: {
+          id: "tool-3",
+          type: "command_execution",
+          command: "pwd",
+          status: "completed",
+          aggregated_output: "/tmp",
+        },
+      },
+      tools,
+    )[0].result,
+    "/tmp",
+  );
+  assert.deepEqual(
+    toolEvents(
+      "muse",
+      {
+        payload_type: "task.lifecycle.proposed",
+        payload: {
+          task_id: "model-1",
+          event: { kind: "proposed", task_kind: "model.response" },
+        },
+      },
+      tools,
+    ),
+    [],
+  );
 });
 
 test("CLI runner rejects missing executables, stops on abort and enforces timeout", async () => {
@@ -326,7 +438,16 @@ process.stdin.on('end', () => {
       sectionId: "chats",
       providerId: "claude",
       modelId: "sonnet",
-      messages: [{ id: "message-one", role: "user", text: "Hello", usage }],
+      messages: [
+        {
+          id: "message-one",
+          role: "user",
+          text: "Hello",
+          usage,
+          createdAt: 0,
+          tools: [],
+        },
+      ],
     };
     assert.equal(
       (await request("chat/sessions", cookie, { sessions: [session] }, "PUT"))

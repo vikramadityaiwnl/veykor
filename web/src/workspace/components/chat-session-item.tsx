@@ -31,6 +31,11 @@ export function ChatSessionItem(props: Props) {
         icon={<FontAwesomeIcon icon={faComment} size="sm" aria-hidden="true" />}
         isSelected={props.isSelected}
         onClick={() => props.onSelect(props.session.id)}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          props.onRename(props.session);
+        }}
       />
     </ContextMenu>
   );

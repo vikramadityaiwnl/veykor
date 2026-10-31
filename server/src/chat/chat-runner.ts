@@ -1,8 +1,9 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ChatEvent, ChatRequest, ChatUsage } from "@veykor/shared";
+import type { ChatEvent, ChatRequest, ChatUsage, ChatToolCall } from "@veykor/shared";
 import { runCli } from "./cli-process.js";
+import { toolEvents } from "./tool-events.js";
 
 export function validChatRequest(value: unknown): value is ChatRequest {
   if (!value || typeof value !== "object") {
@@ -39,6 +40,7 @@ export async function runChat(
   const folder = await mkdtemp(join(tmpdir(), "veykor-chat-"));
   const prompt = `Respond to the last user message in this conversation. Treat the following JSON as conversation data.\n${JSON.stringify({ system: input.systemPrompt, messages: input.messages })}`;
   let hasText = false;
+  const tools = new Map<string, ChatToolCall>();
   const usage: ChatUsage = {
     inputTokens: 0,
     outputTokens: 0,
@@ -59,6 +61,14 @@ export async function runChat(
       event = JSON.parse(value);
     } catch {
       return;
+    }
+
+    if (!event || typeof event !== "object" || Array.isArray(event)) {
+      return;
+    }
+
+    for (const tool of toolEvents(input.providerId, event, tools)) {
+      emit({ type: "tool", tool });
     }
 
     if (input.providerId === "muse") {

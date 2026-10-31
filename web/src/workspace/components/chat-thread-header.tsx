@@ -16,11 +16,26 @@ export function ChatThreadHeader(props: Props) {
   return (
     <TopNav
       label="Chat"
-      className="px-4!"
+      className="shrink-0 px-6! py-4! md:px-8!"
       startContent={
         <HStack gap={2} vAlign="center">
           <FontAwesomeIcon icon={faComment} aria-hidden="true" />
-          <Text weight="semibold">{props.title}</Text>
+          <HStack className="min-w-0 max-w-lg" vAlign="center">
+            <Text
+              weight="semibold"
+              className="truncate"
+              onDoubleClick={
+                props.onRename
+                  ? (event) => {
+                      event.preventDefault();
+                      props.onRename?.();
+                    }
+                  : undefined
+              }
+            >
+              {props.title}
+            </Text>
+          </HStack>
         </HStack>
       }
       endContent={

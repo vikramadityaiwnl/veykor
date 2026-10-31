@@ -98,6 +98,10 @@ function App(props: Props) {
 - Keep route implementations and framework-specific route registration in `web/` or `server/`; shared contracts describe the payloads and responses, not router internals. Update the shared definition first when a cross-layer contract changes.
 - `shared/package.json` owns scripts and development dependencies for the shared package. Update its `package-lock.json` whenever its dependencies change; use `npm install --prefix shared` to refresh it. `npm run typecheck --prefix shared` checks the shared source.
 
+### Documentation
+
+- Keep `README.md` focused on the project overview, prerequisites, setup, and commands. Do not add feature implementation details, session reports, or verification audits.
+
 ### Brand and typography
 
 - The product name is `veykor`; preserve this exact lowercase spelling in UI copy, metadata, and new screens unless the user changes it.

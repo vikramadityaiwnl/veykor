@@ -37,13 +37,19 @@ export function SettingsPage() {
   }
 
   return (
-    <VStack gap={4} padding={6} className="min-h-0 flex-1">
+    <VStack gap={4} padding={6} className="min-h-0 flex-1 overflow-hidden">
       <WorkspacePageHeader
         title={header.title}
         description={header.description}
       />
 
-      <TabList value={tab} onChange={changeTab} role="tablist" hasDivider>
+      <TabList
+        value={tab}
+        onChange={changeTab}
+        role="tablist"
+        hasDivider
+        className="shrink-0"
+      >
         <Tab
           value="general"
           label="General"

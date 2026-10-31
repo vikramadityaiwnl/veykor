@@ -9,7 +9,7 @@ interface Props {
 
 export function WorkspacePageHeader(props: Props) {
   return (
-    <VStack gap={1}>
+    <VStack gap={1} className="shrink-0">
       <Heading level={1} weight="semibold">
         {props.title}
       </Heading>

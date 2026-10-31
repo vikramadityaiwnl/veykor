@@ -29,6 +29,7 @@ export type {
 } from "./contracts/index.js";
 
 export type {
+  ChatToolCall,
   ChatModel,
   ChatProvider,
   ChatCatalogResponse,

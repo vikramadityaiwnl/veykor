@@ -26,6 +26,7 @@ export type {
 } from "./providers/index.js";
 
 export type {
+  ChatToolCall,
   ChatModel,
   ChatProvider,
   ChatCatalogResponse,

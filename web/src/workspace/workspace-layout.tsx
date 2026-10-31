@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Outlet, useLocation, useNavigate, useMatch } from "react-router-dom";
 import type { Project, SidebarSection } from "@veykor/shared";
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { CommandPalette } from "@astryxdesign/core/CommandPalette";
@@ -20,9 +20,10 @@ import { WorkspaceSidebarHeader } from "./components/workspace-sidebar-header";
 import { WorkspaceSidebarTopContent } from "./components/workspace-sidebar-top-content";
 
 import { ChatThreadHeader } from "./components/chat-thread-header";
-import { RenameChatDialog } from "./components/rename-chat-dialog";
 import { DeleteChatDialog } from "./components/delete-chat-dialog";
 import { useChatRuntimeStore } from "./chat-runtime-store";
+
+import { RenameChatDialog } from "./components/rename-chat-dialog";
 
 const commandPaletteSource = createStaticSource([]);
 
@@ -100,7 +101,7 @@ export function WorkspaceLayout() {
 
   const location = useLocation();
   const navigate = useNavigate();
-  const { sessionId } = useParams();
+  const sessionId = useMatch("/chat/:sessionId")?.params.sessionId;
   const chatStatus = useChatSessionsStore((state) => state.status);
   const loadChats = useChatSessionsStore((state) => state.load);
 
@@ -230,10 +231,13 @@ export function WorkspaceLayout() {
 
   return (
     <AppShell
+      height="fill"
+      className="h-dvh overflow-hidden [&_[role=main]]:overflow-hidden!"
       contentPadding={0}
       variant="section"
       sideNav={
         <SideNav
+          className="h-full min-h-0 overflow-hidden"
           collapsible={{
             isCollapsed: isSidebarCollapsed,
             onCollapsedChange: setIsSidebarCollapsed,
@@ -310,7 +314,7 @@ export function WorkspaceLayout() {
         </SideNav>
       }
     >
-      <VStack minHeight="100%" gap={0}>
+      <VStack height="100%" gap={0} className="min-h-0 min-w-0 overflow-hidden">
         {isHome ? (
           <ChatThreadHeader
             title={

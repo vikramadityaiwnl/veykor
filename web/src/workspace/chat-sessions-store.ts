@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ChatMessage, ChatUsage, ChatSessionsResponse, ChatSession as SavedChatSession } from "@veykor/shared";
+import type { ChatMessage, ChatToolCall, ChatUsage, ChatSessionsResponse, ChatSession as SavedChatSession } from "@veykor/shared";
 import { useAuthStore } from "../auth/auth-store";
 
 export type SessionMessage = ChatMessage;
@@ -21,6 +21,12 @@ interface ChatSessionsState {
     text: string,
     usage?: ChatUsage,
   ) => void;
+  updateTool: (
+    sessionId: string,
+    messageId: string,
+    tool: ChatToolCall,
+  ) => void;
+  finishReply: (sessionId: string, messageId: string) => void;
   addReply: (sessionId: string) => string;
   messages: Record<string, SessionMessage[]>;
   activeSessionId: string | null;
@@ -93,7 +99,10 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
     const snapshot = JSON.stringify({
       sessions: get().sessions.map((session) => ({
         ...session,
-        messages: get().messages[session.id],
+        messages: get().messages[session.id].filter(
+          (message) =>
+            message.role === "user" || message.text || message.tools.length > 0,
+        ),
       })),
     });
     saveQueue = saveQueue
@@ -216,11 +225,76 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
         ...get().messages,
         [sessionId]: [
           ...get().messages[sessionId],
-          { id, role: "assistant", text: "", usage: emptyUsage() },
+          {
+            id,
+            role: "assistant",
+            text: "",
+            usage: emptyUsage(),
+            createdAt: Date.now(),
+            tools: [],
+          },
         ],
       },
     });
     return id;
+  },
+  updateTool: (sessionId, messageId, tool) => {
+    const messages = get().messages[sessionId];
+    if (!messages) {
+      return;
+    }
+    set({
+      messages: {
+        ...get().messages,
+        [sessionId]: messages.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                tools: message.tools.some((entry) => entry.id === tool.id)
+                  ? message.tools.map((entry) =>
+                      entry.id === tool.id ? tool : entry,
+                    )
+                  : [...message.tools, tool],
+              }
+            : message,
+        ),
+      },
+    });
+  },
+  finishReply: (sessionId, messageId) => {
+    const messages = get().messages[sessionId];
+    if (!messages) {
+      return;
+    }
+    set({
+      messages: {
+        ...get().messages,
+        [sessionId]: messages
+          .filter(
+            (message) =>
+              message.id !== messageId ||
+              message.text ||
+              message.tools.length > 0,
+          )
+          .map((message) =>
+            message.id === messageId
+              ? {
+                  ...message,
+                  tools: message.tools.map((tool) =>
+                    tool.status === "running" || tool.status === "pending"
+                      ? {
+                          ...tool,
+                          status: "error",
+                          errorMessage:
+                            "Tool execution ended before completion",
+                        }
+                      : tool,
+                  ),
+                }
+              : message,
+          ),
+      },
+    });
   },
   updateReply: (sessionId, messageId, text, usage) => {
     if (!get().messages[sessionId]) {
@@ -295,6 +369,8 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
       text,
       role: "user",
       usage: emptyUsage(),
+      createdAt: Date.now(),
+      tools: [],
     };
 
     set({

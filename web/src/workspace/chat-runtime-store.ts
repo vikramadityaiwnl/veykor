@@ -26,7 +26,7 @@ export const useChatRuntimeStore = create<ChatRuntimeState>()((set, get) => ({
     const requestController = new AbortController();
     controller = requestController;
     set({ runningSessionId: sessionId, error: "", errorSessionId: "" });
-    let replyId = "";
+    const replyId = useChatSessionsStore.getState().addReply(sessionId);
     let done = false;
 
     function event(value: ChatEvent) {
@@ -38,9 +38,6 @@ export const useChatRuntimeStore = create<ChatRuntimeState>()((set, get) => ({
         throw new Error(value.message);
       }
       if (value.type === "text" || value.type === "usage") {
-        if (!replyId) {
-          replyId = useChatSessionsStore.getState().addReply(sessionId);
-        }
         useChatSessionsStore
           .getState()
           .updateReply(
@@ -49,6 +46,11 @@ export const useChatRuntimeStore = create<ChatRuntimeState>()((set, get) => ({
             value.type === "text" ? value.text : "",
             value.type === "usage" ? value.usage : undefined,
           );
+      }
+      if (value.type === "tool") {
+        useChatSessionsStore
+          .getState()
+          .updateTool(sessionId, replyId, value.tool);
       }
       if (value.type === "done") {
         done = true;
@@ -119,6 +121,7 @@ export const useChatRuntimeStore = create<ChatRuntimeState>()((set, get) => ({
       }
     } finally {
       if (useAuthStore.getState().status?.user?.id === userId) {
+        useChatSessionsStore.getState().finishReply(sessionId, replyId);
         await useChatSessionsStore.getState().save();
       }
       controller = undefined;

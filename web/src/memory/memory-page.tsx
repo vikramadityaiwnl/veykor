@@ -8,7 +8,7 @@ import { WorkspacePageHeader } from "../workspace/components/workspace-page-head
 
 export function MemoryPage() {
   return (
-    <VStack gap={4} padding={6} className="min-h-0 flex-1">
+    <VStack gap={4} padding={6} className="min-h-0 flex-1 overflow-hidden">
       <WorkspacePageHeader
         title="Memory"
         description="Everything veykor remembers across sessions: decisions, preferences, project facts, and corrections. Memory turns one-off chats into a workspace that knows how you work."
@@ -16,20 +16,22 @@ export function MemoryPage() {
 
       <Divider />
 
-      <Center className="min-h-0 flex-1">
-        <EmptyState
-          title="No memories yet"
-          description="Things veykor learns from your sessions will be stored here."
-          icon={
-            <FontAwesomeIcon
-              icon={faBrain}
-              size="sm"
-              className="text-(--color-icon-secondary)"
-              aria-hidden="true"
-            />
-          }
-        />
-      </Center>
+      <VStack isScrollable className="min-h-0 flex-1 overscroll-contain">
+        <Center className="min-h-full shrink-0">
+          <EmptyState
+            title="No memories yet"
+            description="Things veykor learns from your sessions will be stored here."
+            icon={
+              <FontAwesomeIcon
+                icon={faBrain}
+                size="sm"
+                className="text-(--color-icon-secondary)"
+                aria-hidden="true"
+              />
+            }
+          />
+        </Center>
+      </VStack>
     </VStack>
   );
 }

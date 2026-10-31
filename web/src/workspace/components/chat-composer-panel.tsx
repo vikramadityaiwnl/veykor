@@ -6,7 +6,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { ChatComposer, ChatComposerDrawer, ChatComposerInput, ChatSendButton } from "@astryxdesign/core/Chat";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Selector } from "@astryxdesign/core/Selector";
-import { ProgressBar } from "@astryxdesign/core/ProgressBar";
+import { ChatContextProgress } from "./chat-context-progress";
 import { Token } from "@astryxdesign/core/Token";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ChatProviderIcon } from "./chat-provider-icon";
@@ -173,14 +173,10 @@ export function ChatComposerPanel(props: Props) {
         }
         headerContext={
           props.hasMessages && model && model.contextWindow > 0 ? (
-            <HStack className="w-24" vAlign="center">
-              <ProgressBar
-                label="Estimated context usage from the last reply"
-                isLabelHidden
-                value={Math.min(contextTokens, model.contextWindow)}
-                max={model.contextWindow}
-              />
-            </HStack>
+            <ChatContextProgress
+              tokens={contextTokens}
+              limit={model.contextWindow}
+            />
           ) : undefined
         }
         footerActions={
@@ -207,11 +203,13 @@ export function ChatComposerPanel(props: Props) {
               size="sm"
               value={props.providerId}
               isLoading={props.loading}
-              options={props.providers.map((entry) => ({
-                value: entry.id,
-                label: entry.name,
-                icon: <ChatProviderIcon providerId={entry.id} />,
-              }))}
+              options={props.providers
+                .filter((entry) => entry.available)
+                .map((entry) => ({
+                  value: entry.id,
+                  label: entry.name,
+                  icon: <ChatProviderIcon providerId={entry.id} />,
+                }))}
               onChange={(id) => {
                 props.onSelection(
                   id,

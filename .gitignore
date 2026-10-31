@@ -23,3 +23,6 @@ logs/
 !.env.example
 
 *.tsbuildinfo
+
+# Local design and verification artifacts
+output/

@@ -4,3 +4,4 @@ web/dist/
 server/dist/
 **/package-lock.json
 **/*.tsbuildinfo
+output/

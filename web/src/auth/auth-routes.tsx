@@ -13,7 +13,7 @@ export function SessionLoading() {
 
   return (
     <VStack
-      minHeight="100svh"
+      minHeight="100dvh"
       justify="center"
       hAlign="center"
       gap={4}

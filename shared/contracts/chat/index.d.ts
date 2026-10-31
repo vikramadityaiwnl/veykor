@@ -30,11 +30,22 @@ export interface ChatUsage {
   costAvailable: boolean;
 }
 
+export interface ChatToolCall {
+  id: string;
+  name: string;
+  target: string;
+  status: "pending" | "running" | "complete" | "error";
+  result: string;
+  errorMessage: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
   usage: ChatUsage;
+  createdAt: number;
+  tools: ChatToolCall[];
 }
 
 export interface ChatSession {
@@ -60,6 +71,7 @@ export interface ChatRequest {
 
 export type ChatEvent =
   | { type: "text"; text: string }
+  | { type: "tool"; tool: ChatToolCall }
   | { type: "usage"; usage: ChatUsage }
   | { type: "error"; message: string }
   | { type: "done" };

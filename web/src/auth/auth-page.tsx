@@ -126,8 +126,8 @@ export function AuthPage() {
       <Grid
         role="main"
         columns={2}
-        minHeight="100svh"
-        className="relative grid-cols-1! grid-rows-[auto_1fr] bg-(--color-background-body) md:grid-cols-2! md:grid-rows-1"
+        height="100dvh"
+        className="relative min-h-0 overflow-y-auto grid-cols-1! grid-rows-[auto_1fr] bg-(--color-background-body) md:grid-cols-2! md:grid-rows-1"
       >
         <HStack className="absolute top-4 right-4 z-10">
           <Button

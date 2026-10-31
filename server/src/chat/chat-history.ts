@@ -39,6 +39,25 @@ export function validChatSessions(
             ["user", "assistant"].includes(message.role) &&
             typeof message.text === "string" &&
             message.text.length <= 100_000 &&
+            (message.createdAt === undefined ||
+              (Number.isSafeInteger(message.createdAt) &&
+                message.createdAt >= 0)) &&
+            (message.tools === undefined ||
+              (Array.isArray(message.tools) &&
+                message.tools.length <= 200 &&
+                message.tools.every(
+                  (tool) =>
+                    tool &&
+                    typeof tool.id === "string" &&
+                    typeof tool.name === "string" &&
+                    typeof tool.target === "string" &&
+                    typeof tool.result === "string" &&
+                    tool.result.length <= 20_000 &&
+                    typeof tool.errorMessage === "string" &&
+                    ["pending", "running", "complete", "error"].includes(
+                      tool.status,
+                    ),
+                ))) &&
             message.usage &&
             [
               message.usage.inputTokens,
@@ -54,4 +73,15 @@ export function validChatSessions(
         ),
     )
   );
+}
+
+export function normalizeChatSessions(sessions: ChatSession[]): ChatSession[] {
+  return sessions.map((session) => ({
+    ...session,
+    messages: session.messages.map((message) => ({
+      ...message,
+      createdAt: message.createdAt ?? 0,
+      tools: message.tools ?? [],
+    })),
+  }));
 }

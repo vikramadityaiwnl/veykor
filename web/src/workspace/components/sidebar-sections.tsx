@@ -101,10 +101,7 @@ export function SidebarSections(props: Props) {
         },
       ]}
     >
-      <VStack
-        gap={4}
-        className="min-h-[calc(100dvh-calc(var(--spacing-12)*6))] pt-4"
-      >
+      <VStack gap={4} className="min-h-full py-4">
         {props.error ? (
           <>
             <Banner

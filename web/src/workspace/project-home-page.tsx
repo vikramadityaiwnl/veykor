@@ -48,15 +48,18 @@ export function ProjectHomePage() {
     ) ||
     sections.find((section) => section.kind === "chats" && section.isFixed) ||
     sections.find((section) => section.kind === "chats");
-  const providerId =
-    session?.providerId ||
-    defaultProvider ||
-    providers.find((entry) => entry.available)?.id ||
+  const preferredProviderId = session?.providerId || defaultProvider;
+  const provider =
+    providers.find(
+      (entry) => entry.available && entry.id === preferredProviderId,
+    ) || providers.find((entry) => entry.available);
+  const providerId = provider?.id || "";
+  const preferredModelId =
+    session?.providerId === providerId ? session.modelId : defaultModel;
+  const modelId =
+    provider?.models.find((entry) => entry.id === preferredModelId)?.id ||
+    provider?.models[0]?.id ||
     "";
-  const provider = providers.find((entry) => entry.id === providerId);
-  const modelId = session?.providerId
-    ? session.modelId
-    : defaultModel || provider?.models[0]?.id || "";
   const lastReply = messages
     .filter((message) => message.role === "assistant")
     .at(-1);
@@ -151,7 +154,10 @@ export function ProjectHomePage() {
       }
     >
       {messages.length > 0 ? (
-        <ConversationMessages messages={messages} />
+        <ConversationMessages
+          messages={messages}
+          isRunning={runningId === sessionId}
+        />
       ) : null}
     </ChatLayout>
   );

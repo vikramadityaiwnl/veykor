@@ -97,6 +97,7 @@ export function ConfigurationPage() {
   return (
     <Layout
       height="fill"
+      className="h-dvh overflow-hidden"
       contentWidth={1440}
       header={
         <LayoutHeader hasDivider>

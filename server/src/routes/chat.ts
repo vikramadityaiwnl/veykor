@@ -8,7 +8,7 @@ import { runChat, validChatRequest } from "../chat/chat-runner.js";
 import { eq } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { chatHistories } from "../db/schema.js";
-import { validChatSessions } from "../chat/chat-history.js";
+import { validChatSessions, normalizeChatSessions } from "../chat/chat-history.js";
 
 const running = new Set<number>();
 
@@ -27,7 +27,9 @@ chatRoute.get("/sessions", (c) => {
   const sessions: ChatSession[] = history ? JSON.parse(history.sessions) : [];
 
   return c.json({
-    sessions: sessions.filter((session) => session.messages.length > 0),
+    sessions: normalizeChatSessions(sessions).filter(
+      (session) => session.messages.length > 0,
+    ),
   });
 });
 
@@ -43,18 +45,20 @@ chatRoute.put("/sessions", async (c) => {
     return c.json({ error: "Invalid conversation history" }, 400);
   }
 
+  const sessions = normalizeChatSessions(input.sessions);
+
   db.insert(chatHistories)
     .values({
       userId: c.get("user").id,
-      sessions: JSON.stringify(input.sessions),
+      sessions: JSON.stringify(sessions),
     })
     .onConflictDoUpdate({
       target: chatHistories.userId,
-      set: { sessions: JSON.stringify(input.sessions) },
+      set: { sessions: JSON.stringify(sessions) },
     })
     .run();
 
-  return c.json({ sessions: input.sessions });
+  return c.json({ sessions });
 });
 
 chatRoute.post("/", async (c) => {
