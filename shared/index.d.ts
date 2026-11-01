@@ -31,6 +31,10 @@ export type {
 } from "./contracts/index.js";
 
 export type {
+  ChatPermissionMode,
+  ChatApproval,
+  ChatActivity,
+  ChatAttachment,
   ChatToolCall,
   ChatModel,
   ChatProvider,
@@ -40,7 +44,6 @@ export type {
   ChatSession,
   ChatSessionsResponse,
   ChatRequest,
-  ChatEvent,
 } from "./contracts/index.js";
 
 export type {

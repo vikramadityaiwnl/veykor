@@ -51,3 +51,11 @@ export const chatHistories = sqliteTable("chat_histories", {
     .references(() => users.id),
   sessions: text("sessions").notNull().default("[]"),
 });
+
+export const conversations = sqliteTable("conversations", {
+  id: text("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  data: text("data").notNull().default("{}"),
+});

@@ -9,9 +9,12 @@ import { sidebarRoute } from "./routes/sidebar.js";
 import { projectsRoute } from "./routes/projects.js";
 import { settingsRoute } from "./routes/settings.js";
 import { statusRoute } from "./routes/status.js";
+import { chatProvider } from "./chat/chat-runner.js";
+import { migrateStoredConversations } from "./chat/conversations.js";
 import { chatRoute } from "./routes/chat.js";
 
 runMigrations();
+await migrateStoredConversations();
 
 const app = new Hono<AuthEnv>();
 
@@ -43,3 +46,9 @@ serve({ fetch: app.fetch, port }, (info) => {
 });
 
 export type AppType = typeof app;
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => {
+    void chatProvider.close().finally(() => process.exit(0));
+  });
+}

@@ -37,7 +37,7 @@ export function DeleteChatDialog(props: Props) {
           props.onCancel();
         }
       }}
-      title={`Delete "${props.session.title}"?`}
+      title="Delete chat?"
       description="This chat and its messages will be permanently removed. This cannot be undone."
       actionLabel="Delete"
       isActionLoading={isDeleting}

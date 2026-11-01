@@ -1,87 +1,31 @@
-import type { ChatSession } from "@veykor/shared";
+import type { ChatAttachment } from "@veykor/shared";
 
-export function validChatSessions(
+export function validChatAttachments(
   value: unknown,
-): value is { sessions: ChatSession[] } {
-  if (
-    !value ||
-    typeof value !== "object" ||
-    !Array.isArray((value as { sessions: unknown }).sessions)
-  ) {
-    return false;
-  }
-  const sessions = (value as { sessions: ChatSession[] }).sessions;
-
+): value is ChatAttachment[] {
   return (
-    sessions.length <= 500 &&
-    new Set(sessions.map((session) => session?.id)).size === sessions.length &&
-    sessions.every(
-      (session) =>
-        session &&
-        typeof session.id === "string" &&
-        session.id.length > 0 &&
-        session.id.length <= 100 &&
-        typeof session.title === "string" &&
-        session.title.length <= 200 &&
-        (session.projectId === null || typeof session.projectId === "string") &&
-        (session.sectionId === null || typeof session.sectionId === "string") &&
-        typeof session.providerId === "string" &&
-        session.providerId.length <= 100 &&
-        typeof session.modelId === "string" &&
-        session.modelId.length <= 200 &&
-        Array.isArray(session.messages) &&
-        session.messages.length > 0 &&
-        session.messages.length <= 200 &&
-        session.messages.every(
-          (message) =>
-            message &&
-            typeof message.id === "string" &&
-            ["user", "assistant"].includes(message.role) &&
-            typeof message.text === "string" &&
-            message.text.length <= 100_000 &&
-            (message.createdAt === undefined ||
-              (Number.isSafeInteger(message.createdAt) &&
-                message.createdAt >= 0)) &&
-            (message.tools === undefined ||
-              (Array.isArray(message.tools) &&
-                message.tools.length <= 200 &&
-                message.tools.every(
-                  (tool) =>
-                    tool &&
-                    typeof tool.id === "string" &&
-                    typeof tool.name === "string" &&
-                    typeof tool.target === "string" &&
-                    typeof tool.result === "string" &&
-                    tool.result.length <= 20_000 &&
-                    typeof tool.errorMessage === "string" &&
-                    ["pending", "running", "complete", "error"].includes(
-                      tool.status,
-                    ),
-                ))) &&
-            message.usage &&
-            [
-              message.usage.inputTokens,
-              message.usage.outputTokens,
-              message.usage.cost,
-            ].every(
-              (number) =>
-                typeof number === "number" &&
-                Number.isFinite(number) &&
-                number >= 0,
-            ) &&
-            typeof message.usage.costAvailable === "boolean",
-        ),
+    Array.isArray(value) &&
+    value.length <= 5 &&
+    value.every(
+      (attachment) =>
+        attachment &&
+        typeof attachment.id === "string" &&
+        /^[a-zA-Z0-9_-]{1,100}$/.test(attachment.id) &&
+        typeof attachment.name === "string" &&
+        attachment.name.length > 0 &&
+        attachment.name.length <= 255 &&
+        typeof attachment.mimeType === "string" &&
+        attachment.mimeType.length <= 200 &&
+        Number.isSafeInteger(attachment.size) &&
+        attachment.size >= 0 &&
+        attachment.size <= 10_000_000 &&
+        ["image", "video", "pdf", "spreadsheet", "text", "document"].includes(
+          attachment.kind,
+        ) &&
+        typeof attachment.dataUrl === "string" &&
+        attachment.dataUrl.length <= 15_000_000 &&
+        typeof attachment.text === "string" &&
+        attachment.text.length <= 100_000,
     )
   );
-}
-
-export function normalizeChatSessions(sessions: ChatSession[]): ChatSession[] {
-  return sessions.map((session) => ({
-    ...session,
-    messages: session.messages.map((message) => ({
-      ...message,
-      createdAt: message.createdAt ?? 0,
-      tools: message.tools ?? [],
-    })),
-  }));
 }

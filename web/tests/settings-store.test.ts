@@ -49,7 +49,24 @@ test("settings store deduplicates loads, reuses data across views, and discards 
     assert.equal(calls, 1);
     respond(Response.json(settings));
     await loading;
-    assert.deepEqual(useSettingsStore.getState().providers, settings.providers);
+    assert.deepEqual(
+      useSettingsStore
+        .getState()
+        .providers.filter((provider) => provider.id === "muse"),
+      settings.providers,
+    );
+    assert.equal(useSettingsStore.getState().providers.length, 6);
+    assert.equal(useSettingsStore.getState().providers.at(-1)?.id, "aider");
+    assert.equal(
+      useSettingsStore
+        .getState()
+        .providers.filter((provider) => provider.id !== "muse")
+        .every(
+          (provider) =>
+            !provider.available && provider.source === "Coming soon",
+        ),
+      true,
+    );
     await useSettingsStore.getState().load();
     assert.equal(calls, 1);
 

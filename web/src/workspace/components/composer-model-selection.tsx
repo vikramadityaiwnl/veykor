@@ -32,13 +32,12 @@ export function ComposerModelSelection(props: Props) {
         size="sm"
         value={props.providerId}
         isLoading={props.loading}
-        options={props.providers
-          .filter((entry) => entry.available)
-          .map((entry) => ({
-            value: entry.id,
-            label: entry.name,
-            icon: <ChatProviderIcon providerId={entry.id} />,
-          }))}
+        options={props.providers.map((entry) => ({
+          value: entry.id,
+          label: entry.available ? entry.name : `${entry.name} · Coming soon`,
+          disabled: !entry.available,
+          icon: <ChatProviderIcon providerId={entry.id} />,
+        }))}
         onChange={(id) =>
           props.onSelection(
             id,

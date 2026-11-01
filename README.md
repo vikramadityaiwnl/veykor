@@ -10,6 +10,7 @@ veykor is an open-source, AI-native development environment where developers wor
 
 - Node.js and npm
 - Git
+- [Muse Code](https://dev.meta.ai/docs/muse-code) 1.4.14 installed and signed in on the backend host
 
 ### Setup
 
@@ -53,6 +54,7 @@ npm run dev --prefix web       # Start the frontend
 npm run dev --prefix server    # Start the backend
 npm run build                 # Build the project
 npm run test --prefix server   # Run backend tests
+npm run test:native --prefix server # Run real Muse acceptance tests
 npm run format                # Format files
 npm run format:check          # Check formatting
 ```

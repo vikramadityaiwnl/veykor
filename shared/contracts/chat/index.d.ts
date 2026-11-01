@@ -1,6 +1,29 @@
 import type { ProviderCliId } from "../providers/index.js";
 
+export type ChatPermissionMode =
+  "allowAll" | "promptUnmatched" | "onRequest" | "denyUnmatched";
+
+export interface ChatApproval {
+  id: string;
+  toolName: string;
+  arguments: string;
+  choices: {
+    choiceId: string;
+    label: string;
+    scope: string;
+    rulePreview: string;
+  }[];
+}
+
+export interface ChatActivity {
+  id: string;
+  kind: string;
+  text: string;
+  status: string;
+}
+
 export interface ChatModel {
+  inputModalities?: ("text" | "image" | "video")[];
   id: string;
   name: string;
   description: string;
@@ -39,6 +62,16 @@ export interface ChatToolCall {
   errorMessage: string;
 }
 
+export interface ChatAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  kind: "image" | "video" | "pdf" | "spreadsheet" | "text" | "document";
+  dataUrl: string;
+  text: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -46,6 +79,7 @@ export interface ChatMessage {
   usage: ChatUsage;
   createdAt: number;
   tools: ChatToolCall[];
+  attachments: ChatAttachment[];
 }
 
 export interface ChatSession {
@@ -55,6 +89,12 @@ export interface ChatSession {
   sectionId: string | null;
   providerId: string;
   modelId: string;
+  nativeSessionId?: string;
+  permissionMode?: ChatPermissionMode;
+  status?: "idle" | "running" | "error";
+  error?: string;
+  approvals?: ChatApproval[];
+  activities?: ChatActivity[];
   messages: ChatMessage[];
 }
 
@@ -63,15 +103,15 @@ export interface ChatSessionsResponse {
 }
 
 export interface ChatRequest {
+  conversationId: string;
+  messageId: string;
+  permissionMode: ChatPermissionMode;
   providerId: ProviderCliId;
   modelId: string;
-  messages: { role: "user" | "assistant"; text: string }[];
+  messages: {
+    role: "user" | "assistant";
+    text: string;
+    attachments?: ChatAttachment[];
+  }[];
   systemPrompt: string;
 }
-
-export type ChatEvent =
-  | { type: "text"; text: string }
-  | { type: "tool"; tool: ChatToolCall }
-  | { type: "usage"; usage: ChatUsage }
-  | { type: "error"; message: string }
-  | { type: "done" };

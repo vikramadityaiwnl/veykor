@@ -1,7 +1,9 @@
 import { create } from "zustand";
-import type { ChatEvent, ChatRequest } from "@veykor/shared";
+import type { ChatRequest } from "@veykor/shared";
 import { useChatSessionsStore } from "./chat-sessions-store";
 import { useAuthStore } from "../auth/auth-store";
+
+const pendingSubmissions = new Set<string>();
 
 interface ChatRuntimeState {
   runningSessionId: string;
@@ -11,52 +13,40 @@ interface ChatRuntimeState {
   stop: () => void;
 }
 
-let controller: AbortController | undefined;
+export async function chatAction(
+  sessionId: string,
+  action: string,
+  input: unknown,
+) {
+  const response = await fetch(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/${action}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Veykor-Request": "1" },
+      body: JSON.stringify(input),
+    },
+  );
+  if (!response.ok) {
+    const payload = await response.json();
+    throw new Error(payload.error || "Muse request failed");
+  }
+}
 
 export const useChatRuntimeStore = create<ChatRuntimeState>()((set, get) => ({
   runningSessionId: "",
   error: "",
   errorSessionId: "",
-  stop: () => controller?.abort(),
+  stop: () => {
+    const id = get().runningSessionId;
+    if (id) {
+      void chatAction(id, "stop", {}).catch((error) =>
+        set({ error: error.message, errorSessionId: id }),
+      );
+    }
+  },
   send: async (sessionId, input) => {
-    if (get().runningSessionId) {
-      return;
-    }
-    const userId = useAuthStore.getState().status?.user?.id;
-    const requestController = new AbortController();
-    controller = requestController;
+    pendingSubmissions.add(sessionId);
     set({ runningSessionId: sessionId, error: "", errorSessionId: "" });
-    const replyId = useChatSessionsStore.getState().addReply(sessionId);
-    let done = false;
-
-    function event(value: ChatEvent) {
-      if (useAuthStore.getState().status?.user?.id !== userId) {
-        requestController.abort();
-        return;
-      }
-      if (value.type === "error") {
-        throw new Error(value.message);
-      }
-      if (value.type === "text" || value.type === "usage") {
-        useChatSessionsStore
-          .getState()
-          .updateReply(
-            sessionId,
-            replyId,
-            value.type === "text" ? value.text : "",
-            value.type === "usage" ? value.usage : undefined,
-          );
-      }
-      if (value.type === "tool") {
-        useChatSessionsStore
-          .getState()
-          .updateTool(sessionId, replyId, value.tool);
-      }
-      if (value.type === "done") {
-        done = true;
-      }
-    }
-
     try {
       await useChatSessionsStore.getState().save();
       const response = await fetch("/api/chat", {
@@ -66,73 +56,66 @@ export const useChatRuntimeStore = create<ChatRuntimeState>()((set, get) => ({
           "X-Veykor-Request": "1",
         },
         body: JSON.stringify(input),
-        signal: requestController.signal,
       });
       if (!response.ok) {
         const payload = await response.json();
         throw new Error(payload.error || "Unable to send message");
       }
-      if (!response.body) {
-        throw new Error("No response stream received");
-      }
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let pending = "";
-
-      try {
-        while (true) {
-          const chunk = await reader.read();
-          pending += chunk.done
-            ? decoder.decode()
-            : decoder.decode(chunk.value, { stream: true });
-          const lines = pending.split("\n");
-          pending = lines.pop() ?? "";
-          for (const line of lines) {
-            if (line.trim()) {
-              event(JSON.parse(line) as ChatEvent);
-            }
-          }
-          if (chunk.done) {
-            break;
-          }
-        }
-        if (pending.trim()) {
-          event(JSON.parse(pending) as ChatEvent);
-        }
-        if (!done) {
-          throw new Error(
-            "The connection ended before the reply completed. Please retry.",
-          );
-        }
-      } finally {
-        await reader.cancel().catch(() => {});
-        reader.releaseLock();
-      }
     } catch (error) {
-      if (useAuthStore.getState().status?.user?.id === userId) {
-        set({
-          errorSessionId: sessionId,
-          error: requestController.signal.aborted
-            ? "Generation stopped. Any partial reply has been kept."
-            : error instanceof Error
-              ? error.message
-              : "Unable to send message",
-        });
-      }
+      set({
+        runningSessionId: "",
+        errorSessionId: sessionId,
+        error:
+          error instanceof Error ? error.message : "Unable to send message",
+      });
     } finally {
-      if (useAuthStore.getState().status?.user?.id === userId) {
-        useChatSessionsStore.getState().finishReply(sessionId, replyId);
-        await useChatSessionsStore.getState().save();
-      }
-      controller = undefined;
-      set({ runningSessionId: "" });
+      pendingSubmissions.delete(sessionId);
     }
   },
 }));
 
-useAuthStore.subscribe((state, previous) => {
+let live: EventSource | undefined;
+
+const unsubscribeSessions = useChatSessionsStore.subscribe(
+  (state, previous) => {
+    if (
+      state.status === "ready" &&
+      previous.status !== "ready" &&
+      typeof EventSource !== "undefined"
+    ) {
+      live?.close();
+      live = new EventSource("/api/chat/sessions/live");
+      live.addEventListener("snapshot", (event) => {
+        const payload = JSON.parse(event.data);
+        useChatSessionsStore.getState().receive(payload);
+        const running = payload.sessions.find(
+          (session: { status: string }) => session.status === "running",
+        );
+        useChatRuntimeStore.setState({
+          runningSessionId: running?.id || [...pendingSubmissions][0] || "",
+        });
+      });
+    }
+  },
+);
+
+const unsubscribeAuth = useAuthStore.subscribe((state, previous) => {
   if (state.status?.user?.id !== previous.status?.user?.id) {
-    controller?.abort();
-    useChatRuntimeStore.setState({ error: "", errorSessionId: "" });
+    live?.close();
+    live = undefined;
+    pendingSubmissions.clear();
+    useChatRuntimeStore.setState({
+      runningSessionId: "",
+      error: "",
+      errorSessionId: "",
+    });
   }
 });
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    live?.close();
+    unsubscribeSessions();
+    unsubscribeAuth();
+  });
+}

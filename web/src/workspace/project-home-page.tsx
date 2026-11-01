@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import type { ProviderCliId } from "@veykor/shared";
+import type { ChatAttachment, ChatPermissionMode, ProviderCliId } from "@veykor/shared";
 import { Center } from "@astryxdesign/core/Center";
 import { ChatLayout } from "@astryxdesign/core/Chat";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -9,7 +9,8 @@ import { useChatSessionsStore, emptyUsage, type SessionMessage } from "./chat-se
 import { useSidebarSectionsStore } from "./sidebar-sections-store";
 import { useSettingsStore } from "../settings/settings-store";
 import type { ChatDraft } from "./chat-draft";
-import { useChatRuntimeStore } from "./chat-runtime-store";
+import { useChatRuntimeStore, chatAction } from "./chat-runtime-store";
+import { ChatNativeActivity } from "./components/chat-native-activity";
 import { ChatComposerPanel } from "./components/chat-composer-panel";
 import { ConversationMessages } from "./components/conversation-messages";
 import { useProjectsStore } from "./projects-store";
@@ -25,6 +26,8 @@ export function ProjectHomePage() {
   const draft = (location.state as { draft?: ChatDraft } | null)?.draft;
   const [defaultProvider, setDefaultProvider] = useState("");
   const [defaultModel, setDefaultModel] = useState("");
+  const [permissionMode, setPermissionMode] =
+    useState<ChatPermissionMode>("promptUnmatched");
   const sessions = useChatSessionsStore((state) => state.sessions);
   const status = useChatSessionsStore((state) => state.status);
   const historyError = useChatSessionsStore((state) => state.error);
@@ -77,6 +80,12 @@ export function ProjectHomePage() {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (sessionId && status === "ready") {
+      void useChatSessionsStore.getState().openSession(sessionId);
+    }
+  }, [sessionId, status]);
+
   function select(providerId: string, modelId: string) {
     useChatRuntimeStore.setState({ error: "", errorSessionId: "" });
 
@@ -90,7 +99,11 @@ export function ProjectHomePage() {
     }
   }
 
-  function submit(text: string, systemPrompt: string) {
+  function submit(
+    text: string,
+    systemPrompt: string,
+    attachments: ChatAttachment[],
+  ) {
     if (!ready || runningId) {
       return;
     }
@@ -100,17 +113,21 @@ export function ProjectHomePage() {
       (draft?.projectId
         ? store.createProjectSession(draft.projectId)
         : store.createChatSession(defaultSection!.id));
-    store.addMessage(target.id, text);
+    store.addMessage(target.id, text, attachments);
     store.configure(target.id, providerId, modelId);
-    const history = useChatSessionsStore
-      .getState()
-      .messages[target.id].filter((message) => message.text)
-      .map((message) => ({ role: message.role, text: message.text }));
+    const message = useChatSessionsStore.getState().messages[target.id].at(-1)!;
     navigate(`/chat/${target.id}`);
     void useChatRuntimeStore.getState().send(target.id, {
+      conversationId: target.id,
+      messageId: message.id,
+      permissionMode: session?.nativeSessionId
+        ? session.permissionMode || permissionMode
+        : permissionMode,
       providerId: providerId as ProviderCliId,
       modelId,
-      messages: history,
+      messages: [
+        { role: "user", text: message.text, attachments: message.attachments },
+      ],
       systemPrompt,
     });
   }
@@ -143,6 +160,23 @@ export function ProjectHomePage() {
       composer={
         <ChatComposerPanel
           key={sessionId || draft?.id || "home"}
+          permissionMode={
+            session?.nativeSessionId
+              ? session.permissionMode || permissionMode
+              : permissionMode
+          }
+          onPermissionMode={(mode) => {
+            if (session?.nativeSessionId) {
+              void chatAction(session.id, "mode", { mode }).catch((error) =>
+                useChatRuntimeStore.setState({
+                  error: error.message,
+                  errorSessionId: session.id,
+                }),
+              );
+            } else {
+              setPermissionMode(mode);
+            }
+          }}
           isNewProjectChat={!sessionId && !!draft?.projectId}
           project={projects.find(
             (project) =>
@@ -155,7 +189,7 @@ export function ProjectHomePage() {
           isReady={ready}
           isRunning={runningId === sessionId}
           isBusy={!!runningId}
-          error={runtimeError || historyError || catalogError}
+          error={runtimeError || session?.error || historyError || catalogError}
           usage={lastReply?.usage || emptyUsage()}
           hasMessages={messages.some((message) => message.role === "user")}
           onSelection={select}
@@ -170,6 +204,7 @@ export function ProjectHomePage() {
           isRunning={runningId === sessionId}
         />
       ) : null}
+      {session && <ChatNativeActivity session={session} />}
     </ChatLayout>
   );
 }

@@ -14,15 +14,16 @@ export function ConversationMessages(props: Props) {
     month: "short",
     year: "numeric",
   });
-  let previousDate = "";
+  const dates = props.messages.map((message) =>
+    message.createdAt > 0 ? dateFormat.format(message.createdAt) : "",
+  );
 
   return (
     <ChatMessageList className="mx-auto w-full max-w-4xl gap-6! px-4 py-6">
       {props.messages.map((message, index) => {
-        const date =
-          message.createdAt > 0 ? dateFormat.format(message.createdAt) : "";
+        const date = dates[index];
+        const previousDate = dates.slice(0, index).filter(Boolean).at(-1) || "";
         const showDate = date !== "" && date !== previousDate;
-        previousDate = date || previousDate;
 
         return (
           <Fragment key={message.id}>

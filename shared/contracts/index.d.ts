@@ -32,6 +32,10 @@ export type {
 } from "./providers/index.js";
 
 export type {
+  ChatPermissionMode,
+  ChatApproval,
+  ChatActivity,
+  ChatAttachment,
   ChatToolCall,
   ChatModel,
   ChatProvider,
@@ -41,7 +45,6 @@ export type {
   ChatSession,
   ChatSessionsResponse,
   ChatRequest,
-  ChatEvent,
 } from "./chat/index.js";
 
 export type {

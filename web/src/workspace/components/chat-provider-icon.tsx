@@ -6,7 +6,11 @@ interface Props {
 }
 
 export function ChatProviderIcon(props: Props) {
-  if (!["muse", "claude", "codex", "opencode"].includes(props.providerId)) {
+  if (
+    !["muse", "claude", "codex", "opencode", "deepseek"].includes(
+      props.providerId,
+    )
+  ) {
     return <FontAwesomeIcon icon={faTerminal} aria-hidden="true" />;
   }
 

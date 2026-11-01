@@ -162,6 +162,15 @@ body,
   border-block-end: 0;
 }
 
+dialog:has(.veykor-lightbox-frame) {
+  background-color: color-mix(
+    in srgb,
+    var(--color-background-body) 75%,
+    transparent
+  ) !important;
+  backdrop-filter: blur(12px) !important;
+}
+
 @media (min-width: 48rem) {
   .veykor-provider-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;

@@ -17,6 +17,7 @@ const logos: Record<string, { src: string; invertInDark: boolean } | null> = {
   codex: { src: "/providers/codex.svg", invertInDark: true },
   claude: { src: "/providers/claude.svg", invertInDark: true },
   opencode: { src: "/providers/opencode.svg", invertInDark: true },
+  deepseek: { src: "/providers/deepseek.svg", invertInDark: true },
   aider: null,
 };
 
@@ -57,7 +58,8 @@ export function ProviderCliList() {
               gap={4}
               padding={4}
               vAlign="center"
-              className="veykor-provider-tile min-w-0"
+              className={`veykor-provider-tile min-w-0 ${provider.id !== "muse" ? "opacity-40 grayscale" : ""}`}
+              aria-disabled={provider.id !== "muse"}
             >
               <HStack
                 vAlign="center"
@@ -105,18 +107,30 @@ export function ProviderCliList() {
                     maxLines={1}
                     className="min-w-0 flex-1"
                   >
-                    {provider.version || "unknown"}
+                    {provider.id === "muse"
+                      ? provider.version || "unknown"
+                      : "Coming soon"}
                   </Text>
                 </HStack>
 
                 <HStack gap={2} vAlign="center">
                   <StatusDot
                     variant={provider.installed ? "success" : "neutral"}
-                    label={provider.installed ? "Installed" : "Not installed"}
+                    label={
+                      provider.id !== "muse"
+                        ? "Coming soon"
+                        : provider.available
+                          ? "Available"
+                          : "Unavailable"
+                    }
                   />
 
                   <Text type="supporting" color="secondary">
-                    {provider.installed ? "Installed" : "Not installed"}
+                    {provider.id !== "muse"
+                      ? "Coming soon"
+                      : provider.available
+                        ? "Available"
+                        : "Unavailable"}
                   </Text>
                 </HStack>
               </VStack>

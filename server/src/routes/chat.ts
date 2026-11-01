@@ -1,142 +1,306 @@
-import type { ChatSession } from "@veykor/shared";
+import type { ChatPermissionMode } from "@veykor/shared";
+import type { ConversationMetadata } from "../chat/conversations.js";
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { bodyLimit } from "hono/body-limit";
-import { stream } from "hono/streaming";
+import { and, eq, gt } from "drizzle-orm";
 import { requireAuth, type AuthEnv } from "../auth/auth.js";
-import { getSettings } from "../settings/settings.js";
-import { runChat, validChatRequest } from "../chat/chat-runner.js";
-import { eq } from "drizzle-orm";
+import { chatProvider, validChatRequest, permissionModes } from "../chat/chat-runner.js";
 import { db } from "../db/client.js";
-import { chatHistories } from "../db/schema.js";
-import { validChatSessions, normalizeChatSessions } from "../chat/chat-history.js";
-
-const running = new Set<number>();
+import { conversations, sessions as authSessions } from "../db/schema.js";
+import { listConversations, metadataSession, readConversation, writeConversation, validConversationLocation } from "../chat/conversations.js";
+import { attachmentBytes, removeStaged } from "../chat/attachments.js";
+import { getSettings } from "../settings/settings.js";
 
 export const chatRoute = new Hono<AuthEnv>();
-
 chatRoute.use("*", requireAuth);
-chatRoute.use("*", bodyLimit({ maxSize: 1_000_000 }));
+chatRoute.use("*", bodyLimit({ maxSize: 80_000_000 }));
 
-chatRoute.get("/sessions", (c) => {
-  const history = db
-    .select()
-    .from(chatHistories)
-    .where(eq(chatHistories.userId, c.get("user").id))
-    .get();
+async function snapshots(userId: number) {
+  return Promise.all(
+    listConversations(userId).map(async (metadata) => {
+      const live = await chatProvider.describe(userId, metadata.id);
 
-  const sessions: ChatSession[] = history ? JSON.parse(history.sessions) : [];
+      return live || metadataSession(metadata);
+    }),
+  );
+}
 
-  return c.json({
-    sessions: normalizeChatSessions(sessions).filter(
-      (session) => session.messages.length > 0,
-    ),
-  });
-});
+chatRoute.get("/sessions", (c) =>
+  c.json({
+    sessions: listConversations(c.get("user").id).map(metadataSession),
+  }),
+);
+
+chatRoute.get("/sessions/live", (c) =>
+  streamSSE(c, async (stream) => {
+    let previous = "";
+    const deadline = Date.now() + 25_000;
+    while (!stream.aborted && Date.now() < deadline) {
+      const authenticated = db
+        .select({ id: authSessions.id })
+        .from(authSessions)
+        .where(
+          and(
+            eq(authSessions.id, c.get("sessionId")),
+            gt(authSessions.expiresAt, Math.floor(Date.now() / 1000)),
+          ),
+        )
+        .get();
+      if (!authenticated) {
+        return;
+      }
+      const snapshot = JSON.stringify({
+        sessions: await snapshots(c.get("user").id),
+      });
+      if (snapshot !== previous) {
+        await stream.writeSSE({ event: "snapshot", data: snapshot });
+        previous = snapshot;
+      }
+      await stream.sleep(200);
+    }
+  }),
+);
 
 chatRoute.put("/sessions", async (c) => {
-  let input: unknown;
-  try {
-    input = await c.req.json();
-  } catch {
-    return c.json({ error: "Invalid JSON" }, 400);
+  const input = await c.req.json().catch(() => null);
+  if (!Array.isArray(input?.sessions) || input.sessions.length > 500) {
+    return c.json({ error: "Invalid conversation metadata" }, 400);
   }
-
-  if (!validChatSessions(input)) {
-    return c.json({ error: "Invalid conversation history" }, 400);
+  const userId = c.get("user").id;
+  const updates: ConversationMetadata[] = [];
+  for (const candidate of input.sessions) {
+    if (
+      !candidate ||
+      typeof candidate.id !== "string" ||
+      !/^[a-zA-Z0-9_-]{1,100}$/.test(candidate.id) ||
+      typeof candidate.title !== "string" ||
+      candidate.title.length > 200 ||
+      !(
+        candidate.projectId === null || typeof candidate.projectId === "string"
+      ) ||
+      !(
+        candidate.sectionId === null || typeof candidate.sectionId === "string"
+      ) ||
+      !validConversationLocation(userId, candidate)
+    ) {
+      return c.json({ error: "Invalid conversation or project" }, 400);
+    }
+    const owner = db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, candidate.id))
+      .get();
+    if (owner && owner.userId !== userId) {
+      return c.json({ error: "Conversation not found" }, 404);
+    }
+    const existing = readConversation(userId, candidate.id);
+    if (
+      existing &&
+      (existing.projectId !== candidate.projectId ||
+        existing.sectionId !== candidate.sectionId)
+    ) {
+      return c.json({ error: "Conversation location cannot be changed" }, 400);
+    }
+    updates.push(
+      existing
+        ? {
+            ...existing,
+            title: candidate.title,
+            providerId: "muse",
+            modelId:
+              typeof candidate.modelId === "string" &&
+              /^[a-zA-Z0-9][a-zA-Z0-9._:@+/-]{0,199}$/.test(candidate.modelId)
+                ? candidate.modelId
+                : existing.modelId,
+          }
+        : {
+            id: candidate.id,
+            title: candidate.title,
+            projectId: candidate.projectId || null,
+            sectionId: candidate.sectionId || null,
+            providerId: "muse",
+            modelId:
+              typeof candidate.modelId === "string" ? candidate.modelId : "",
+            nativeSessionId: "",
+            permissionMode: "promptUnmatched",
+            attachments: [],
+          },
+    );
   }
+  for (const metadata of updates) {
+    writeConversation(userId, metadata);
+  }
+  return c.json({ sessions: await snapshots(userId) });
+});
 
-  const sessions = normalizeChatSessions(input.sessions);
+chatRoute.use("/sessions/:id/*", async (c, next) => {
+  const conversation = readConversation(c.get("user").id, c.req.param("id")!);
+  if (
+    !conversation ||
+    !validConversationLocation(c.get("user").id, conversation)
+  ) {
+    return c.json({ error: "Conversation not found" }, 404);
+  }
+  await next();
+});
 
-  db.insert(chatHistories)
-    .values({
-      userId: c.get("user").id,
-      sessions: JSON.stringify(sessions),
-    })
-    .onConflictDoUpdate({
-      target: chatHistories.userId,
-      set: { sessions: JSON.stringify(sessions) },
-    })
+chatRoute.get("/sessions/:id", async (c) => {
+  const conversation = readConversation(c.get("user").id, c.req.param("id"));
+  if (
+    !conversation ||
+    !validConversationLocation(c.get("user").id, conversation)
+  ) {
+    return c.json({ error: "Conversation not found" }, 404);
+  }
+  const session = await chatProvider.open(c.get("user").id, c.req.param("id"));
+  if (!session) {
+    return c.json({ error: "Conversation not found" }, 404);
+  }
+  return c.json({ session });
+});
+
+chatRoute.delete("/sessions/:id", async (c) => {
+  const userId = c.get("user").id;
+  const id = c.req.param("id");
+  if (chatProvider.isBusy(userId, id)) {
+    return c.json({ error: "Stop the conversation before deleting it" }, 409);
+  }
+  const metadata = readConversation(userId, id);
+  if (!metadata) {
+    return c.json({ error: "Conversation not found" }, 404);
+  }
+  await chatProvider.release(userId, id);
+  await Promise.all(
+    metadata.attachments.map((attachment) => removeStaged(attachment.id)),
+  );
+  db.delete(conversations)
+    .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
     .run();
+  return c.json({ ok: true });
+});
 
-  return c.json({ sessions });
+chatRoute.get("/sessions/:id/attachments/:attachmentId", async (c) => {
+  const session = readConversation(c.get("user").id, c.req.param("id"))!;
+  const attachment = session.attachments.find(
+    (entry) => entry.id === c.req.param("attachmentId"),
+  );
+  const bytes = attachment ? await attachmentBytes(attachment.id) : undefined;
+  if (!attachment || !bytes) {
+    return c.json({ error: "Attachment not found" }, 404);
+  }
+  const inline = [
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+    "application/pdf",
+    "text/plain",
+    "video/mp4",
+    "video/quicktime",
+  ].includes(attachment.mimeType);
+  c.header("Content-Type", attachment.mimeType || "application/octet-stream");
+  c.header("X-Content-Type-Options", "nosniff");
+  c.header("Cache-Control", "private, no-store");
+  c.header(
+    "Content-Disposition",
+    `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(attachment.name)}`,
+  );
+  return c.body(new Uint8Array(bytes));
+});
+
+chatRoute.post("/sessions/:id/mode", async (c) => {
+  const input = await c.req.json().catch(() => null);
+  if (!permissionModes.includes(input?.mode)) {
+    return c.json({ error: "Invalid permission mode" }, 400);
+  }
+  try {
+    await chatProvider.setPermissionMode(
+      c.get("user").id,
+      c.req.param("id"),
+      input.mode as ChatPermissionMode,
+    );
+    return c.json({ ok: true });
+  } catch (error) {
+    return c.json(
+      { error: error instanceof Error ? error.message : "Mode change failed" },
+      409,
+    );
+  }
+});
+
+chatRoute.post("/sessions/:id/approval", async (c) => {
+  const input = await c.req.json().catch(() => null);
+  if (
+    typeof input?.approvalId !== "string" ||
+    typeof input?.choiceId !== "string"
+  ) {
+    return c.json({ error: "Invalid approval decision" }, 400);
+  }
+  try {
+    await chatProvider.decideApproval(
+      c.get("user").id,
+      c.req.param("id"),
+      input.approvalId,
+      input.choiceId,
+    );
+    return c.json({ ok: true });
+  } catch (error) {
+    return c.json(
+      { error: error instanceof Error ? error.message : "Approval failed" },
+      409,
+    );
+  }
+});
+
+chatRoute.post("/sessions/:id/stop", async (c) => {
+  const input = await c.req.json().catch(() => ({}));
+  try {
+    await chatProvider.stop(
+      c.get("user").id,
+      c.req.param("id"),
+      input.cancel === true,
+    );
+    return c.json({ ok: true });
+  } catch (error) {
+    return c.json(
+      { error: error instanceof Error ? error.message : "Stop failed" },
+      409,
+    );
+  }
 });
 
 chatRoute.post("/", async (c) => {
-  let input: unknown;
-  try {
-    input = await c.req.json();
-  } catch {
-    return c.json({ error: "Invalid JSON" }, 400);
-  }
-
+  const input: unknown = await c.req.json().catch(() => null);
   if (!validChatRequest(input)) {
     return c.json(
       {
         error:
-          "Choose a supported provider, model, and a nonempty message (up to 200 messages).",
+          "Choose Muse Code, a supported permission mode, and a nonempty message.",
       },
       400,
     );
   }
-
   const userId = c.get("user").id;
-  if (running.has(userId)) {
+  const conversation = readConversation(userId, input.conversationId);
+  if (!conversation || !validConversationLocation(userId, conversation)) {
+    return c.json({ error: "Conversation or project not found" }, 404);
+  }
+  if (chatProvider.isBusy(userId, input.conversationId)) {
+    return c.json({ error: "A reply is already running" }, 409);
+  }
+  const settings = await getSettings();
+  if (
+    !settings.providers[0]?.models.some((model) => model.id === input.modelId)
+  ) {
     return c.json(
-      {
-        error:
-          "A reply is already in progress. Stop it before sending another message.",
-      },
-      409,
+      { error: settings.providers[0]?.error || "Model unavailable" },
+      400,
     );
   }
-
-  const catalog = await getSettings();
-  const provider = catalog.providers.find(
-    (entry) => entry.id === input.providerId,
-  );
-  if (!provider?.available) {
-    return c.json({ error: provider?.error || "Provider is unavailable" }, 503);
+  if (chatProvider.isBusy(userId, input.conversationId)) {
+    return c.json({ error: "A reply is already running" }, 409);
   }
-
-  if (running.has(userId)) {
-    return c.json({ error: "A reply is already in progress" }, 409);
-  }
-  running.add(userId);
-  c.header("Content-Type", "application/x-ndjson");
-  c.header("X-Accel-Buffering", "no");
-
-  return stream(c, async (output) => {
-    const controller = new AbortController();
-    output.onAbort(() => controller.abort());
-    let writes = Promise.resolve();
-
-    try {
-      await runChat(input, controller.signal, (event) => {
-        writes = writes
-          .then(async () => {
-            if (!controller.signal.aborted) {
-              await output.write(JSON.stringify(event) + "\n");
-            }
-          })
-          .catch(() => {
-            controller.abort();
-          });
-      });
-      await writes;
-    } catch (error) {
-      if (!controller.signal.aborted) {
-        await output.write(
-          JSON.stringify({
-            type: "error",
-            message:
-              error instanceof Error
-                ? error.message
-                : "Unable to generate a reply",
-          }) + "\n",
-        );
-      }
-    } finally {
-      running.delete(userId);
-    }
-  });
+  void chatProvider.runTurn(userId, input);
+  return c.json({ accepted: true }, 202);
 });

@@ -12,15 +12,19 @@
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
-    "typecheck:tests": "tsc -p tsconfig.tests.json"
+    "typecheck:tests": "tsc -p tsconfig.tests.json",
+    "test:native": "node --import tsx --test tests/native-chat.e2e.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.4",
+    "@muse-code/sdk": "1.4.14",
     "@veykor/shared": "file:../shared",
     "argon2": "^0.45.1",
     "better-sqlite3": "^12.2.0",
     "drizzle-orm": "^0.44.4",
-    "hono": "^4.9.4"
+    "hono": "^4.9.4",
+    "pdfjs-dist": "^6.4.299",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
