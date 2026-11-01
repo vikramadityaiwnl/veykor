@@ -1,8 +1,8 @@
 import type { ProjectsResponse, SidebarSectionsResponse } from "@veykor/shared";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -178,6 +178,23 @@ test("projects default empty list, create, rename, host-only creation, move, cas
     assert.equal(afterCreate.projects.length, 1);
     assert.equal(afterCreate.projects[0].name, "Website");
     assert.equal(afterCreate.projects[0].folder, "website");
+    assert.equal(
+      (await request(`projects/${afterCreate.projects[0].id}/context`)).status,
+      401,
+    );
+    assert.deepEqual(
+      await (
+        await request(`projects/${afterCreate.projects[0].id}/context`, {
+          cookie,
+        })
+      ).json(),
+      { branch: "", isWorktree: false },
+    );
+    assert.equal(
+      (await request("projects/missing/context", { cookie })).status,
+      404,
+    );
+
     assert.equal(afterCreate.projects[0].position, 0);
     assert.equal(afterCreate.projects[0].sectionId, projectsSection.id);
     assert.equal(typeof afterCreate.projects[0].id, "string");
@@ -384,6 +401,60 @@ test("projects default empty list, create, rename, host-only creation, move, cas
       persisted.projects.map((project) => project.name),
       ["Site"],
     );
+    const repository = join(folder, "repository");
+    const worktree = join(folder, "worktree");
+    mkdirSync(repository);
+
+    function git(args: string[]) {
+      const result = spawnSync("git", args, {
+        cwd: repository,
+        encoding: "utf8",
+      });
+      assert.equal(result.status, 0, result.stderr);
+    }
+
+    git(["init", "--initial-branch=fixture-main"]);
+    git([
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.com",
+      "commit",
+      "--allow-empty",
+      "-m",
+      "test fixture",
+    ]);
+    git(["worktree", "add", "-b", "fixture-worktree", worktree]);
+
+    for (const [name, path, branch, isWorktree] of [
+      ["Repository", repository, "fixture-main", false],
+      ["Worktree", worktree, "fixture-worktree", true],
+    ] as const) {
+      const result = await request("projects", {
+        body: { name, folder: path, sectionId: projectsSection.id },
+        cookie: loginCookie,
+      });
+      assert.equal(result.status, 201);
+      const project = (await result.json()).projects.find(
+        (entry) => entry.name === name,
+      )!;
+      assert.deepEqual(
+        await (
+          await request(`projects/${project.id}/context`, {
+            cookie: loginCookie,
+          })
+        ).json(),
+        { branch, isWorktree },
+      );
+      assert.equal(
+        (
+          await request(`projects/${project.id}/context`, {
+            cookie: otherCookie,
+          })
+        ).status,
+        404,
+      );
+    }
   } finally {
     await stop();
     rmSync(folder, { recursive: true, force: true });

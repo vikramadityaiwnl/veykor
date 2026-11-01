@@ -3,6 +3,7 @@ export type {
   AuthUser,
   AuthStatus,
   AuthCredentials,
+  UpdateProfileInput,
 } from "./contracts/index.js";
 
 export type { ConfigurationUsersResponse } from "./contracts/index.js";
@@ -18,6 +19,7 @@ export type {
 export type {
   Project,
   ProjectsResponse,
+  ProjectContext,
   CreateProjectInput,
   UpdateProjectInput,
 } from "./contracts/index.js";
@@ -41,7 +43,11 @@ export type {
   ChatEvent,
 } from "./contracts/index.js";
 
-export type { SettingsProvider, SettingsResponse } from "./contracts/index.js";
+export type {
+  SettingsProvider,
+  SettingsResponse,
+  GeneralPreferences,
+} from "./contracts/index.js";
 
 export type {
   StatusCpu,

@@ -1,6 +1,11 @@
 export type { HealthResponse } from "./health/index.js";
 
-export type { AuthUser, AuthStatus, AuthCredentials } from "./auth/index.js";
+export type {
+  AuthUser,
+  AuthStatus,
+  AuthCredentials,
+  UpdateProfileInput,
+} from "./auth/index.js";
 
 export type { ConfigurationUsersResponse } from "./configuration/index.js";
 
@@ -15,6 +20,7 @@ export type {
 export type {
   Project,
   ProjectsResponse,
+  ProjectContext,
   CreateProjectInput,
   UpdateProjectInput,
 } from "./projects/index.js";
@@ -38,7 +44,11 @@ export type {
   ChatEvent,
 } from "./chat/index.js";
 
-export type { SettingsProvider, SettingsResponse } from "./settings/index.js";
+export type {
+  SettingsProvider,
+  SettingsResponse,
+  GeneralPreferences,
+} from "./settings/index.js";
 
 export type {
   StatusCpu,

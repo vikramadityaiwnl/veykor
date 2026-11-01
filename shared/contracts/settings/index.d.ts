@@ -6,3 +6,7 @@ export interface SettingsProvider extends ProviderCliStatus, ChatProvider {}
 export interface SettingsResponse {
   providers: SettingsProvider[];
 }
+
+export interface GeneralPreferences {
+  theme: "light" | "dark";
+}

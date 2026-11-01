@@ -7,7 +7,7 @@ import { sign, verify } from "hono/jwt";
 import { bodyLimit } from "hono/body-limit";
 import { hash, verify as verifyPassword, argon2id } from "argon2";
 import { and, eq, gt, lte } from "drizzle-orm";
-import type { AuthUser, AuthCredentials } from "@veykor/shared";
+import type { AuthUser, AuthCredentials, UpdateProfileInput } from "@veykor/shared";
 import { db } from "../db/client.js";
 import { users, sessions, loginLimits } from "../db/schema.js";
 import { insertDefaultSidebarSections } from "../db/sidebar-sections.js";
@@ -298,4 +298,79 @@ authRoute.post("/logout", requireAuth, (c) => {
   deleteCookie(c, cookie, options);
 
   return c.json({ ok: true });
+});
+
+authRoute.post("/profile", requireAuth, async (c) => {
+  let input: UpdateProfileInput;
+
+  try {
+    input = await c.req.json<UpdateProfileInput>();
+  } catch {
+    return c.json({ error: "Invalid JSON" }, 400);
+  }
+
+  if (
+    !input ||
+    typeof input.username !== "string" ||
+    !/^[a-zA-Z0-9_.-]{3,64}$/.test(input.username) ||
+    typeof input.password !== "string" ||
+    (input.password !== "" &&
+      (input.password.length < 8 || input.password.length > 256)) ||
+    typeof input.photo !== "string" ||
+    input.photo.length > 350_000 ||
+    (input.photo !== "" &&
+      !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(
+        input.photo,
+      ))
+  ) {
+    return c.json(
+      {
+        error:
+          "Use a 3–64 character username, an 8–256 character password, and a PNG, JPEG, or WebP photo under 250 KB.",
+      },
+      400,
+    );
+  }
+
+  const existing = db
+    .select()
+    .from(users)
+    .where(eq(users.username, input.username))
+    .get();
+
+  if (existing && existing.id !== c.get("user").id) {
+    return c.json({ error: "Username is already taken" }, 409);
+  }
+
+  const passwordHash = input.password
+    ? await hash(input.password, {
+        type: argon2id,
+        memoryCost: 65536,
+        timeCost: 3,
+        parallelism: 1,
+      })
+    : undefined;
+  const user = db
+    .update(users)
+    .set({
+      username: input.username,
+      photo: input.photo || null,
+      ...(passwordHash ? { passwordHash } : {}),
+    })
+    .where(eq(users.id, c.get("user").id))
+    .returning()
+    .get()!;
+
+  if (passwordHash) {
+    db.delete(sessions)
+      .where(and(eq(sessions.userId, user.id), gt(sessions.expiresAt, 0)))
+      .run();
+    return startSession(c, user);
+  }
+
+  return c.json({
+    user: publicUser(user),
+    registrationAllowed: isHostRequest(c),
+    expiresAt: c.get("expiresAt"),
+  });
 });
