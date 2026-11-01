@@ -56,6 +56,18 @@ export type {
 } from "./contracts/index.js";
 
 export type {
+  TranscriptionModel,
+  TranscriptionProvider,
+  TranscriptionCatalogResponse,
+  TranscriptionDefaults,
+  TranscribeEndFrame,
+  TranscribeClientFrame,
+  TranscribeServerFrame,
+  TranscriptionKeyStatus,
+  UpdateTranscriptionKeyInput,
+} from "./contracts/index.js";
+
+export type {
   StatusCpu,
   StatusDatabase,
   StatusMemory,

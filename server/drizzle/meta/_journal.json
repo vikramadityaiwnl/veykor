@@ -85,6 +85,20 @@
       "when": 1793539779145,
       "tag": "0011_slim_human_cannonball",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1793542694039,
+      "tag": "0012_serious_dexter_bennett",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1793547822819,
+      "tag": "0013_nervous_moonstone",
+      "breakpoints": true
     }
   ]
 }

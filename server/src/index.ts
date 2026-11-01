@@ -12,6 +12,7 @@ import { statusRoute } from "./routes/status.js";
 import { chatProvider } from "./chat/chat-runner.js";
 import { migrateStoredConversations } from "./chat/conversations.js";
 import { chatRoute } from "./routes/chat.js";
+import { handleTranscribeUpgrade, isTranscribeUpgrade } from "./transcribe/live.js";
 
 runMigrations();
 await migrateStoredConversations();
@@ -40,9 +41,17 @@ app.route("/api/health", healthRoute);
 
 app.notFound((c) => c.json({ error: "Not found" }, 404));
 
-serve({ fetch: app.fetch, port }, (info) => {
+const server = serve({ fetch: app.fetch, port }, (info) => {
   console.log(`veykor API listening on http://localhost:${info.port}`);
   console.log(`SQLite database: ${dbPath}`);
+});
+
+server.on("upgrade", (request, socket, head) => {
+  if (isTranscribeUpgrade(request)) {
+    handleTranscribeUpgrade(request, socket, head);
+  } else {
+    socket.destroy();
+  }
 });
 
 export type AppType = typeof app;

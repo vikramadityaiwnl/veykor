@@ -1,4 +1,4 @@
-import type { ChatDefaults, GeneralPreferences } from "@veykor/shared";
+import type { ChatDefaults, GeneralPreferences, TranscriptionDefaults } from "@veykor/shared";
 import { eq } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { users } from "../db/schema.js";
@@ -6,6 +6,9 @@ import { Hono } from "hono";
 import { requireAuth, type AuthEnv } from "../auth/auth.js";
 import { getSettings } from "../settings/settings.js";
 import { parseChatDefaults, validChatDefaults } from "../settings/chat-defaults.js";
+import { getTranscriptionCatalog } from "../settings/transcription.js";
+import { parseTranscriptionDefaults, validTranscriptionDefaults } from "../settings/transcription-defaults.js";
+import { keyStatus, validTranscriptionKey } from "../settings/transcription-key.js";
 
 export const settingsRoute = new Hono<AuthEnv>();
 
@@ -77,4 +80,68 @@ settingsRoute.put("/chat-defaults", async (c) => {
     .run();
 
   return c.json(parseChatDefaults(input));
+});
+
+settingsRoute.get("/transcription-catalog", (c) =>
+  c.json(getTranscriptionCatalog(c.get("user").id)),
+);
+
+settingsRoute.get("/transcription-key", (c) => {
+  const user = db
+    .select({ transcriptionApiKey: users.transcriptionApiKey })
+    .from(users)
+    .where(eq(users.id, c.get("user").id))
+    .get()!;
+
+  return c.json(keyStatus(user.transcriptionApiKey));
+});
+
+settingsRoute.put("/transcription-key", async (c) => {
+  const input: unknown = await c.req.json().catch(() => null);
+
+  if (!validTranscriptionKey(input)) {
+    return c.json({ error: "Enter a valid Model API key." }, 400);
+  }
+
+  const key = input.key.trim();
+
+  db.update(users)
+    .set({ transcriptionApiKey: key })
+    .where(eq(users.id, c.get("user").id))
+    .run();
+
+  return c.json(keyStatus(key));
+});
+
+settingsRoute.get("/transcription-defaults", (c) => {
+  const user = db
+    .select({ transcriptionDefaults: users.transcriptionDefaults })
+    .from(users)
+    .where(eq(users.id, c.get("user").id))
+    .get()!;
+
+  return c.json(parseTranscriptionDefaults(user.transcriptionDefaults));
+});
+
+settingsRoute.put("/transcription-defaults", async (c) => {
+  const input: unknown = await c.req.json().catch(() => null);
+
+  if (!validTranscriptionDefaults(input)) {
+    return c.json(
+      { error: "Choose a supported transcription provider and model." },
+      400,
+    );
+  }
+
+  db.update(users)
+    .set({
+      transcriptionDefaults: JSON.stringify({
+        providerId: input.providerId,
+        modelId: input.modelId,
+      } satisfies TranscriptionDefaults),
+    })
+    .where(eq(users.id, c.get("user").id))
+    .run();
+
+  return c.json(parseTranscriptionDefaults(input));
 });

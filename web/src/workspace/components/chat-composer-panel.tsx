@@ -1,7 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatPermissionMode, ChatAttachment, ChatProvider, ChatReasoningEffort, ChatUsage, Project } from "@veykor/shared";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCube, faPaperclip, faMicrophone, faArrowUp, faStop } from "@fortawesome/free-solid-svg-icons";
+import { faCube, faPaperclip, faArrowUp, faStop } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "@astryxdesign/core/Button";
 import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
@@ -10,11 +10,13 @@ import { ChatContextProgress } from "./chat-context-progress";
 import { ChatEffortSelection } from "./chat-effort-selection";
 import { ChatPermissionSelection } from "./chat-permission-selection";
 import { ComposerProjectContext } from "./composer-project-context";
+import { ComposerTranscribeButton } from "./composer-transcribe-button";
 import { Banner } from "@astryxdesign/core/Banner";
 import { ComposerAttachment } from "./composer-attachment";
 import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
 import { getAttachmentKind, isImageFile, openInNewTab, readFileAsDataUrl } from "../chat-attachments";
+import { appendTranscript, useTranscribeRecorder } from "../transcribe-recorder";
 
 interface Props {
   permissionMode: ChatPermissionMode;
@@ -50,6 +52,28 @@ export function ChatComposerPanel(props: Props) {
   const [attachmentError, setAttachmentError] = useState("");
   const [isReadingFiles, setIsReadingFiles] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const draftRef = useRef(draft);
+  const transcriptBase = useRef("");
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
+  const recorder = useTranscribeRecorder({
+    onStart: () => {
+      transcriptBase.current = draftRef.current;
+    },
+    onPartial: (text) => {
+      setDraft(appendTranscript(transcriptBase.current, text));
+    },
+    onFinal: (text) => {
+      transcriptBase.current = appendTranscript(transcriptBase.current, text);
+      setDraft(transcriptBase.current);
+    },
+  });
+
+  const transcribing =
+    recorder.status === "recording" || recorder.status === "stopping";
   const provider = props.providers.find(
     (entry) => entry.id === props.providerId,
   );
@@ -115,7 +139,19 @@ export function ChatComposerPanel(props: Props) {
     }
   }
 
+  function toggleTranscription() {
+    if (recorder.status === "idle") {
+      void recorder.start();
+    } else if (recorder.status === "recording") {
+      recorder.stop();
+    }
+  }
+
   function submit(value: string) {
+    if (transcribing) {
+      recorder.cancel();
+    }
+
     if (disabled) {
       return;
     }
@@ -206,8 +242,10 @@ export function ChatComposerPanel(props: Props) {
               aria-label="Message"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              disabled={disabled}
-              placeholder="What would you like to work on?"
+              disabled={disabled || transcribing}
+              placeholder={
+                transcribing ? "Listening…" : "What would you like to work on?"
+              }
               rows={3}
               className="veykor-composer-input w-full resize-none border-0 bg-transparent px-1 py-2 text-base font-light text-(--color-text-primary) outline-none placeholder:text-(--color-text-secondary)"
               onPaste={(event) => {
@@ -270,13 +308,11 @@ export function ChatComposerPanel(props: Props) {
                   onChange={props.onPermissionMode}
                 />
 
-                <Button
-                  label="Transcription coming soon"
-                  size="sm"
-                  variant="ghost"
-                  isIconOnly
-                  className="hover:bg-(--color-background-red)! hover:text-(--color-text-red)!"
-                  icon={<FontAwesomeIcon icon={faMicrophone} />}
+                <ComposerTranscribeButton
+                  status={recorder.status}
+                  error={recorder.error}
+                  onToggle={toggleTranscription}
+                  onDismissError={recorder.clearError}
                 />
 
                 {props.isRunning ? (

@@ -7,6 +7,8 @@ export const users = sqliteTable("users", {
   photo: text("photo"),
   theme: text("theme").notNull().default("dark"),
   chatDefaults: text("chat_defaults").notNull().default("{}"),
+  transcriptionDefaults: text("transcription_defaults").notNull().default("{}"),
+  transcriptionApiKey: text("transcription_api_key").notNull().default(""),
 });
 
 export const sessions = sqliteTable("sessions", {

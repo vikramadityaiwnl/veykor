@@ -1,6 +1,6 @@
 import { useSearchParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faGear, faHeartPulse, faPlug, faUser } from "@fortawesome/free-solid-svg-icons";
+import { faGear, faHeartPulse, faMicrophone, faPlug, faUser } from "@fortawesome/free-solid-svg-icons";
 import { Selector } from "@astryxdesign/core/Selector";
 import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { VStack } from "@astryxdesign/core/VStack";
@@ -9,8 +9,10 @@ import { SettingsGeneralPanel } from "./components/settings-general-panel";
 import { SettingsProvidersPanel } from "./components/settings-providers-panel";
 import { SettingsStatusPanel } from "./components/settings-status-panel";
 import { SettingsProfilePanel } from "./components/settings-profile-panel";
+import { SettingsTranscriptionPanel } from "./components/settings-transcription-panel";
 
-type SettingsTab = "general" | "providers" | "status" | "profile";
+type SettingsTab =
+  "general" | "providers" | "transcription" | "status" | "profile";
 
 export function SettingsPage() {
   const [params, setParams] = useSearchParams();
@@ -18,12 +20,20 @@ export function SettingsPage() {
   const rawTab = params.get("tab");
 
   const tab: SettingsTab =
-    rawTab === "providers" || rawTab === "status" || rawTab === "profile"
+    rawTab === "providers" ||
+    rawTab === "transcription" ||
+    rawTab === "status" ||
+    rawTab === "profile"
       ? rawTab
       : "general";
 
   function changeTab(value: string) {
-    if (value === "providers" || value === "status" || value === "profile") {
+    if (
+      value === "providers" ||
+      value === "transcription" ||
+      value === "status" ||
+      value === "profile"
+    ) {
       setParams({ tab: value });
       return;
     }
@@ -55,6 +65,11 @@ export function SettingsPage() {
               value: "providers",
               label: "Providers",
               icon: <FontAwesomeIcon icon={faPlug} />,
+            },
+            {
+              value: "transcription",
+              label: "Transcription",
+              icon: <FontAwesomeIcon icon={faMicrophone} />,
             },
             {
               value: "status",
@@ -96,6 +111,19 @@ export function SettingsPage() {
           />
 
           <Tab
+            value="transcription"
+            label="Transcription"
+            panelId="settings-panel-transcription"
+            selectedIcon={
+              <FontAwesomeIcon
+                icon={faMicrophone}
+                size="sm"
+                aria-hidden="true"
+              />
+            }
+          />
+
+          <Tab
             value="status"
             label="Status"
             panelId="settings-panel-status"
@@ -120,6 +148,8 @@ export function SettingsPage() {
         <SettingsGeneralPanel />
       ) : tab === "providers" ? (
         <SettingsProvidersPanel />
+      ) : tab === "transcription" ? (
+        <SettingsTranscriptionPanel />
       ) : tab === "profile" ? (
         <SettingsProfilePanel />
       ) : (
