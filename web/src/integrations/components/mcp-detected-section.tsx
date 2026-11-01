@@ -23,12 +23,13 @@ export function McpDetectedSection() {
   const status = useMcpDetectedStore((state) => state.status);
   const busyKey = useMcpDetectedStore((state) => state.busyKey);
   const error = useMcpDetectedStore((state) => state.error);
+  const lastTest = useMcpDetectedStore((state) => state.lastTest);
   const load = useMcpDetectedStore((state) => state.load);
   const refresh = useMcpDetectedStore((state) => state.refresh);
-  const importServer = useMcpDetectedStore((state) => state.importServer);
-  const importSource = useMcpDetectedStore((state) => state.importSource);
+  const testServer = useMcpDetectedStore((state) => state.testServer);
   const removeServer = useMcpDetectedStore((state) => state.removeServer);
   const clearError = useMcpDetectedStore((state) => state.clearError);
+  const clearTest = useMcpDetectedStore((state) => state.clearTest);
 
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(
     null,
@@ -86,21 +87,6 @@ export function McpDetectedSection() {
 
   return (
     <VStack gap={4} className="shrink-0">
-      <HStack gap={4} vAlign="center" justify="between" wrap="wrap">
-        <Heading level={2} weight="semibold">
-          Detected on this host
-        </Heading>
-
-        <Button
-          label="Rescan"
-          variant="ghost"
-          size="sm"
-          clickAction={() => {
-            void refresh();
-          }}
-        />
-      </HStack>
-
       {error ? (
         <Banner
           status="error"
@@ -110,49 +96,48 @@ export function McpDetectedSection() {
         />
       ) : null}
 
-      <Banner
-        status="warning"
-        title="Deleting here affects other apps"
-        description="These servers live in other apps' config files. Import copies a server into veykor; Delete removes it from its source file. veykor keeps a backup beside the original."
-      />
+      {lastTest && busyKey === "" ? (
+        <Banner
+          status={lastTest.ok ? "success" : "error"}
+          title={
+            lastTest.ok
+              ? `Connected · ${lastTest.toolCount} tool${lastTest.toolCount === 1 ? "" : "s"}`
+              : "Connection failed"
+          }
+          description={
+            lastTest.ok
+              ? lastTest.tools
+                  .slice(0, 10)
+                  .map((tool) => tool.name)
+                  .join(", ") || "No tools advertised."
+              : lastTest.error
+          }
+          isDismissable
+          onDismiss={clearTest}
+        />
+      ) : null}
 
       {sources.map((source) => (
         <VStack key={source.id} gap={2} className="shrink-0">
-          <HStack gap={4} vAlign="center" justify="between" wrap="wrap">
-            <VStack gap={1}>
-              <Heading level={3} weight="semibold">
-                {source.label}
-              </Heading>
+          <VStack gap={1}>
+            <Heading level={3} weight="semibold">
+              {source.label}
+            </Heading>
 
-              <Text type="supporting" color="secondary" maxLines={1}>
-                {source.path}
-              </Text>
-            </VStack>
-
-            {source.servers.some((server) => !server.imported) ? (
-              <Button
-                label="Import all"
-                variant="secondary"
-                size="sm"
-                isDisabled={busyKey !== ""}
-                clickAction={() => {
-                  void importSource(source.id);
-                }}
-              />
-            ) : null}
-          </HStack>
+            <Text type="supporting" color="secondary" maxLines={1}>
+              {source.path}
+            </Text>
+          </VStack>
 
           <SettingsGroup>
             {source.servers.map((server) => (
               <McpDetectedRow
                 key={server.key}
                 server={server}
-                isBusy={
-                  busyKey === detectedActionKey(source.id, server.key) ||
-                  busyKey === detectedActionKey(source.id, "*")
-                }
-                onImport={() => {
-                  void importServer(source.id, server.key);
+                isBusy={busyKey !== ""}
+                isTesting={busyKey === detectedActionKey(source.id, server.key)}
+                onTest={() => {
+                  void testServer(source.id, server.key);
                 }}
                 onRemove={() =>
                   setPendingDelete({

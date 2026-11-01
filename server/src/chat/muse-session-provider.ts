@@ -3,8 +3,9 @@ import { dirname, join, resolve } from "node:path";
 import type { ChatActivity, ChatApproval, ChatAttachment, ChatMessage, ChatPermissionMode, ChatRequest, ChatSession, ChatToolCall, ChatUsage } from "@veykor/shared";
 import type { ApprovalDecisionInput, FoldedItem, Session } from "@muse-code/sdk";
 import { spawnMuse } from "./muse-host.js";
+import { scanDetectedServers } from "../mcp/detect.js";
 import { listMcpServers } from "../mcp/store.js";
-import { toSessionMcpServers, type SessionMcpServerConfig } from "../mcp/session-config.js";
+import { mergeSessionMcpSources, toSessionMcpServers, type SessionMcpServerConfig } from "../mcp/session-config.js";
 import { metadataSession, projectFolder, readConversation, writeConversation, type ConversationMetadata, type StoredAttachment } from "./conversations.js";
 import { attachmentAvailable, attachmentBytes, stageAttachment } from "./attachments.js";
 import { dbPath } from "../db/client.js";
@@ -439,7 +440,14 @@ async function runtime(userId: number, id: string): Promise<Runtime> {
       }
     });
     const mcpServers = muse.mcpGranted
-      ? toSessionMcpServers(listMcpServers(userId))
+      ? toSessionMcpServers(
+          mergeSessionMcpSources(
+            listMcpServers(userId),
+            scanDetectedServers().flatMap((source) =>
+              source.entries.map((entry) => entry.input),
+            ),
+          ),
+        )
       : undefined;
 
     let session: Session;

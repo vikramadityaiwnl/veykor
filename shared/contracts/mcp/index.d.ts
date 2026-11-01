@@ -58,7 +58,6 @@ export interface McpDetectedServer {
   command: string;
   args: string[];
   url: string;
-  imported: boolean;
 }
 
 export interface McpDetectedSource {

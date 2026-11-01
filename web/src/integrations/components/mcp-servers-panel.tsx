@@ -11,6 +11,7 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { Spinner } from "@astryxdesign/core/Spinner";
 import { VStack } from "@astryxdesign/core/VStack";
 import { SettingsGroup } from "../../settings/components/settings-group";
+import { useMcpDetectedStore } from "../mcp-detected-store";
 import { useMcpServersStore } from "../mcp-servers-store";
 import { McpDetectedSection } from "./mcp-detected-section";
 import { McpServerDialog } from "./mcp-server-dialog";
@@ -31,6 +32,9 @@ export function McpServersPanel(props: Props) {
   const remove = useMcpServersStore((state) => state.remove);
   const testSaved = useMcpServersStore((state) => state.testSaved);
   const clearTest = useMcpServersStore((state) => state.clearTest);
+  const detectedSources = useMcpDetectedStore((state) => state.sources);
+  const detectedStatus = useMcpDetectedStore((state) => state.status);
+  const detectedRefresh = useMcpDetectedStore((state) => state.refresh);
 
   const [dialog, setDialog] = useState<{ server: McpServer | null } | null>(
     null,
@@ -115,8 +119,26 @@ export function McpServersPanel(props: Props) {
       isScrollable
       className="min-h-0 flex-1 overscroll-contain"
     >
-      {servers.length > 0 ? (
-        <HStack hAlign="end">
+      {detectedSources.length > 0 ? (
+        <Banner
+          status="warning"
+          title="Deleting here affects other apps"
+          description="Detected servers live in other apps' config files and are used directly in chat. Delete removes a server from its source file; veykor keeps a backup beside the original."
+        />
+      ) : null}
+
+      {servers.length > 0 || detectedSources.length > 0 ? (
+        <HStack hAlign="end" gap={2}>
+          <Button
+            label="Rescan"
+            variant="ghost"
+            size="sm"
+            isDisabled={detectedStatus === "loading"}
+            clickAction={() => {
+              void detectedRefresh();
+            }}
+          />
+
           <Button
             label="Add server"
             variant="primary"
@@ -148,7 +170,7 @@ export function McpServersPanel(props: Props) {
         />
       ) : null}
 
-      {servers.length === 0 ? (
+      {servers.length === 0 && detectedSources.length === 0 ? (
         <Center className="min-h-full shrink-0">
           <EmptyState
             title="No MCP servers yet"
@@ -170,7 +192,7 @@ export function McpServersPanel(props: Props) {
             }
           />
         </Center>
-      ) : (
+      ) : servers.length > 0 ? (
         <SettingsGroup>
           {servers.map((server) => (
             <McpServerRow
@@ -188,7 +210,7 @@ export function McpServersPanel(props: Props) {
             />
           ))}
         </SettingsGroup>
-      )}
+      ) : null}
 
       <McpDetectedSection />
 

@@ -1,21 +1,19 @@
 import { create } from "zustand";
-import type { McpDetectedResponse, McpDetectedSource, McpServer } from "@veykor/shared";
+import type { McpDetectedResponse, McpDetectedSource, McpTestResult } from "@veykor/shared";
 import { useAuthStore } from "../auth/auth-store";
-import { useMcpServersStore } from "./mcp-servers-store";
 
 interface McpDetectedState {
   sources: McpDetectedSource[];
   status: "idle" | "loading" | "ready" | "error";
   busyKey: string;
   error: string;
+  lastTest: McpTestResult | null;
   load: () => Promise<void>;
   refresh: () => Promise<void>;
-  importServer: (sourceId: string, serverKey: string) => Promise<boolean>;
-  importSource: (
-    sourceId: string,
-  ) => Promise<{ imported: number; failed: number }>;
+  testServer: (sourceId: string, serverKey: string) => Promise<void>;
   removeServer: (sourceId: string, serverKey: string) => Promise<boolean>;
   clearError: () => void;
+  clearTest: () => void;
 }
 
 let loadVersion = 0;
@@ -54,6 +52,7 @@ export const useMcpDetectedStore = create<McpDetectedState>()((set, get) => ({
   status: "idle",
   busyKey: "",
   error: "",
+  lastTest: null,
 
   load: async () => {
     if (get().status === "loading" || get().status === "ready") {
@@ -93,84 +92,38 @@ export const useMcpDetectedStore = create<McpDetectedState>()((set, get) => ({
     }
   },
 
-  importServer: async (sourceId, serverKey) => {
-    set({ busyKey: detectedActionKey(sourceId, serverKey), error: "" });
+  testServer: async (sourceId, serverKey) => {
+    set({
+      busyKey: detectedActionKey(sourceId, serverKey),
+      error: "",
+      lastTest: null,
+    });
 
     try {
-      const server = (await requestJson("/api/mcp/detected/import", {
+      const result = (await requestJson("/api/mcp/detected/test", {
         sourceId,
         serverKey,
-      })) as McpServer;
+      })) as McpTestResult;
 
-      useMcpServersStore.setState((state) => ({
-        servers: [...state.servers, server],
-      }));
-
-      await get().refresh();
-
-      return true;
+      set({ lastTest: result });
     } catch (requestError) {
       set({
         error:
           requestError instanceof Error
             ? requestError.message
-            : "Unable to import this server.",
+            : "Unable to test this server.",
       });
-
-      return false;
-    } finally {
-      set({ busyKey: "" });
-    }
-  },
-
-  importSource: async (sourceId) => {
-    const source = get().sources.find((entry) => entry.id === sourceId);
-    const pending = (source?.servers || []).filter(
-      (server) => !server.imported,
-    );
-
-    let imported = 0;
-    let failed = 0;
-
-    set({ busyKey: detectedActionKey(sourceId, "*"), error: "" });
-
-    try {
-      for (const server of pending) {
-        try {
-          const created = (await requestJson("/api/mcp/detected/import", {
-            sourceId,
-            serverKey: server.key,
-          })) as McpServer;
-
-          useMcpServersStore.setState((state) => ({
-            servers: [...state.servers, created],
-          }));
-
-          imported += 1;
-        } catch {
-          failed += 1;
-        }
-      }
-
-      if (failed > 0) {
-        set({
-          error:
-            failed === 1
-              ? "One server could not be imported."
-              : `${failed} servers could not be imported.`,
-        });
-      }
-
-      await get().refresh();
-
-      return { imported, failed };
     } finally {
       set({ busyKey: "" });
     }
   },
 
   removeServer: async (sourceId, serverKey) => {
-    set({ busyKey: detectedActionKey(sourceId, serverKey), error: "" });
+    set({
+      busyKey: detectedActionKey(sourceId, serverKey),
+      error: "",
+      lastTest: null,
+    });
 
     try {
       await requestJson("/api/mcp/detected/remove", { sourceId, serverKey });
@@ -192,6 +145,8 @@ export const useMcpDetectedStore = create<McpDetectedState>()((set, get) => ({
   },
 
   clearError: () => set({ error: "" }),
+
+  clearTest: () => set({ lastTest: null }),
 }));
 
 useAuthStore.subscribe((state, previous) => {
@@ -203,6 +158,7 @@ useAuthStore.subscribe((state, previous) => {
       status: "idle",
       busyKey: "",
       error: "",
+      lastTest: null,
     });
   }
 });

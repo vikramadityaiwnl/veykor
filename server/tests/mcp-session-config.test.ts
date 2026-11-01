@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { McpServer } from "@veykor/shared";
-import { toSessionMcpServers } from "../src/mcp/session-config.js";
+import type { CreateMcpServerInput, McpServer } from "@veykor/shared";
+import { mergeSessionMcpSources, toSessionMcpServers } from "../src/mcp/session-config.js";
 
 function server(partial: Partial<McpServer>): McpServer {
   return {
@@ -98,4 +98,52 @@ test("chat omits empty collections and returns undefined without servers", () =>
 
   assert.equal(toSessionMcpServers([]), undefined);
   assert.equal(toSessionMcpServers([server({ enabled: false })]), undefined);
+});
+
+test("chat merges managed and detected servers with managed winning duplicates", () => {
+  const detected: CreateMcpServerInput[] = [
+    {
+      name: "Also Docs",
+      transport: "stdio",
+      command: "npx",
+      args: ["-y", "mcp-server-package"],
+      env: {},
+      url: "",
+      headers: {},
+      enabled: true,
+    },
+    {
+      name: "Shop",
+      transport: "stdio",
+      command: "/bin/shop-mcp",
+      args: ["--fast"],
+      env: {},
+      url: "",
+      headers: {},
+      enabled: true,
+    },
+    {
+      name: "Shop copy",
+      transport: "stdio",
+      command: "/bin/shop-mcp",
+      args: ["--fast"],
+      env: {},
+      url: "",
+      headers: {},
+      enabled: true,
+    },
+  ];
+
+  const merged = mergeSessionMcpSources([server({ name: "Docs" })], detected);
+
+  assert.deepEqual(
+    merged.map((entry) => entry.name),
+    ["Docs", "Shop"],
+  );
+  assert.ok(merged.every((entry) => entry.enabled));
+
+  const mapped = toSessionMcpServers(merged);
+
+  assert.deepEqual(Object.keys(mapped || {}).sort(), ["Docs", "Shop"]);
+  assert.equal(merged.length, 2);
 });

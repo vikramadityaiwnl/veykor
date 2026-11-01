@@ -1,4 +1,16 @@
-import type { McpServer } from "@veykor/shared";
+import type { CreateMcpServerInput, McpServer, McpTransport } from "@veykor/shared";
+import { detectedFingerprint } from "./detect.js";
+
+export interface SessionMcpSource {
+  name: string;
+  enabled: boolean;
+  transport: McpTransport;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  url: string;
+  headers: Record<string, string>;
+}
 
 export type SessionMcpServerConfig =
   | {
@@ -15,8 +27,28 @@ export type SessionMcpServerConfig =
       mode?: "required" | "optional";
     };
 
+export function mergeSessionMcpSources(
+  managed: McpServer[],
+  detected: CreateMcpServerInput[],
+): SessionMcpSource[] {
+  const seen = new Set(managed.map(detectedFingerprint));
+
+  const sources: SessionMcpSource[] = [...managed];
+
+  for (const entry of detected) {
+    if (seen.has(detectedFingerprint(entry))) {
+      continue;
+    }
+
+    seen.add(detectedFingerprint(entry));
+    sources.push({ ...entry, enabled: true });
+  }
+
+  return sources;
+}
+
 export function toSessionMcpServers(
-  servers: McpServer[],
+  servers: SessionMcpSource[],
 ): Record<string, SessionMcpServerConfig> | undefined {
   const result: Record<string, SessionMcpServerConfig> = {};
 

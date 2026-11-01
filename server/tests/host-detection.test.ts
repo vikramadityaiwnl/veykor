@@ -4,7 +4,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { DetectedSkillsResponse, McpDetectedResponse, McpServer, McpServersResponse } from "@veykor/shared";
+import type { DetectedSkillsResponse, McpDetectedResponse, McpTestResult } from "@veykor/shared";
 import { normalizeDetectedEntry, readDetectedEntry, removeDetectedEntry, scanDetectedServers } from "../src/mcp/detect.js";
 import { scanDetectedSkills } from "../src/skills/detect.js";
 
@@ -21,6 +21,15 @@ function buildFixtureHome(): string {
           args: ["-y", "docs-server"],
           env: { API_KEY: "key" },
         },
+        Echo: {
+          command: process.execPath,
+          args: [
+            "--import",
+            join(process.cwd(), "node_modules", "tsx", "dist", "loader.mjs"),
+            join(process.cwd(), "tests", "fixtures", "mcp-echo-server.ts"),
+          ],
+        },
+        Missing: { command: "veykor-definitely-missing-binary" },
         Remote: { type: "streamable-http", url: "https://example.com/mcp" },
         Broken: { command: "", url: "not-a-url" },
       },
@@ -105,7 +114,7 @@ test("detectors normalize entries and skip malformed files", () => {
     assert.equal(cursor.label, "Cursor");
     assert.deepEqual(
       cursor.entries.map((entry) => entry.name),
-      ["Docs", "Remote"],
+      ["Docs", "Echo", "Missing", "Remote"],
     );
     assert.deepEqual(cursor.entries[0].input.args, ["-y", "docs-server"]);
 
@@ -138,7 +147,7 @@ test("detected entries can be re-read and removed with a backup", () => {
     const entry = readDetectedEntry(home, "cursor", "Docs");
     assert.equal(entry?.transport, "stdio");
     assert.equal(entry?.env.API_KEY, "key");
-    assert.equal(readDetectedEntry(home, "cursor", "Missing"), null);
+    assert.equal(readDetectedEntry(home, "cursor", "Gone"), null);
     assert.equal(readDetectedEntry(home, "nope", "Docs"), null);
 
     const file = join(home, ".cursor", "mcp.json");
@@ -154,6 +163,8 @@ test("detected entries can be re-read and removed with a backup", () => {
     };
     assert.deepEqual(Object.keys(remaining.mcpServers).sort(), [
       "Broken",
+      "Echo",
+      "Missing",
       "Remote",
     ]);
 
@@ -171,7 +182,7 @@ test("detected entries can be re-read and removed with a backup", () => {
   }
 });
 
-test("detection import and remove work over the api", async () => {
+test("detection test and remove work over the api", async () => {
   const home = buildFixtureHome();
   const folder = mkdtempSync(join(tmpdir(), "veykor-detect-"));
   const port = "31998";
@@ -246,10 +257,11 @@ test("detection import and remove work over the api", async () => {
       detected.sources.map((source) => source.id),
       ["claude-code", "cursor"],
     );
-    assert.ok(
-      detected.sources.every((source) =>
-        source.servers.every((server) => !server.imported),
-      ),
+    assert.deepEqual(
+      detected.sources
+        .find((source) => source.id === "cursor")!
+        .servers.map((server) => server.key),
+      ["Docs", "Echo", "Missing", "Remote"],
     );
 
     const skills = (await (
@@ -263,7 +275,7 @@ test("detection import and remove work over the api", async () => {
     assert.equal(
       (
         await request(
-          "mcp/detected/import",
+          "mcp/detected/test",
           cookie,
           { sourceId: "cursor" },
           "POST",
@@ -274,50 +286,37 @@ test("detection import and remove work over the api", async () => {
     assert.equal(
       (
         await request(
-          "mcp/detected/import",
+          "mcp/detected/test",
           cookie,
-          { sourceId: "cursor", serverKey: "Missing" },
+          { sourceId: "cursor", serverKey: "Gone" },
           "POST",
         )
       ).status,
       404,
     );
 
-    const importedResponse = await request(
-      "mcp/detected/import",
-      cookie,
-      { sourceId: "cursor", serverKey: "Docs" },
-      "POST",
-    );
-    assert.equal(importedResponse.status, 201);
-    const imported = (await importedResponse.json()) as McpServer;
-    assert.equal(imported.name, "Docs");
-    assert.equal(imported.command, "npx");
+    const echoProbe = (await (
+      await request(
+        "mcp/detected/test",
+        cookie,
+        { sourceId: "cursor", serverKey: "Echo" },
+        "POST",
+      )
+    ).json()) as McpTestResult;
+    assert.equal(echoProbe.ok, true);
+    assert.equal(echoProbe.toolCount, 1);
+    assert.equal(echoProbe.tools[0].name, "echo");
 
-    const relisted = (await (
-      await request("mcp/detected", cookie)
-    ).json()) as McpDetectedResponse;
-    const docs = relisted.sources
-      .find((source) => source.id === "cursor")!
-      .servers.find((server) => server.key === "Docs")!;
-    assert.equal(docs.imported, true);
-
-    assert.equal(
-      (
-        await request(
-          "mcp/detected/import",
-          cookie,
-          { sourceId: "cursor", serverKey: "Docs" },
-          "POST",
-        )
-      ).status,
-      409,
-    );
-
-    const managed = (await (
-      await request("mcp", cookie)
-    ).json()) as McpServersResponse;
-    assert.equal(managed.servers.length, 1);
+    const missingProbe = (await (
+      await request(
+        "mcp/detected/test",
+        cookie,
+        { sourceId: "cursor", serverKey: "Missing" },
+        "POST",
+      )
+    ).json()) as McpTestResult;
+    assert.equal(missingProbe.ok, false);
+    assert.ok(missingProbe.error.length > 0);
 
     const removed = await request(
       "mcp/detected/remove",
@@ -346,7 +345,7 @@ test("detection import and remove work over the api", async () => {
       afterRemove.sources
         .find((source) => source.id === "cursor")!
         .servers.map((server) => server.key),
-      ["Docs"],
+      ["Docs", "Echo", "Missing"],
     );
   } finally {
     await new Promise<void>((resolve) => {

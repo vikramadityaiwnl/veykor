@@ -2,14 +2,14 @@ import type { McpDetectedServer } from "@veykor/shared";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
-import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 
 interface Props {
   server: McpDetectedServer;
   isBusy: boolean;
-  onImport: () => void;
+  isTesting: boolean;
+  onTest: () => void;
   onRemove: () => void;
 }
 
@@ -43,28 +43,16 @@ export function McpDetectedRow(props: Props) {
             {detail}
           </Text>
         ) : null}
-
-        {server.imported ? (
-          <HStack gap={2} vAlign="center">
-            <StatusDot variant="success" label="Imported into veykor" />
-
-            <Text type="supporting" color="secondary">
-              Imported
-            </Text>
-          </HStack>
-        ) : null}
       </VStack>
 
       <HStack gap={3} vAlign="center" wrap="wrap">
-        {server.imported ? null : (
-          <Button
-            label={props.isBusy ? "Importing…" : "Import"}
-            variant="secondary"
-            size="sm"
-            isDisabled={props.isBusy}
-            clickAction={props.onImport}
-          />
-        )}
+        <Button
+          label={props.isTesting ? "Testing…" : "Test"}
+          variant="secondary"
+          size="sm"
+          isDisabled={props.isBusy}
+          clickAction={props.onTest}
+        />
 
         <Button
           label="Delete"

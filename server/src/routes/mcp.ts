@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import type { McpDetectedAction } from "@veykor/shared";
 import { requireAuth, type AuthEnv } from "../auth/auth.js";
 import { probeMcpServer } from "../mcp/client.js";
-import { detectedFingerprint, readDetectedEntry, removeDetectedEntry, scanDetectedServers } from "../mcp/detect.js";
+import { readDetectedEntry, removeDetectedEntry, scanDetectedServers } from "../mcp/detect.js";
 import { createMcpServer, deleteMcpServer, listMcpServers, readMcpServer, recordMcpProbe, updateMcpServer } from "../mcp/store.js";
 import { normalizeMcpInput, validMcpInput } from "../mcp/validation.js";
 
@@ -61,10 +61,6 @@ mcpRoute.delete("/:id", (c) => {
 });
 
 mcpRoute.get("/detected", (c) => {
-  const imported = new Set(
-    listMcpServers(c.get("user").id).map(detectedFingerprint),
-  );
-
   return c.json({
     sources: scanDetectedServers().map((source) => ({
       id: source.id,
@@ -77,7 +73,6 @@ mcpRoute.get("/detected", (c) => {
         command: entry.input.command,
         args: entry.input.args,
         url: entry.input.url,
-        imported: imported.has(detectedFingerprint(entry.input)),
       })),
     })),
   });
@@ -100,7 +95,7 @@ function validDetectedAction(input: unknown): input is McpDetectedAction {
   );
 }
 
-mcpRoute.post("/detected/import", async (c) => {
+mcpRoute.post("/detected/test", async (c) => {
   const input: unknown = await c.req.json().catch(() => null);
 
   if (!validDetectedAction(input)) {
@@ -109,32 +104,11 @@ mcpRoute.post("/detected/import", async (c) => {
 
   const entry = readDetectedEntry(homedir(), input.sourceId, input.serverKey);
 
-  if (!entry) {
+  if (!entry || !validMcpInput(entry)) {
     return c.json({ error: "Detected server not found" }, 404);
   }
 
-  if (!validMcpInput(entry)) {
-    return c.json({ error: "This server can't be imported." }, 400);
-  }
-
-  const managed = listMcpServers(c.get("user").id);
-
-  if (
-    managed.some(
-      (server) => detectedFingerprint(server) === detectedFingerprint(entry),
-    )
-  ) {
-    return c.json({ error: "This server is already imported." }, 409);
-  }
-
-  if (managed.length >= 50) {
-    return c.json({ error: "You can add up to 50 MCP servers." }, 400);
-  }
-
-  return c.json(
-    createMcpServer(c.get("user").id, normalizeMcpInput(entry)),
-    201,
-  );
+  return c.json(await probeMcpServer(normalizeMcpInput(entry)));
 });
 
 mcpRoute.post("/detected/remove", async (c) => {

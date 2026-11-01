@@ -77,6 +77,12 @@ export function SkillsDetectedPanel(props: Props) {
       isScrollable
       className="min-h-0 flex-1 overscroll-contain"
     >
+      <Banner
+        status="warning"
+        title="Detected skills belong to other apps"
+        description="These skills were found in other apps' folders on this host."
+      />
+
       {sources.map((source) => (
         <VStack key={source.id} gap={2} className="shrink-0">
           <VStack gap={1}>
