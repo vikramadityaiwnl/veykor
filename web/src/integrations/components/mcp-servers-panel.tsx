@@ -12,6 +12,7 @@ import { Spinner } from "@astryxdesign/core/Spinner";
 import { VStack } from "@astryxdesign/core/VStack";
 import { SettingsGroup } from "../../settings/components/settings-group";
 import { useMcpServersStore } from "../mcp-servers-store";
+import { McpDetectedSection } from "./mcp-detected-section";
 import { McpServerDialog } from "./mcp-server-dialog";
 import { McpServerRow } from "./mcp-server-row";
 
@@ -188,6 +189,8 @@ export function McpServersPanel(props: Props) {
           ))}
         </SettingsGroup>
       )}
+
+      <McpDetectedSection />
 
       {dialog ? (
         <McpServerDialog

@@ -1,6 +1,9 @@
+import { homedir } from "node:os";
 import { Hono } from "hono";
+import type { McpDetectedAction } from "@veykor/shared";
 import { requireAuth, type AuthEnv } from "../auth/auth.js";
 import { probeMcpServer } from "../mcp/client.js";
+import { detectedFingerprint, readDetectedEntry, removeDetectedEntry, scanDetectedServers } from "../mcp/detect.js";
 import { createMcpServer, deleteMcpServer, listMcpServers, readMcpServer, recordMcpProbe, updateMcpServer } from "../mcp/store.js";
 import { normalizeMcpInput, validMcpInput } from "../mcp/validation.js";
 
@@ -52,6 +55,103 @@ mcpRoute.delete("/:id", (c) => {
 
   if (!deleted) {
     return c.json({ error: "MCP server not found" }, 404);
+  }
+
+  return c.json({ ok: true });
+});
+
+mcpRoute.get("/detected", (c) => {
+  const imported = new Set(
+    listMcpServers(c.get("user").id).map(detectedFingerprint),
+  );
+
+  return c.json({
+    sources: scanDetectedServers().map((source) => ({
+      id: source.id,
+      label: source.label,
+      path: source.path,
+      servers: source.entries.map((entry) => ({
+        key: entry.key,
+        name: entry.name,
+        transport: entry.input.transport,
+        command: entry.input.command,
+        args: entry.input.args,
+        url: entry.input.url,
+        imported: imported.has(detectedFingerprint(entry.input)),
+      })),
+    })),
+  });
+});
+
+function validDetectedAction(input: unknown): input is McpDetectedAction {
+  if (!input || typeof input !== "object") {
+    return false;
+  }
+
+  const candidate = input as Record<string, unknown>;
+
+  return (
+    typeof candidate.sourceId === "string" &&
+    candidate.sourceId.length > 0 &&
+    candidate.sourceId.length <= 100 &&
+    typeof candidate.serverKey === "string" &&
+    candidate.serverKey.length > 0 &&
+    candidate.serverKey.length <= 1000
+  );
+}
+
+mcpRoute.post("/detected/import", async (c) => {
+  const input: unknown = await c.req.json().catch(() => null);
+
+  if (!validDetectedAction(input)) {
+    return c.json({ error: "Choose a detected server." }, 400);
+  }
+
+  const entry = readDetectedEntry(homedir(), input.sourceId, input.serverKey);
+
+  if (!entry) {
+    return c.json({ error: "Detected server not found" }, 404);
+  }
+
+  if (!validMcpInput(entry)) {
+    return c.json({ error: "This server can't be imported." }, 400);
+  }
+
+  const managed = listMcpServers(c.get("user").id);
+
+  if (
+    managed.some(
+      (server) => detectedFingerprint(server) === detectedFingerprint(entry),
+    )
+  ) {
+    return c.json({ error: "This server is already imported." }, 409);
+  }
+
+  if (managed.length >= 50) {
+    return c.json({ error: "You can add up to 50 MCP servers." }, 400);
+  }
+
+  return c.json(
+    createMcpServer(c.get("user").id, normalizeMcpInput(entry)),
+    201,
+  );
+});
+
+mcpRoute.post("/detected/remove", async (c) => {
+  const input: unknown = await c.req.json().catch(() => null);
+
+  if (!validDetectedAction(input)) {
+    return c.json({ error: "Choose a detected server." }, 400);
+  }
+
+  const removed = removeDetectedEntry(
+    homedir(),
+    input.sourceId,
+    input.serverKey,
+  );
+
+  if (!removed) {
+    return c.json({ error: "Detected server not found" }, 404);
   }
 
   return c.json({ ok: true });

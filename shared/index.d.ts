@@ -84,4 +84,14 @@ export type {
   UpdateMcpServerInput,
   McpTool,
   McpTestResult,
+  McpDetectedServer,
+  McpDetectedSource,
+  McpDetectedResponse,
+  McpDetectedAction,
+} from "./contracts/index.js";
+
+export type {
+  DetectedSkill,
+  DetectedSkillSource,
+  DetectedSkillsResponse,
 } from "./contracts/index.js";

@@ -51,6 +51,32 @@ export interface McpTool {
   description: string;
 }
 
+export interface McpDetectedServer {
+  key: string;
+  name: string;
+  transport: McpTransport;
+  command: string;
+  args: string[];
+  url: string;
+  imported: boolean;
+}
+
+export interface McpDetectedSource {
+  id: string;
+  label: string;
+  path: string;
+  servers: McpDetectedServer[];
+}
+
+export interface McpDetectedResponse {
+  sources: McpDetectedSource[];
+}
+
+export interface McpDetectedAction {
+  sourceId: string;
+  serverKey: string;
+}
+
 export interface McpTestResult {
   ok: boolean;
   tools: McpTool[];

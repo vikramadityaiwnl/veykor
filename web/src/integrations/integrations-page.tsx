@@ -7,6 +7,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { WorkspacePageHeader } from "../workspace/components/workspace-page-header";
 import { IntegrationsComingSoon } from "./components/integrations-coming-soon";
 import { McpServersPanel } from "./components/mcp-servers-panel";
+import { SkillsDetectedPanel } from "./components/skills-detected-panel";
 
 type IntegrationsTab = "mcp" | "plugins" | "extensions" | "skills";
 
@@ -52,6 +53,11 @@ export function IntegrationsPage() {
               icon: <FontAwesomeIcon icon={faPlug} />,
             },
             {
+              value: "skills",
+              label: "Skills",
+              icon: <FontAwesomeIcon icon={faWandMagicSparkles} />,
+            },
+            {
               value: "plugins",
               label: "Plugins",
               icon: <FontAwesomeIcon icon={faPuzzlePiece} />,
@@ -60,11 +66,6 @@ export function IntegrationsPage() {
               value: "extensions",
               label: "Extensions",
               icon: <FontAwesomeIcon icon={faShapes} />,
-            },
-            {
-              value: "skills",
-              label: "Skills",
-              icon: <FontAwesomeIcon icon={faWandMagicSparkles} />,
             },
           ]}
         />
@@ -84,6 +85,19 @@ export function IntegrationsPage() {
             panelId="integrations-panel-mcp"
             selectedIcon={
               <FontAwesomeIcon icon={faPlug} size="sm" aria-hidden="true" />
+            }
+          />
+
+          <Tab
+            value="skills"
+            label="Skills"
+            panelId="integrations-panel-skills"
+            selectedIcon={
+              <FontAwesomeIcon
+                icon={faWandMagicSparkles}
+                size="sm"
+                aria-hidden="true"
+              />
             }
           />
 
@@ -108,24 +122,13 @@ export function IntegrationsPage() {
               <FontAwesomeIcon icon={faShapes} size="sm" aria-hidden="true" />
             }
           />
-
-          <Tab
-            value="skills"
-            label="Skills"
-            panelId="integrations-panel-skills"
-            selectedIcon={
-              <FontAwesomeIcon
-                icon={faWandMagicSparkles}
-                size="sm"
-                aria-hidden="true"
-              />
-            }
-          />
         </TabList>
       </VStack>
 
       {tab === "mcp" ? (
         <McpServersPanel panelId="integrations-panel-mcp" />
+      ) : tab === "skills" ? (
+        <SkillsDetectedPanel panelId="integrations-panel-skills" />
       ) : tab === "plugins" ? (
         <IntegrationsComingSoon
           panelId="integrations-panel-plugins"
@@ -140,7 +143,7 @@ export function IntegrationsPage() {
             />
           }
         />
-      ) : tab === "extensions" ? (
+      ) : (
         <IntegrationsComingSoon
           panelId="integrations-panel-extensions"
           title="Extensions are coming soon"
@@ -148,20 +151,6 @@ export function IntegrationsPage() {
           icon={
             <FontAwesomeIcon
               icon={faShapes}
-              size="sm"
-              className={iconClassName}
-              aria-hidden="true"
-            />
-          }
-        />
-      ) : (
-        <IntegrationsComingSoon
-          panelId="integrations-panel-skills"
-          title="Skills are coming soon"
-          description="Skills will bundle reusable instructions and tools your agents can call on."
-          icon={
-            <FontAwesomeIcon
-              icon={faWandMagicSparkles}
               size="sm"
               className={iconClassName}
               aria-hidden="true"
