@@ -3,6 +3,8 @@ import { dirname, join, resolve } from "node:path";
 import type { ChatActivity, ChatApproval, ChatAttachment, ChatMessage, ChatPermissionMode, ChatRequest, ChatSession, ChatToolCall, ChatUsage } from "@veykor/shared";
 import type { ApprovalDecisionInput, FoldedItem, Session } from "@muse-code/sdk";
 import { spawnMuse } from "./muse-host.js";
+import { listMcpServers } from "../mcp/store.js";
+import { toSessionMcpServers, type SessionMcpServerConfig } from "../mcp/session-config.js";
 import { metadataSession, projectFolder, readConversation, writeConversation, type ConversationMetadata, type StoredAttachment } from "./conversations.js";
 import { attachmentAvailable, attachmentBytes, stageAttachment } from "./attachments.js";
 import { dbPath } from "../db/client.js";
@@ -279,6 +281,90 @@ export async function openConversation(
   return describeConversation(userId, id);
 }
 
+function startedSessionId(result: Record<string, unknown>): string {
+  const session =
+    result.session && typeof result.session === "object"
+      ? (result.session as Record<string, unknown>)
+      : null;
+
+  const id = session?.sessionId;
+
+  if (typeof id !== "string" || !id) {
+    throw new Error("Muse did not return a session id");
+  }
+
+  return id;
+}
+
+function mcpWarning(action: string, error: unknown): void {
+  console.warn(
+    `${action}: ${error instanceof Error ? error.message : "unknown error"}`,
+  );
+}
+
+async function openNativeSession(
+  muse: Muse,
+  folder: string,
+  metadata: ConversationMetadata,
+  options: {
+    onApproval: Parameters<Session["onApproval"]>[0];
+    onApprovalError: Parameters<Session["onApprovalError"]>[0];
+    mcpServers: Record<string, SessionMcpServerConfig> | undefined;
+  },
+): Promise<Session> {
+  const approvalMode = metadata.permissionMode || "promptUnmatched";
+
+  if (metadata.nativeSessionId) {
+    if (options.mcpServers) {
+      try {
+        await muse.connection.command("session/resume", {
+          sessionId: metadata.nativeSessionId,
+          config: { mcpServers: options.mcpServers },
+        });
+      } catch (error) {
+        mcpWarning("Continuing without updating chat MCP servers", error);
+      }
+    }
+
+    return muse.client.resumeSession({
+      sessionId: metadata.nativeSessionId,
+      onApproval: options.onApproval,
+      onApprovalError: options.onApprovalError,
+    });
+  }
+
+  if (options.mcpServers) {
+    let nativeSessionId: string | undefined;
+
+    try {
+      nativeSessionId = startedSessionId(
+        await muse.connection.command("session/start", {
+          workspaceRoot: folder,
+          modelId: metadata.modelId,
+          approvalMode,
+          config: { mcpServers: options.mcpServers },
+        }),
+      );
+    } catch (error) {
+      mcpWarning("Continuing without chat MCP servers", error);
+    }
+
+    if (nativeSessionId !== undefined) {
+      return muse.client.resumeSession({
+        sessionId: nativeSessionId,
+        onApproval: options.onApproval,
+        onApprovalError: options.onApprovalError,
+      });
+    }
+  }
+
+  return muse.client.startSession({
+    workspaceRoot: folder,
+    modelId: metadata.modelId,
+    approvalMode,
+  });
+}
+
 async function runtime(userId: number, id: string): Promise<Runtime> {
   const key = `${userId}:${id}`;
   const existing = runtimes.get(key);
@@ -352,19 +438,17 @@ async function runtime(userId: number, id: string): Promise<Runtime> {
         state.approvals.delete(String(params?.approvalId));
       }
     });
+    const mcpServers = muse.mcpGranted
+      ? toSessionMcpServers(listMcpServers(userId))
+      : undefined;
+
     let session: Session;
     try {
-      session = metadata.nativeSessionId
-        ? await muse.client.resumeSession({
-            sessionId: metadata.nativeSessionId,
-            onApproval,
-            onApprovalError,
-          })
-        : await muse.client.startSession({
-            workspaceRoot: folder,
-            modelId: metadata.modelId,
-            approvalMode: metadata.permissionMode || "promptUnmatched",
-          });
+      session = await openNativeSession(muse, folder, metadata, {
+        onApproval,
+        onApprovalError,
+        mcpServers,
+      });
       session.onApproval(onApproval);
       session.onApprovalError(onApprovalError);
       metadata.nativeSessionId = session.sessionId;

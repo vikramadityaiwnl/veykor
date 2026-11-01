@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faGear, faRobot, faRightFromBracket } from "@fortawesome/free-solid-svg-icons";
+import { faHexagonNodes, faGear, faRobot, faRightFromBracket } from "@fortawesome/free-solid-svg-icons";
 import { useAppShellMobile } from "@astryxdesign/core/AppShell";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { useSideNavCollapse } from "@astryxdesign/core/SideNav";
@@ -53,6 +53,14 @@ export function WorkspaceSidebarFooter() {
             onClick: () => {
               mobile.closeMobileNav();
               navigate("/agent-presets");
+            },
+          },
+          {
+            label: "Integrations",
+            icon: <FontAwesomeIcon icon={faHexagonNodes} />,
+            onClick: () => {
+              mobile.closeMobileNav();
+              navigate("/integrations");
             },
           },
           {

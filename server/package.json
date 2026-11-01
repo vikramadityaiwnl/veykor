@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.14.4",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@muse-code/sdk": "1.4.14",
     "@veykor/shared": "file:../shared",
     "argon2": "^0.45.1",
@@ -31,6 +32,7 @@
     "@types/ws": "^8.18.2",
     "drizzle-kit": "^0.31.4",
     "tsx": "^4.20.5",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "zod": "^4.6.7"
   }
 }

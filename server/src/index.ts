@@ -8,6 +8,7 @@ import { configurationRoute } from "./routes/configuration.js";
 import { sidebarRoute } from "./routes/sidebar.js";
 import { projectsRoute } from "./routes/projects.js";
 import { settingsRoute } from "./routes/settings.js";
+import { mcpRoute } from "./routes/mcp.js";
 import { statusRoute } from "./routes/status.js";
 import { chatProvider } from "./chat/chat-runner.js";
 import { migrateStoredConversations } from "./chat/conversations.js";
@@ -30,6 +31,8 @@ app.route("/api/sidebar", sidebarRoute);
 app.route("/api/projects", projectsRoute);
 
 app.route("/api/settings", settingsRoute);
+
+app.route("/api/mcp", mcpRoute);
 
 app.route("/api/status", statusRoute);
 

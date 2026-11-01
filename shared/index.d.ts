@@ -74,3 +74,14 @@ export type {
   StatusStorage,
   SystemStatusResponse,
 } from "./contracts/index.js";
+
+export type {
+  McpTransport,
+  McpServerStatus,
+  McpServer,
+  McpServersResponse,
+  CreateMcpServerInput,
+  UpdateMcpServerInput,
+  McpTool,
+  McpTestResult,
+} from "./contracts/index.js";

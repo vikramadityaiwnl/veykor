@@ -19,7 +19,10 @@ export async function spawnMuse(workspaceRoot: string) {
   try {
     const host = await handshake.initialize({
       clientInfo: { name: "veykor", version: "0.0.0" },
-      capabilities: { userInputDialogs: false },
+      capabilities: {
+        userInputDialogs: false,
+        requestedCapabilities: ["sessionMcp"],
+      },
     });
     let sdkNotification: NotificationHandler = () => {};
     const listeners = new Set<NotificationHandler>();
@@ -47,6 +50,8 @@ export async function spawnMuse(workspaceRoot: string) {
       host,
       client,
       connection,
+      mcpGranted:
+        host.initializeResult.grantedCapabilities.includes("sessionMcp"),
       onEvent: (handler: NotificationHandler) => {
         listeners.add(handler);
       },

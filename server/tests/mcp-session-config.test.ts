@@ -1,0 +1,101 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import type { McpServer } from "@veykor/shared";
+import { toSessionMcpServers } from "../src/mcp/session-config.js";
+
+function server(partial: Partial<McpServer>): McpServer {
+  return {
+    id: crypto.randomUUID(),
+    name: "Docs",
+    transport: "stdio",
+    command: "npx",
+    args: ["-y", "mcp-server-package"],
+    env: { API_KEY: "key" },
+    url: "",
+    headers: {},
+    enabled: true,
+    status: "unknown",
+    lastError: "",
+    toolCount: 0,
+    lastChecked: "",
+    createdAt: "",
+    updatedAt: "",
+    ...partial,
+  };
+}
+
+test("chat forwards enabled stdio and http servers as optional session servers", () => {
+  const mapped = toSessionMcpServers([
+    server({ name: "Docs" }),
+    server({
+      name: "Remote",
+      transport: "http",
+      command: "",
+      args: [],
+      env: {},
+      url: "https://example.com/mcp",
+      headers: { Authorization: "Bearer token" },
+    }),
+  ]);
+
+  assert.deepEqual(mapped, {
+    Docs: {
+      transport: "stdio",
+      command: "npx",
+      args: ["-y", "mcp-server-package"],
+      env: { API_KEY: "key" },
+      mode: "optional",
+    },
+    Remote: {
+      transport: "streamableHttp",
+      url: "https://example.com/mcp",
+      headers: { Authorization: "Bearer token" },
+      mode: "optional",
+    },
+  });
+});
+
+test("chat skips disabled, sse, and blank servers and dedupes names", () => {
+  const mapped = toSessionMcpServers([
+    server({ name: "Off", enabled: false }),
+    server({
+      name: "Legacy",
+      transport: "sse",
+      url: "https://example.com/sse",
+    }),
+    server({ name: "   " }),
+    server({ name: "Docs", command: "   " }),
+    server({ name: "Dup" }),
+    server({ name: "Dup", command: "other" }),
+  ]);
+
+  assert.deepEqual(mapped, {
+    Dup: {
+      transport: "stdio",
+      command: "npx",
+      args: ["-y", "mcp-server-package"],
+      env: { API_KEY: "key" },
+      mode: "optional",
+    },
+    "Dup (2)": {
+      transport: "stdio",
+      command: "other",
+      args: ["-y", "mcp-server-package"],
+      env: { API_KEY: "key" },
+      mode: "optional",
+    },
+  });
+});
+
+test("chat omits empty collections and returns undefined without servers", () => {
+  const mapped = toSessionMcpServers([
+    server({ name: "Bare", args: [], env: {} }),
+  ]);
+
+  assert.deepEqual(mapped, {
+    Bare: { transport: "stdio", command: "npx", mode: "optional" },
+  });
+
+  assert.equal(toSessionMcpServers([]), undefined);
+  assert.equal(toSessionMcpServers([server({ enabled: false })]), undefined);
+});
