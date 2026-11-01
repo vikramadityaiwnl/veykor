@@ -8,6 +8,7 @@ interface Props {
   description: string;
   icon: ReactNode;
   panelId: string;
+  actions?: ReactNode;
 }
 
 export function IntegrationsComingSoon(props: Props) {
@@ -22,6 +23,7 @@ export function IntegrationsComingSoon(props: Props) {
           title={props.title}
           description={props.description}
           icon={props.icon}
+          actions={props.actions}
         />
       </Center>
     </VStack>

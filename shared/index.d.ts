@@ -94,4 +94,7 @@ export type {
   DetectedSkill,
   DetectedSkillSource,
   DetectedSkillsResponse,
+  SkillDetail,
+  CreateSkillInput,
+  UpdateSkillInput,
 } from "./contracts/index.js";

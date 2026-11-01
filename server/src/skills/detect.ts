@@ -54,7 +54,7 @@ function frontmatterField(text: string, field: string): string {
     .slice(0, 300);
 }
 
-function skillFile(folder: string): string | null {
+export function skillFile(folder: string): string | null {
   let names: string[];
 
   try {
@@ -87,6 +87,10 @@ export function scanDetectedSkills(
     const skills: DetectedSkillScan[] = [];
 
     for (const name of names.sort()) {
+      if (name.endsWith(".bak")) {
+        continue;
+      }
+
       const folderPath = join(path, name);
 
       try {

@@ -95,4 +95,7 @@ export type {
   DetectedSkill,
   DetectedSkillSource,
   DetectedSkillsResponse,
+  SkillDetail,
+  CreateSkillInput,
+  UpdateSkillInput,
 } from "./skills/index.js";
