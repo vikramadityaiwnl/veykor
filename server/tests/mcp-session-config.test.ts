@@ -87,6 +87,79 @@ test("chat skips disabled, sse, and blank servers and dedupes names", () => {
   });
 });
 
+test("chat gives chrome-devtools the conversation folder as its workspace root", () => {
+  const mapped = toSessionMcpServers(
+    [
+      server({
+        name: "Browser",
+        command: "npx",
+        args: ["-y", "chrome-devtools-mcp@latest"],
+        env: {},
+      }),
+      server({ name: "Docs" }),
+    ],
+    "/tmp/veykor-workspace",
+  );
+
+  assert.deepEqual(mapped, {
+    Browser: {
+      transport: "stdio",
+      command: "npx",
+      args: [
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--workspace=/tmp/veykor-workspace",
+      ],
+      mode: "optional",
+    },
+    Docs: {
+      transport: "stdio",
+      command: "npx",
+      args: ["-y", "mcp-server-package"],
+      env: { API_KEY: "key" },
+      mode: "optional",
+    },
+  });
+});
+
+test("chat keeps a user configured browser workspace root", () => {
+  const mapped = toSessionMcpServers(
+    [
+      server({
+        name: "Browser",
+        command: "chrome-devtools-mcp",
+        args: ["--workspace=/tmp/custom"],
+        env: {},
+      }),
+    ],
+    "/tmp/veykor-workspace",
+  );
+
+  assert.deepEqual(mapped, {
+    Browser: {
+      transport: "stdio",
+      command: "chrome-devtools-mcp",
+      args: ["--workspace=/tmp/custom"],
+      mode: "optional",
+    },
+  });
+
+  const unscoped = toSessionMcpServers(
+    [
+      server({
+        name: "Browser",
+        command: "npx",
+        args: ["-y", "chrome-devtools-mcp@latest"],
+        env: {},
+      }),
+    ],
+    "",
+  )?.Browser;
+
+  assert.ok(unscoped && unscoped.transport === "stdio");
+  assert.equal(unscoped.args?.length, 2);
+});
+
 test("chat omits empty collections and returns undefined without servers", () => {
   const mapped = toSessionMcpServers([
     server({ name: "Bare", args: [], env: {} }),

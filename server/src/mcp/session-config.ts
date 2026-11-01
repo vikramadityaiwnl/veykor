@@ -47,8 +47,44 @@ export function mergeSessionMcpSources(
   return sources;
 }
 
+function isChromeDevtoolsServer(server: SessionMcpSource): boolean {
+  return [server.command, ...server.args].some((entry) =>
+    entry.includes("chrome-devtools-mcp"),
+  );
+}
+
+function hasWorkspaceRoot(args: string[]): boolean {
+  return args.some(
+    (entry) =>
+      entry === "--workspace" ||
+      entry.startsWith("--workspace=") ||
+      entry === "--filesystemRoot" ||
+      entry.startsWith("--filesystemRoot=") ||
+      entry === "--allowUnrestrictedPaths" ||
+      entry.startsWith("--allowUnrestrictedPaths="),
+  );
+}
+
+function sessionArgs(
+  server: SessionMcpSource,
+  workspaceRoot: string,
+): string[] {
+  const args = [...server.args];
+
+  if (
+    workspaceRoot &&
+    isChromeDevtoolsServer(server) &&
+    !hasWorkspaceRoot(args)
+  ) {
+    args.push(`--workspace=${workspaceRoot}`);
+  }
+
+  return args;
+}
+
 export function toSessionMcpServers(
   servers: SessionMcpSource[],
+  workspaceRoot = "",
 ): Record<string, SessionMcpServerConfig> | undefined {
   const result: Record<string, SessionMcpServerConfig> = {};
 
@@ -78,10 +114,12 @@ export function toSessionMcpServers(
         continue;
       }
 
+      const args = sessionArgs(server, workspaceRoot);
+
       result[key] = {
         transport: "stdio",
         command,
-        ...(server.args.length > 0 ? { args: [...server.args] } : {}),
+        ...(args.length > 0 ? { args } : {}),
         ...(Object.keys(server.env).length > 0
           ? { env: { ...server.env } }
           : {}),

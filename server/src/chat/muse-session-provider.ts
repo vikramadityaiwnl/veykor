@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { ChatActivity, ChatApproval, ChatAttachment, ChatMessage, ChatPermissionMode, ChatRequest, ChatSession, ChatToolCall, ChatUsage } from "@veykor/shared";
 import type { ApprovalDecisionInput, FoldedItem, Session } from "@muse-code/sdk";
@@ -8,6 +8,7 @@ import { listMcpServers } from "../mcp/store.js";
 import { mergeSessionMcpSources, toSessionMcpServers, type SessionMcpServerConfig } from "../mcp/session-config.js";
 import { metadataSession, projectFolder, readConversation, writeConversation, type ConversationMetadata, type StoredAttachment } from "./conversations.js";
 import { attachmentAvailable, attachmentBytes, stageAttachment } from "./attachments.js";
+import { imageMimeType, isInsideFolder, savedScreenshotPaths, screenshotName } from "./tool-images.js";
 import { dbPath } from "../db/client.js";
 import { nativeInput } from "./muse-input.js";
 
@@ -31,6 +32,7 @@ interface RuntimeState {
   >;
   usage: Map<string, ChatUsage>;
   seenUsage: Set<string>;
+  stagedToolImages: Set<string>;
   currentTurn: string;
   lastError: string;
   history: FoldedItem[];
@@ -45,6 +47,7 @@ interface Runtime {
   muse: Muse;
   session: Session;
   state: RuntimeState;
+  folder: string;
 }
 
 const runtimes = new Map<string, Runtime>();
@@ -127,7 +130,83 @@ async function projectAttachments(
   );
 }
 
+const maxToolImageBytes = 15_000_000;
+
+async function stageToolImages(
+  userId: number,
+  live: Runtime,
+  metadata: ConversationMetadata,
+  turnId: string,
+  tools: FoldedItem[],
+): Promise<boolean> {
+  let changed = false;
+
+  for (const item of tools) {
+    if (item.status !== "completed") {
+      continue;
+    }
+
+    const paths = savedScreenshotPaths(item.visibleOutput || "");
+
+    for (const [index, path] of paths.entries()) {
+      const mimeType = imageMimeType(path);
+
+      if (!mimeType || !isInsideFolder(live.folder, path)) {
+        continue;
+      }
+
+      const attachmentId = `tool-${item.itemId}-${index}`;
+
+      if (live.state.stagedToolImages.has(attachmentId)) {
+        continue;
+      }
+
+      const existing = metadata.attachments.some(
+        (entry) => entry.id === attachmentId,
+      );
+
+      if (existing && (await attachmentAvailable(attachmentId))) {
+        live.state.stagedToolImages.add(attachmentId);
+        continue;
+      }
+
+      try {
+        const info = await stat(path);
+
+        if (!info.isFile() || info.size > maxToolImageBytes) {
+          continue;
+        }
+
+        await stageAttachment(attachmentId, await readFile(path));
+        live.state.stagedToolImages.add(attachmentId);
+
+        if (!existing) {
+          metadata.attachments.push({
+            id: attachmentId,
+            turnId,
+            name: screenshotName(path),
+            mimeType,
+            size: info.size,
+            kind: "image",
+            tool: true,
+          });
+          changed = true;
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  if (changed) {
+    writeConversation(userId, metadata);
+  }
+
+  return changed;
+}
+
 async function projectMessages(
+  userId: number,
   conversationId: string,
   live: Runtime,
   metadata: ConversationMetadata,
@@ -175,6 +254,10 @@ async function projectMessages(
     }
   }
 
+  for (const [turnId, group] of groups) {
+    await stageToolImages(userId, live, metadata, turnId, group.tools);
+  }
+
   const messages: ChatMessage[] = [];
 
   for (const [turnId, group] of groups) {
@@ -189,7 +272,7 @@ async function projectMessages(
         attachments: await projectAttachments(
           conversationId,
           metadata.attachments.filter(
-            (entry) => entry.turnId && entry.turnId === turnId,
+            (entry) => !entry.tool && entry.turnId && entry.turnId === turnId,
           ),
         ),
       });
@@ -217,7 +300,12 @@ async function projectMessages(
         usage,
         createdAt: createdAt(first),
         tools: group.tools.map(projectTool),
-        attachments: [],
+        attachments: await projectAttachments(
+          conversationId,
+          metadata.attachments.filter(
+            (entry) => entry.tool && entry.turnId && entry.turnId === turnId,
+          ),
+        ),
       });
     }
   }
@@ -249,7 +337,12 @@ export async function describeConversation(
     };
   }
 
-  const { messages, activities } = await projectMessages(id, live, metadata);
+  const { messages, activities } = await projectMessages(
+    userId,
+    id,
+    live,
+    metadata,
+  );
   const running = busy.has(`${userId}:${id}`);
 
   return {
@@ -391,6 +484,7 @@ async function runtime(userId: number, id: string): Promise<Runtime> {
       approvals: new Map(),
       usage: new Map(),
       seenUsage: new Set(),
+      stagedToolImages: new Set(),
       currentTurn: "",
       lastError: "",
       history: [],
@@ -447,6 +541,7 @@ async function runtime(userId: number, id: string): Promise<Runtime> {
               source.entries.map((entry) => entry.input),
             ),
           ),
+          folder,
         )
       : undefined;
 
@@ -478,7 +573,7 @@ async function runtime(userId: number, id: string): Promise<Runtime> {
     } catch {
       state.history = [];
     }
-    const result: Runtime = { muse, session, state };
+    const result: Runtime = { muse, session, state, folder };
     runtimes.set(key, result);
     void muse.connection.closed.then(() => {
       runtimes.delete(key);

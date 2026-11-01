@@ -11,6 +11,7 @@ export interface StoredAttachment {
   mimeType: string;
   size: number;
   kind: ChatAttachment["kind"];
+  tool?: boolean;
 }
 
 export interface ConversationMetadata {
