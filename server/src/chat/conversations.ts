@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import type { ChatAttachment, ChatMessage, ChatPermissionMode, ChatSession } from "@veykor/shared";
+import type { ChatAttachment, ChatPermissionMode, ChatSession } from "@veykor/shared";
 import { db } from "../db/client.js";
 import { conversations, chatHistories, projects, sidebarSections } from "../db/schema.js";
 import { attachmentAvailable, stageAttachment, sweepStaging } from "./attachments.js";
@@ -23,7 +23,6 @@ export interface ConversationMetadata {
   nativeSessionId: string;
   permissionMode: ChatPermissionMode;
   attachments: StoredAttachment[];
-  legacy?: { messages: ChatMessage[] };
 }
 
 export function readConversation(
@@ -141,29 +140,36 @@ async function slimSession(
     nativeSessionId: session.nativeSessionId || "",
     permissionMode: session.permissionMode || "promptUnmatched",
     attachments,
-    legacy:
-      session.nativeSessionId || (session.messages || []).length === 0
-        ? undefined
-        : { messages: session.messages },
   };
+}
+
+function deleteConversation(userId: number, id: string) {
+  db.delete(conversations)
+    .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+    .run();
 }
 
 export async function migrateStoredConversations(): Promise<void> {
   for (const row of db.select().from(conversations).all()) {
     const data = JSON.parse(row.data);
+    const transcript = Boolean(
+      (Array.isArray(data.messages) && data.messages.length > 0) || data.legacy,
+    );
+
+    if (!data.nativeSessionId && transcript) {
+      deleteConversation(row.userId, row.id);
+      continue;
+    }
 
     if (Array.isArray(data.messages)) {
       writeConversation(row.userId, await slimSession(data as ChatSession));
+    } else if (data.legacy) {
+      const { legacy: _legacy, ...metadata } = data;
+      writeConversation(row.userId, metadata as ConversationMetadata);
     }
   }
 
   for (const row of db.select().from(chatHistories).all()) {
-    for (const session of JSON.parse(row.sessions) as ChatSession[]) {
-      if (!readConversation(row.userId, session.id)) {
-        writeConversation(row.userId, await slimSession(session));
-      }
-    }
-
     db.delete(chatHistories).where(eq(chatHistories.userId, row.userId)).run();
   }
 
@@ -174,12 +180,6 @@ export async function migrateStoredConversations(): Promise<void> {
 
     for (const attachment of metadata.attachments || []) {
       keep.add(attachment.id);
-    }
-
-    for (const message of metadata.legacy?.messages || []) {
-      for (const attachment of message.attachments || []) {
-        await ensureStaged(attachment);
-      }
     }
   }
 

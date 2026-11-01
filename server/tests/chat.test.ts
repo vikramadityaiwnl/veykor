@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validChatRequest } from "../src/chat/chat-validation.js";
+import { validChatRequest, hasNonImageAttachment } from "../src/chat/chat-validation.js";
 import { model } from "../src/chat/model-catalog.js";
 
 const input = {
@@ -35,6 +35,33 @@ test("native chat validates Muse requests and rejects removed providers and inve
   ]) {
     assert.equal(validChatRequest(value), false);
   }
+});
+
+test("chat accepts image attachments and rejects other file kinds", () => {
+  const image = {
+    id: "attachment-1",
+    name: "green.png",
+    mimeType: "image/png",
+    size: 100,
+    kind: "image",
+    dataUrl: "data:image/png;base64,Zm9v",
+    text: "",
+  };
+  const withAttachments = (attachments: unknown[]) => ({
+    ...input,
+    messages: [{ role: "user", text: "Hello", attachments }],
+  });
+
+  assert.equal(validChatRequest(withAttachments([image])), true);
+  assert.equal(
+    validChatRequest(withAttachments([{ ...image, kind: "text" }])),
+    false,
+  );
+  assert.equal(hasNonImageAttachment(withAttachments([image])), false);
+  assert.equal(
+    hasNonImageAttachment(withAttachments([{ ...image, kind: "pdf" }])),
+    true,
+  );
 });
 
 test("image input is advertised only for verified model families", () => {

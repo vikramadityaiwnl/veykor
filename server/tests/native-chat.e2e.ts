@@ -245,51 +245,88 @@ test(
             },
           ]),
         );
+      const nativeId = crypto.randomUUID();
+      const nativeAttachmentId = crypto.randomUUID();
+      const nativeBytes = readFileSync(
+        new URL("./fixtures/green.png", import.meta.url),
+      );
+      historyDb
+        .prepare(
+          "INSERT INTO conversations (id, user_id, data) VALUES (?, ?, ?)",
+        )
+        .run(
+          nativeId,
+          1,
+          JSON.stringify({
+            id: nativeId,
+            title: "Native slim",
+            projectId: null,
+            sectionId: chatsSection,
+            providerId: "muse",
+            modelId: "muse-spark-1.3",
+            nativeSessionId: "native-e2e-kept-session",
+            permissionMode: "promptUnmatched",
+            status: "idle",
+            error: "",
+            approvals: [],
+            activities: [],
+            messages: [
+              {
+                id: crypto.randomUUID(),
+                role: "user",
+                text: "native slim check",
+                usage: oldUsage,
+                createdAt: Date.now(),
+                tools: [],
+                attachments: [
+                  {
+                    id: nativeAttachmentId,
+                    name: "green.png",
+                    mimeType: "image/png",
+                    size: nativeBytes.length,
+                    kind: "image",
+                    dataUrl: `data:image/png;base64,${nativeBytes.toString("base64")}`,
+                    text: "",
+                  },
+                ],
+              },
+            ],
+          }),
+        );
       historyDb.close();
       await stop();
       await start();
       await json("chat/sessions");
       const checkDb = new Database(join(folder, "test.db"));
+      assert.equal(
+        checkDb
+          .prepare("SELECT data FROM conversations WHERE id = ?")
+          .get(slimId),
+        undefined,
+      );
       const slimmed = JSON.parse(
         (
           checkDb
             .prepare("SELECT data FROM conversations WHERE id = ?")
-            .get(slimId) as { data: string }
+            .get(nativeId) as { data: string }
         ).data,
       );
       assert.ok(!("messages" in slimmed));
+      assert.ok(!("legacy" in slimmed));
       assert.equal(slimmed.attachments.length, 1);
       assert.ok(!("dataUrl" in slimmed.attachments[0]));
-      assert.equal(slimmed.legacy.messages.length, 1);
       assert.deepEqual(
         checkDb.prepare("SELECT * FROM chat_histories WHERE user_id = 1").all(),
         [],
       );
       checkDb.close();
       const staged = await request(
-        `chat/sessions/${slimId}/attachments/${slimAttachmentId}`,
+        `chat/sessions/${nativeId}/attachments/${nativeAttachmentId}`,
       );
       assert.equal(staged.status, 200);
-      assert.deepEqual(Buffer.from(await staged.arrayBuffer()), slimBytes);
-      console.log("PASS stored transcripts slim to metadata with staged files");
-      rmSync(join(tmpdir(), "veykor-uploads", slimAttachmentId));
-      await stop();
-      await start();
-      const healed = await request(
-        `chat/sessions/${slimId}/attachments/${slimAttachmentId}`,
-      );
-      assert.equal(healed.status, 200);
-      assert.deepEqual(Buffer.from(await healed.arrayBuffer()), slimBytes);
-      console.log("PASS wiped staged files heal from stored bytes on boot");
-      await send(
-        "What archive verification phrase did I tell you earlier? Reply briefly without using tools.",
-      );
-      assert.match(
-        (await finished()).messages.at(-1)!.text,
-        /legacy-native-memory/,
-      );
+      assert.deepEqual(Buffer.from(await staged.arrayBuffer()), nativeBytes);
       console.log(
-        "PASS legacy conversation context migration into a native session",
+        "PASS legacy-only transcripts drop, native slims to metadata",
       );
 
       conversationId = crypto.randomUUID();
@@ -461,26 +498,37 @@ test(
       assert.deepEqual(Buffer.from(await reloadedImage.arrayBuffer()), bytes);
       console.log("PASS staged attachments survive backend restart");
 
-      const text =
-        "The document verification phrase is native-document-confirmed.";
-      await send(
-        "What verification phrase is in the attached document? Do not use tools.",
-        "promptUnmatched",
-        [
+      const rejected = await request("chat", {
+        conversationId,
+        messageId: crypto.randomUUID(),
+        providerId: "muse",
+        modelId: "muse-spark-1.3",
+        permissionMode: "promptUnmatched",
+        systemPrompt: "",
+        messages: [
           {
-            id: crypto.randomUUID(),
-            name: "verification.txt",
-            mimeType: "text/plain",
-            size: Buffer.byteLength(text),
-            kind: "text",
-            dataUrl: `data:text/plain;base64,${Buffer.from(text).toString("base64")}`,
-            text: "",
+            role: "user",
+            text: "Read the attached document.",
+            attachments: [
+              {
+                id: crypto.randomUUID(),
+                name: "verification.txt",
+                mimeType: "text/plain",
+                size: 10,
+                kind: "text",
+                dataUrl: "data:text/plain;base64,Zm9vYmFyYmF6",
+                text: "",
+              },
+            ],
           },
         ],
+      });
+      assert.equal(rejected.status, 400);
+      assert.match(
+        ((await rejected.json()) as { error: string }).error,
+        /Only image files can be attached for now/,
       );
-      session = await finished();
-      assert.match(session.messages.at(-1)!.text, /native-document-confirmed/);
-      console.log("PASS document text fallback");
+      console.log("PASS non-image attachments rejected");
     } finally {
       await stop();
       rmSync(folder, { recursive: true, force: true });

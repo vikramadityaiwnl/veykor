@@ -5,7 +5,7 @@ import { Center } from "@astryxdesign/core/Center";
 
 interface Props {
   attachment: ChatAttachment;
-  onPreview: () => void;
+  onOpen: () => void;
 }
 
 export function ConversationAttachment(props: Props) {
@@ -18,14 +18,28 @@ export function ConversationAttachment(props: Props) {
           ? faFileLines
           : faFile;
 
+  if (!props.attachment.dataUrl) {
+    return (
+      <Center className="shrink-0 rounded-(--radius-element) border border-solid border-(--color-border-emphasized) bg-(--color-background-raised) p-1">
+        <Center className="h-16 w-16">
+          <FontAwesomeIcon
+            icon={icon}
+            size="lg"
+            className="text-(--color-icon-secondary)"
+          />
+        </Center>
+      </Center>
+    );
+  }
+
   return (
     <button
       type="button"
-      onClick={props.onPreview}
-      aria-label={`Preview ${props.attachment.name}`}
+      onClick={props.onOpen}
+      aria-label={`Open ${props.attachment.name} in a new tab`}
       className="shrink-0 cursor-pointer rounded-(--radius-element) border border-solid border-(--color-border-emphasized) bg-(--color-background-raised) p-1"
     >
-      {props.attachment.kind === "image" && props.attachment.dataUrl ? (
+      {props.attachment.kind === "image" ? (
         <img
           src={props.attachment.dataUrl}
           alt=""

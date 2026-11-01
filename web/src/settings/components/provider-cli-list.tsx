@@ -88,29 +88,14 @@ export function ProviderCliList() {
               <VStack gap={2} className="min-w-0 flex-1">
                 <HStack gap={2} vAlign="center">
                   <Heading level={3} weight="semibold">
-                    {provider.label}
+                    {provider.company}
                   </Heading>
 
-                  <Text type="supporting" color="secondary">
-                    {provider.company}
-                  </Text>
-                </HStack>
-
-                <HStack gap={2} vAlign="center">
-                  <Text type="code" color="secondary">
-                    {provider.cli}
-                  </Text>
-
-                  <Text
-                    type="supporting"
-                    color="secondary"
-                    maxLines={1}
-                    className="min-w-0 flex-1"
-                  >
-                    {provider.id === "muse"
-                      ? provider.version || "unknown"
-                      : "Coming soon"}
-                  </Text>
+                  {provider.version ? (
+                    <Text type="supporting" color="secondary">
+                      {provider.version}
+                    </Text>
+                  ) : null}
                 </HStack>
 
                 <HStack gap={2} vAlign="center">

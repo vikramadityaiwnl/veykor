@@ -5,7 +5,7 @@ import { streamSSE } from "hono/streaming";
 import { bodyLimit } from "hono/body-limit";
 import { and, eq, gt } from "drizzle-orm";
 import { requireAuth, type AuthEnv } from "../auth/auth.js";
-import { chatProvider, validChatRequest, permissionModes } from "../chat/chat-runner.js";
+import { chatProvider, validChatRequest, hasNonImageAttachment, permissionModes } from "../chat/chat-runner.js";
 import { db } from "../db/client.js";
 import { conversations, sessions as authSessions } from "../db/schema.js";
 import { listConversations, metadataSession, readConversation, writeConversation, validConversationLocation } from "../chat/conversations.js";
@@ -272,6 +272,9 @@ chatRoute.post("/sessions/:id/stop", async (c) => {
 
 chatRoute.post("/", async (c) => {
   const input: unknown = await c.req.json().catch(() => null);
+  if (hasNonImageAttachment(input)) {
+    return c.json({ error: "Only image files can be attached for now." }, 400);
+  }
   if (!validChatRequest(input)) {
     return c.json(
       {

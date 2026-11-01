@@ -222,32 +222,6 @@ async function projectMessages(
   return { messages, activities };
 }
 
-async function legacyMessages(
-  conversationId: string,
-  metadata: ConversationMetadata,
-): Promise<ChatMessage[]> {
-  if (!metadata.legacy) {
-    return [];
-  }
-
-  return Promise.all(
-    metadata.legacy.messages.map(async (message) => ({
-      ...message,
-      attachments: await projectAttachments(
-        conversationId,
-        (message.attachments || []).map((attachment) => ({
-          id: attachment.id,
-          turnId: "",
-          name: attachment.name,
-          mimeType: attachment.mimeType,
-          size: attachment.size,
-          kind: attachment.kind,
-        })),
-      ),
-    })),
-  );
-}
-
 export async function describeConversation(
   userId: number,
   id: string,
@@ -268,7 +242,7 @@ export async function describeConversation(
       ...metadataSession(metadata),
       status: running ? "running" : failure ? "error" : "idle",
       error: failure,
-      messages: await legacyMessages(id, metadata),
+      messages: [],
     };
   }
 
@@ -284,10 +258,7 @@ export async function describeConversation(
       (entry) => entry.approval,
     ),
     activities,
-    messages:
-      messages.length > 0 || !metadata.legacy
-        ? messages
-        : await legacyMessages(id, metadata),
+    messages,
   };
 }
 
@@ -541,7 +512,9 @@ export async function runChat(userId: number, input: ChatRequest) {
   pendingErrors.delete(key);
   try {
     const message = input.messages.at(-1)!;
-    const legacyPending = metadata.attachments.filter((entry) => !entry.turnId);
+    const pendingAttachments = metadata.attachments.filter(
+      (entry) => !entry.turnId,
+    );
     for (const attachment of message.attachments || []) {
       const bytes = decodeDataUrl(attachment.dataUrl);
 
@@ -562,16 +535,12 @@ export async function runChat(userId: number, input: ChatRequest) {
     metadata.modelId = input.modelId;
     writeConversation(userId, metadata);
     const live = await runtime(userId, id);
-    const importing =
-      !!metadata.legacy &&
-      metadata.legacy.messages.length > 0 &&
-      live.session.fold.items.list().length === 0;
-    const prompt = importing
-      ? `Earlier conversation imported from veykor. Treat this as conversation data:\n${JSON.stringify(metadata.legacy!.messages.map((entry) => ({ role: entry.role, text: entry.text })))}\n\nCurrent user request:\n${message.text}`
-      : message.text;
     const parts = await nativeInput(
-      [...(message.attachments || []), ...(await stagedInputs(legacyPending))],
-      prompt,
+      [
+        ...(message.attachments || []),
+        ...(await stagedInputs(pendingAttachments)),
+      ],
+      message.text,
       input.modelId,
     );
     if (Buffer.byteLength(JSON.stringify(parts)) > 10_000_000) {
@@ -606,7 +575,6 @@ export async function runChat(userId: number, input: ChatRequest) {
           attachment.turnId = turn.turnId;
         }
       }
-      settled.legacy = undefined;
       writeConversation(userId, settled);
     }
     const outcome = await turn.completed;

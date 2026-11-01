@@ -1,7 +1,7 @@
 import type { NativeChatProvider } from "./native-chat-provider.js";
 import { describeConversation, openConversation, runChat, setPermissionMode, decideApproval, stopConversation, isBusy, closeMuseSessions, permissionModes, releaseConversation } from "./muse-session-provider.js";
 
-export { validChatRequest } from "./chat-validation.js";
+export { validChatRequest, hasNonImageAttachment } from "./chat-validation.js";
 export { permissionModes };
 
 export const chatProvider: NativeChatProvider = {

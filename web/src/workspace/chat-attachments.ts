@@ -54,20 +54,20 @@ export function getAttachmentKind(
   return "document";
 }
 
-export function formatFileSize(size: number): string {
-  if (!Number.isFinite(size) || size < 0) {
-    return "";
+export function isImageFile(file: { type: string; name: string }): boolean {
+  return getAttachmentKind(file.type, file.name) === "image";
+}
+
+export function openInNewTab(dataUrl: string): void {
+  if (!dataUrl) {
+    return;
   }
 
-  if (size < 1024) {
-    return `${size} B`;
-  }
+  const url = dataUrl.startsWith("data:")
+    ? URL.createObjectURL(dataUrlToBlob(dataUrl))
+    : dataUrl;
 
-  if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 export function readFileAsDataUrl(file: File): Promise<string> {

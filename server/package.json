@@ -22,9 +22,7 @@
     "argon2": "^0.45.1",
     "better-sqlite3": "^12.2.0",
     "drizzle-orm": "^0.44.4",
-    "hono": "^4.9.4",
-    "pdfjs-dist": "^6.4.299",
-    "xlsx": "^0.18.5"
+    "hono": "^4.9.4"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

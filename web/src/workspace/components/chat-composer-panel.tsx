@@ -10,11 +10,9 @@ import { ComposerModelSelection } from "./composer-model-selection";
 import { ComposerProjectContext } from "./composer-project-context";
 import { Banner } from "@astryxdesign/core/Banner";
 import { ComposerAttachment } from "./composer-attachment";
-import { DocumentLightbox } from "./document-lightbox";
 import { HStack } from "@astryxdesign/core/HStack";
-import { ChatContextProgress } from "./chat-context-progress";
 import { VStack } from "@astryxdesign/core/VStack";
-import { getAttachmentKind, readFileAsDataUrl } from "../chat-attachments";
+import { getAttachmentKind, isImageFile, openInNewTab, readFileAsDataUrl } from "../chat-attachments";
 
 interface Props {
   permissionMode: ChatPermissionMode;
@@ -46,21 +44,18 @@ export function ChatComposerPanel(props: Props) {
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
   const [isReadingFiles, setIsReadingFiles] = useState(false);
-  const [previewId, setPreviewId] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const provider = props.providers.find(
     (entry) => entry.id === props.providerId,
   );
   const model = provider?.models.find((entry) => entry.id === props.modelId);
   const error = attachmentError || props.error || provider?.error || "";
-  const contextTokens = props.usage.inputTokens + props.usage.outputTokens;
   const disabled =
     !props.isReady ||
     !provider?.available ||
     !model ||
     props.isBusy ||
     isReadingFiles;
-  const preview = attachments.find((entry) => entry.id === previewId) ?? null;
 
   async function attach(files: File[]) {
     if (isReadingFiles || files.length === 0) {
@@ -78,46 +73,27 @@ export function ChatComposerPanel(props: Props) {
         throw new Error("Each file must be under 10 MB.");
       }
 
+      if (files.some((file) => !isImageFile(file))) {
+        throw new Error("Only image files can be attached for now.");
+      }
+
       const next = await Promise.all(
         files.map(async (file) => {
-          const kind = getAttachmentKind(file.type, file.name);
-          if (kind === "image" && !model?.inputModalities?.includes("image")) {
+          if (!model?.inputModalities?.includes("image")) {
             throw new Error(
               "This model has no verified native image input support.",
             );
           }
-          if (kind === "video" && !model?.inputModalities?.includes("video")) {
-            throw new Error(
-              "This model has no verified native video input support.",
-            );
-          }
-          if (kind === "document") {
-            throw new Error(
-              "Use a text file, PDF with selectable text, or spreadsheet for document input.",
-            );
-          }
           const dataUrl = await readFileAsDataUrl(file);
-          let text = "";
-
-          if (kind === "text" || kind === "spreadsheet") {
-            const raw = await file.text();
-
-            if (!raw.includes("\0")) {
-              text =
-                raw.length > 30_000
-                  ? `${raw.slice(0, 30_000)}\n[truncated]`
-                  : raw;
-            }
-          }
 
           return {
             id: crypto.randomUUID(),
             name: file.name,
             mimeType: file.type,
             size: file.size,
-            kind,
+            kind: getAttachmentKind(file.type, file.name),
             dataUrl,
-            text,
+            text: "",
           } satisfies ChatAttachment;
         }),
       );
@@ -152,7 +128,6 @@ export function ChatComposerPanel(props: Props) {
     props.onSubmit(text, "", attachments);
     setDraft("");
     setAttachments([]);
-    setPreviewId(null);
   }
 
   return (
@@ -162,9 +137,10 @@ export function ChatComposerPanel(props: Props) {
       <input
         ref={fileInput}
         type="file"
+        accept="image/*"
         multiple
         className="hidden"
-        aria-label="Attach files"
+        aria-label="Attach images"
         onChange={(event) => {
           void attach(Array.from(event.target.files || []));
           event.target.value = "";
@@ -201,14 +177,14 @@ export function ChatComposerPanel(props: Props) {
                 gap={3}
                 className="min-w-0 overflow-x-auto pb-2"
                 role="region"
-                aria-label="Attachment previews"
+                aria-label="Image previews"
                 tabIndex={0}
               >
                 {attachments.map((file) => (
                   <ComposerAttachment
                     key={file.id}
                     attachment={file}
-                    onPreview={() => setPreviewId(file.id)}
+                    onOpen={() => openInNewTab(file.dataUrl)}
                     onRemove={() => {
                       setAttachments((current) =>
                         current.filter((entry) => entry.id !== file.id),
@@ -238,7 +214,7 @@ export function ChatComposerPanel(props: Props) {
 
             <HStack gap={2} vAlign="center" wrap="wrap">
               <Button
-                label={isReadingFiles ? "Reading files…" : "Attach files"}
+                label={isReadingFiles ? "Reading images…" : "Attach images"}
                 size="sm"
                 variant="ghost"
                 isIconOnly
@@ -289,13 +265,6 @@ export function ChatComposerPanel(props: Props) {
               />
 
               <HStack gap={3} vAlign="center" className="ml-auto">
-                {props.hasMessages && model && model.contextWindow > 0 && (
-                  <ChatContextProgress
-                    tokens={contextTokens}
-                    limit={model.contextWindow}
-                  />
-                )}
-
                 <Button
                   label="Transcription coming soon"
                   size="sm"
@@ -359,11 +328,6 @@ export function ChatComposerPanel(props: Props) {
             }
           />
         </Dialog>
-
-        <DocumentLightbox
-          attachment={preview}
-          onClose={() => setPreviewId(null)}
-        />
       </VStack>
     </VStack>
   );
