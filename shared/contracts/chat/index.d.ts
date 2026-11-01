@@ -3,6 +3,9 @@ import type { ProviderCliId } from "../providers/index.js";
 export type ChatPermissionMode =
   "allowAll" | "promptUnmatched" | "onRequest" | "denyUnmatched";
 
+export type ChatReasoningEffort =
+  "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+
 export interface ChatApproval {
   id: string;
   toolName: string;
@@ -22,6 +25,11 @@ export interface ChatActivity {
   status: string;
 }
 
+export interface ChatReasoningEffortOption {
+  tier: ChatReasoningEffort;
+  description: string;
+}
+
 export interface ChatModel {
   inputModalities?: ("text" | "image" | "video")[];
   id: string;
@@ -29,8 +37,11 @@ export interface ChatModel {
   description: string;
   contextWindow: number;
   inputPrice: number;
+  cachedPrice: number;
   outputPrice: number;
   pricingAvailable: boolean;
+  reasoningEfforts: ChatReasoningEffortOption[];
+  defaultReasoningEffort: ChatReasoningEffort;
 }
 
 export interface ChatProvider {
@@ -106,6 +117,7 @@ export interface ChatRequest {
   conversationId: string;
   messageId: string;
   permissionMode: ChatPermissionMode;
+  reasoningEffort: ChatReasoningEffort;
   providerId: ProviderCliId;
   modelId: string;
   messages: {

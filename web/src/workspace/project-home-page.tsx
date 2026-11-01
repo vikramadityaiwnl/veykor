@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import type { ChatAttachment, ChatPermissionMode, ProviderCliId } from "@veykor/shared";
+import type { ChatAttachment, ChatModel, ChatPermissionMode, ChatReasoningEffort, ProviderCliId } from "@veykor/shared";
 import { Center } from "@astryxdesign/core/Center";
 import { ChatLayout } from "@astryxdesign/core/Chat";
 import { Heading } from "@astryxdesign/core/Heading";
 import { VStack } from "@astryxdesign/core/VStack";
 import { useChatSessionsStore, emptyUsage, type SessionMessage } from "./chat-sessions-store";
+import { useChatDefaultsStore } from "./chat-defaults-store";
 import { useSidebarSectionsStore } from "./sidebar-sections-store";
+import { useAuthStore } from "../auth/auth-store";
 import { useSettingsStore } from "../settings/settings-store";
 import type { ChatDraft } from "./chat-draft";
 import { useChatRuntimeStore, chatAction } from "./chat-runtime-store";
@@ -18,6 +20,34 @@ import { chatGreeting } from "./chat-greeting";
 
 const noMessages: SessionMessage[] = [];
 
+const noPreferredModels: Record<string, string> = {};
+
+function resolveEffort(
+  model: ChatModel | undefined,
+  saved: ChatReasoningEffort | undefined,
+  choice: { modelId: string; effort: ChatReasoningEffort } | null,
+): ChatReasoningEffort {
+  const tiers = (model?.reasoningEfforts || []).map((option) => option.tier);
+
+  if (choice && choice.modelId === model?.id && tiers.includes(choice.effort)) {
+    return choice.effort;
+  }
+
+  if (saved && tiers.includes(saved)) {
+    return saved;
+  }
+
+  if (tiers.includes("max")) {
+    return "max";
+  }
+
+  if (model && tiers.includes(model.defaultReasoningEffort)) {
+    return model.defaultReasoningEffort;
+  }
+
+  return tiers[0] || "max";
+}
+
 export function ProjectHomePage() {
   const [now, setNow] = useState(() => new Date());
   const navigate = useNavigate();
@@ -26,8 +56,12 @@ export function ProjectHomePage() {
   const draft = (location.state as { draft?: ChatDraft } | null)?.draft;
   const [defaultProvider, setDefaultProvider] = useState("");
   const [defaultModel, setDefaultModel] = useState("");
-  const [permissionMode, setPermissionMode] =
-    useState<ChatPermissionMode>("promptUnmatched");
+  const [permissionChoice, setPermissionChoice] =
+    useState<ChatPermissionMode | null>(null);
+  const [effortChoice, setEffortChoice] = useState<{
+    modelId: string;
+    effort: ChatReasoningEffort;
+  } | null>(null);
   const sessions = useChatSessionsStore((state) => state.sessions);
   const status = useChatSessionsStore((state) => state.status);
   const historyError = useChatSessionsStore((state) => state.error);
@@ -36,6 +70,16 @@ export function ProjectHomePage() {
   );
   const projects = useProjectsStore((state) => state.projects);
   const session = sessions.find((entry) => entry.id === sessionId);
+  const userId = useAuthStore((state) => state.status?.user?.id ?? null);
+  const loadDefaults = useChatDefaultsStore((state) => state.load);
+  const defaultProviderPreference = useChatDefaultsStore(
+    (state) => state.defaultProviderId,
+  );
+  const preferredModels = useChatDefaultsStore((state) => state.models);
+  const savedEfforts = useChatDefaultsStore((state) => state.efforts);
+  const savedPermissionMode = useChatDefaultsStore(
+    (state) => state.permissionMode,
+  );
   const providers = useSettingsStore((state) => state.providers);
   const loading = useSettingsStore(
     (state) => state.status === "idle" || state.status === "loading",
@@ -53,21 +97,41 @@ export function ProjectHomePage() {
     ) ||
     sections.find((section) => section.kind === "chats" && section.isFixed) ||
     sections.find((section) => section.kind === "chats");
-  const preferredProviderId = session?.providerId || defaultProvider;
+  const isProjectChat = !!session?.projectId || !!draft?.projectId;
+  const permissionMode =
+    permissionChoice ||
+    (isProjectChat ? "promptUnmatched" : savedPermissionMode);
+  const preferredProviderId =
+    session?.providerId ||
+    defaultProvider ||
+    (!isProjectChat ? defaultProviderPreference : "");
   const provider =
     providers.find(
       (entry) => entry.available && entry.id === preferredProviderId,
     ) || providers.find((entry) => entry.available);
   const providerId = provider?.id || "";
   const preferredModelId =
-    session?.providerId === providerId ? session.modelId : defaultModel;
+    session?.providerId === providerId
+      ? session.modelId
+      : defaultModel ||
+        (!isProjectChat ? preferredModels[providerId] || "" : "");
   const modelId =
     provider?.models.find((entry) => entry.id === preferredModelId)?.id ||
     provider?.models[0]?.id ||
     "";
+  const model = provider?.models.find((entry) => entry.id === modelId);
+  const reasoningEffort = resolveEffort(
+    model,
+    isProjectChat ? undefined : savedEfforts[modelId],
+    effortChoice,
+  );
   const lastReply = messages
     .filter((message) => message.role === "assistant")
     .at(-1);
+  const hasThreadContent =
+    messages.length > 0 ||
+    (session?.approvals || []).length > 0 ||
+    (session?.activities || []).length > 0;
   const missingSession = !!sessionId && status === "ready" && !session;
   const ready =
     status === "ready" &&
@@ -86,8 +150,15 @@ export function ProjectHomePage() {
     }
   }, [sessionId, status]);
 
+  useEffect(() => {
+    if (userId !== null) {
+      void loadDefaults();
+    }
+  }, [userId, loadDefaults]);
+
   function select(providerId: string, modelId: string) {
     useChatRuntimeStore.setState({ error: "", errorSessionId: "" });
+    setEffortChoice(null);
 
     if (session) {
       useChatSessionsStore
@@ -96,6 +167,10 @@ export function ProjectHomePage() {
     } else {
       setDefaultProvider(providerId);
       setDefaultModel(modelId);
+    }
+
+    if (!isProjectChat) {
+      void useChatDefaultsStore.getState().save(providerId, modelId);
     }
   }
 
@@ -123,6 +198,7 @@ export function ProjectHomePage() {
       permissionMode: session?.nativeSessionId
         ? session.permissionMode || permissionMode
         : permissionMode,
+      reasoningEffort,
       providerId: providerId as ProviderCliId,
       modelId,
       messages: [
@@ -166,6 +242,8 @@ export function ProjectHomePage() {
               : permissionMode
           }
           onPermissionMode={(mode) => {
+            setPermissionChoice(mode);
+
             if (session?.nativeSessionId) {
               void chatAction(session.id, "mode", { mode }).catch((error) =>
                 useChatRuntimeStore.setState({
@@ -173,8 +251,18 @@ export function ProjectHomePage() {
                   errorSessionId: session.id,
                 }),
               );
-            } else {
-              setPermissionMode(mode);
+            }
+
+            if (!isProjectChat) {
+              void useChatDefaultsStore.getState().savePermission(mode);
+            }
+          }}
+          reasoningEffort={reasoningEffort}
+          onReasoningEffort={(effort) => {
+            setEffortChoice({ modelId, effort });
+
+            if (!isProjectChat && modelId) {
+              void useChatDefaultsStore.getState().saveEffort(modelId, effort);
             }
           }}
           isNewProjectChat={!sessionId && !!draft?.projectId}
@@ -185,6 +273,7 @@ export function ProjectHomePage() {
           providers={providers}
           providerId={providerId}
           modelId={modelId}
+          preferredModels={isProjectChat ? noPreferredModels : preferredModels}
           loading={loading}
           isReady={ready}
           isRunning={runningId === sessionId}
@@ -198,13 +287,17 @@ export function ProjectHomePage() {
         />
       }
     >
-      {messages.length > 0 ? (
-        <ConversationMessages
-          messages={messages}
-          isRunning={runningId === sessionId}
-        />
+      {hasThreadContent ? (
+        <>
+          {messages.length > 0 ? (
+            <ConversationMessages
+              messages={messages}
+              isRunning={runningId === sessionId}
+            />
+          ) : null}
+          {session ? <ChatNativeActivity session={session} /> : null}
+        </>
       ) : null}
-      {session && <ChatNativeActivity session={session} />}
     </ChatLayout>
   );
 }

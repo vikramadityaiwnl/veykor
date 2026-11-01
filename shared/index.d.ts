@@ -32,6 +32,8 @@ export type {
 
 export type {
   ChatPermissionMode,
+  ChatReasoningEffort,
+  ChatReasoningEffortOption,
   ChatApproval,
   ChatActivity,
   ChatAttachment,
@@ -50,6 +52,7 @@ export type {
   SettingsProvider,
   SettingsResponse,
   GeneralPreferences,
+  ChatDefaults,
 } from "./contracts/index.js";
 
 export type {

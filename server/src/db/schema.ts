@@ -6,6 +6,7 @@ export const users = sqliteTable("users", {
   passwordHash: text("password_hash").notNull(),
   photo: text("photo"),
   theme: text("theme").notNull().default("dark"),
+  chatDefaults: text("chat_defaults").notNull().default("{}"),
 });
 
 export const sessions = sqliteTable("sessions", {

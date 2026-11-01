@@ -1,4 +1,5 @@
 import type { ChatAttachment, ChatRequest } from "@veykor/shared";
+import { isReasoningEffort } from "./reasoning-effort.js";
 
 export function validChatAttachments(
   value: unknown,
@@ -67,6 +68,7 @@ export function validChatRequest(value: unknown): value is ChatRequest {
     typeof input.modelId === "string" &&
     /^[a-zA-Z0-9][a-zA-Z0-9._:@+/-]{0,199}$/.test(input.modelId) &&
     permissionModes.includes(input.permissionMode) &&
+    isReasoningEffort(input.reasoningEffort) &&
     input.systemPrompt === "" &&
     Array.isArray(input.messages) &&
     input.messages.length > 0 &&

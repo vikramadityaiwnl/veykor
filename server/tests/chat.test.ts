@@ -9,6 +9,7 @@ const input = {
   providerId: "muse",
   modelId: "muse-spark-1.3",
   permissionMode: "promptUnmatched",
+  reasoningEffort: "max",
   systemPrompt: "",
   messages: [{ role: "user", text: "Hello" }],
 };
@@ -28,6 +29,7 @@ test("native chat validates Muse requests and rejects removed providers and inve
     null,
     {},
     { ...input, permissionMode: "auto" },
+    { ...input, reasoningEffort: "turbo" },
     { ...input, modelId: "--flag" },
     { ...input, messages: [null] },
     { ...input, messages: [] },

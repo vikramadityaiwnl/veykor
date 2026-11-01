@@ -74,6 +74,29 @@ body,
   field-sizing: content;
 }
 
+.veykor-collapsed-trigger .veykor-collapsed-label {
+  display: inline-block;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition:
+    max-width var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
+}
+
+.veykor-collapsed-trigger:hover .veykor-collapsed-label,
+.veykor-collapsed-trigger:focus-within .veykor-collapsed-label {
+  max-width: 14rem;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .veykor-collapsed-trigger .veykor-collapsed-label {
+    transition: none;
+  }
+}
+
 .veykor-workspace .astryx-side-nav[data-mode="topbar"] {
   padding: 0;
 }

@@ -1,12 +1,14 @@
 import { useRef, useState } from "react";
-import type { ChatPermissionMode, ChatAttachment, ChatProvider, ChatUsage, Project } from "@veykor/shared";
+import type { ChatPermissionMode, ChatAttachment, ChatProvider, ChatReasoningEffort, ChatUsage, Project } from "@veykor/shared";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCube, faPaperclip, faMicrophone, faArrowUp, faStop } from "@fortawesome/free-solid-svg-icons";
-import { Selector } from "@astryxdesign/core/Selector";
 import { Button } from "@astryxdesign/core/Button";
 import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { ComposerModelSelection } from "./composer-model-selection";
+import { ChatContextProgress } from "./chat-context-progress";
+import { ChatEffortSelection } from "./chat-effort-selection";
+import { ChatPermissionSelection } from "./chat-permission-selection";
 import { ComposerProjectContext } from "./composer-project-context";
 import { Banner } from "@astryxdesign/core/Banner";
 import { ComposerAttachment } from "./composer-attachment";
@@ -17,11 +19,14 @@ import { getAttachmentKind, isImageFile, openInNewTab, readFileAsDataUrl } from 
 interface Props {
   permissionMode: ChatPermissionMode;
   onPermissionMode: (mode: ChatPermissionMode) => void;
+  reasoningEffort: ChatReasoningEffort;
+  onReasoningEffort: (effort: ChatReasoningEffort) => void;
   project?: Project;
   isNewProjectChat: boolean;
   providers: ChatProvider[];
   providerId: string;
   modelId: string;
+  preferredModels: Record<string, string>;
   loading: boolean;
   isReady: boolean;
   isRunning: boolean;
@@ -50,6 +55,7 @@ export function ChatComposerPanel(props: Props) {
   );
   const model = provider?.models.find((entry) => entry.id === props.modelId);
   const error = attachmentError || props.error || provider?.error || "";
+  const contextTokens = props.usage.inputTokens + props.usage.outputTokens;
   const disabled =
     !props.isReady ||
     !provider?.available ||
@@ -228,6 +234,7 @@ export function ChatComposerPanel(props: Props) {
                   providers={props.providers}
                   providerId={props.providerId}
                   modelId={props.modelId}
+                  preferredModels={props.preferredModels}
                   loading={props.loading}
                   onSelection={props.onSelection}
                 />
@@ -244,27 +251,25 @@ export function ChatComposerPanel(props: Props) {
                 />
               </HStack>
 
-              <Selector
-                label="Permission mode"
-                isLabelHidden
-                size="sm"
-                variant="ghost"
-                value={props.permissionMode}
-                options={[
-                  {
-                    value: "promptUnmatched",
-                    label: "Ask for unmatched actions",
-                  },
-                  { value: "onRequest", label: "Ask on request" },
-                  { value: "denyUnmatched", label: "Deny unmatched actions" },
-                  { value: "allowAll", label: "Allow all" },
-                ]}
-                onChange={(mode) =>
-                  props.onPermissionMode(mode as ChatPermissionMode)
-                }
+              <ChatEffortSelection
+                model={model}
+                value={props.reasoningEffort}
+                onChange={props.onReasoningEffort}
               />
 
               <HStack gap={3} vAlign="center" className="ml-auto">
+                {props.hasMessages && model && model.contextWindow > 0 && (
+                  <ChatContextProgress
+                    tokens={contextTokens}
+                    limit={model.contextWindow}
+                  />
+                )}
+
+                <ChatPermissionSelection
+                  value={props.permissionMode}
+                  onChange={props.onPermissionMode}
+                />
+
                 <Button
                   label="Transcription coming soon"
                   size="sm"
@@ -320,6 +325,7 @@ export function ChatComposerPanel(props: Props) {
                   providers={props.providers}
                   providerId={props.providerId}
                   modelId={props.modelId}
+                  preferredModels={props.preferredModels}
                   loading={props.loading}
                   onSelection={props.onSelection}
                   isCompact

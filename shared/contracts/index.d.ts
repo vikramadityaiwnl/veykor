@@ -33,6 +33,8 @@ export type {
 
 export type {
   ChatPermissionMode,
+  ChatReasoningEffort,
+  ChatReasoningEffortOption,
   ChatApproval,
   ChatActivity,
   ChatAttachment,
@@ -51,6 +53,7 @@ export type {
   SettingsProvider,
   SettingsResponse,
   GeneralPreferences,
+  ChatDefaults,
 } from "./settings/index.js";
 
 export type {

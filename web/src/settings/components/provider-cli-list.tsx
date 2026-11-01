@@ -88,7 +88,7 @@ export function ProviderCliList() {
               <VStack gap={2} className="min-w-0 flex-1">
                 <HStack gap={2} vAlign="center">
                   <Heading level={3} weight="semibold">
-                    {provider.company}
+                    {provider.label}
                   </Heading>
 
                   {provider.version ? (

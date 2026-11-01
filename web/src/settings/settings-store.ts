@@ -35,7 +35,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
           providers: [
             ...settings.providers,
             ...[
-              { id: "claude", label: "Claude", company: "Anthropic" },
+              { id: "claude", label: "Claude Code", company: "Anthropic" },
               { id: "codex", label: "Codex", company: "OpenAI" },
               { id: "opencode", label: "OpenCode", company: "SST" },
               { id: "deepseek", label: "DeepSeek", company: "DeepSeek" },

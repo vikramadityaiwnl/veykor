@@ -130,6 +130,7 @@ test(
         providerId: "muse",
         modelId: "muse-spark-1.3",
         permissionMode,
+        reasoningEffort: "max",
         systemPrompt: "",
         messages: [{ role: "user", text, attachments }],
       });

@@ -2,6 +2,7 @@ import type { ChatAttachment } from "@veykor/shared";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFile, faFileExcel, faFileLines, faFilePdf } from "@fortawesome/free-solid-svg-icons";
 import { Center } from "@astryxdesign/core/Center";
+import { Thumbnail } from "@astryxdesign/core/Thumbnail";
 
 interface Props {
   attachment: ChatAttachment;
@@ -17,6 +18,16 @@ export function ConversationAttachment(props: Props) {
         : props.attachment.kind === "text"
           ? faFileLines
           : faFile;
+
+  if (props.attachment.kind === "image") {
+    return (
+      <Thumbnail
+        src={props.attachment.dataUrl || undefined}
+        label={props.attachment.name}
+        onClick={props.attachment.dataUrl ? props.onOpen : undefined}
+      />
+    );
+  }
 
   if (!props.attachment.dataUrl) {
     return (
@@ -39,21 +50,13 @@ export function ConversationAttachment(props: Props) {
       aria-label={`Open ${props.attachment.name} in a new tab`}
       className="shrink-0 cursor-pointer rounded-(--radius-element) border border-solid border-(--color-border-emphasized) bg-(--color-background-raised) p-1"
     >
-      {props.attachment.kind === "image" ? (
-        <img
-          src={props.attachment.dataUrl}
-          alt=""
-          className="h-16 w-16 rounded-(--radius-element) object-cover"
+      <Center className="h-16 w-16">
+        <FontAwesomeIcon
+          icon={icon}
+          size="lg"
+          className="text-(--color-icon-secondary)"
         />
-      ) : (
-        <Center className="h-16 w-16">
-          <FontAwesomeIcon
-            icon={icon}
-            size="lg"
-            className="text-(--color-icon-secondary)"
-          />
-        </Center>
-      )}
+      </Center>
     </button>
   );
 }

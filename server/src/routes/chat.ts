@@ -279,7 +279,7 @@ chatRoute.post("/", async (c) => {
     return c.json(
       {
         error:
-          "Choose Muse Code, a supported permission mode, and a nonempty message.",
+          "Choose Muse Code, a supported permission mode and reasoning effort, and a nonempty message.",
       },
       400,
     );

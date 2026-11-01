@@ -1,10 +1,11 @@
-import type { GeneralPreferences } from "@veykor/shared";
+import type { ChatDefaults, GeneralPreferences } from "@veykor/shared";
 import { eq } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { users } from "../db/schema.js";
 import { Hono } from "hono";
 import { requireAuth, type AuthEnv } from "../auth/auth.js";
 import { getSettings } from "../settings/settings.js";
+import { parseChatDefaults, validChatDefaults } from "../settings/chat-defaults.js";
 
 export const settingsRoute = new Hono<AuthEnv>();
 
@@ -44,4 +45,36 @@ settingsRoute.put("/general", async (c) => {
     .run();
 
   return c.json({ theme: input.theme } satisfies GeneralPreferences);
+});
+
+settingsRoute.get("/chat-defaults", (c) => {
+  const user = db
+    .select({ chatDefaults: users.chatDefaults })
+    .from(users)
+    .where(eq(users.id, c.get("user").id))
+    .get()!;
+
+  return c.json(parseChatDefaults(user.chatDefaults));
+});
+
+settingsRoute.put("/chat-defaults", async (c) => {
+  const input: unknown = await c.req.json().catch(() => null);
+
+  if (!validChatDefaults(input)) {
+    return c.json({ error: "Choose a supported provider and model." }, 400);
+  }
+
+  db.update(users)
+    .set({
+      chatDefaults: JSON.stringify({
+        defaultProviderId: input.defaultProviderId,
+        models: input.models,
+        efforts: input.efforts,
+        permissionMode: input.permissionMode,
+      } satisfies ChatDefaults),
+    })
+    .where(eq(users.id, c.get("user").id))
+    .run();
+
+  return c.json(parseChatDefaults(input));
 });

@@ -558,6 +558,7 @@ export async function runChat(userId: number, input: ChatRequest) {
     }
     const turn = await live.session.sendUserTurn({
       input: parts,
+      reasoningEffort: input.reasoningEffort,
       composerInput: message.text,
     });
     live.state.currentTurn = turn.turnId;
