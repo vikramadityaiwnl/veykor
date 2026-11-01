@@ -1,5 +1,5 @@
 import { VStack } from "@astryxdesign/core/VStack";
-import { ProviderCliGrid } from "./provider-cli-grid";
+import { ProviderCliList } from "./provider-cli-list";
 
 export function SettingsProvidersPanel() {
   return (
@@ -9,7 +9,7 @@ export function SettingsProvidersPanel() {
       isScrollable
       className="min-h-0 flex-1 overscroll-contain"
     >
-      <ProviderCliGrid />
+      <ProviderCliList />
     </VStack>
   );
 }

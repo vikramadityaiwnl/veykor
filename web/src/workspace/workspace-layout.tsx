@@ -230,8 +230,11 @@ export function WorkspaceLayout() {
   return (
     <AppShell
       height="fill"
-      className="h-dvh overflow-hidden [&_[role=main]]:overflow-hidden!"
+      className="veykor-workspace h-dvh overflow-hidden [&_[role=main]]:overflow-hidden!"
       contentPadding={0}
+      mobileNav={{
+        defaultIsMobile: window.matchMedia("(width < 48rem)").matches,
+      }}
       variant="section"
       sideNav={
         <SideNav
@@ -315,6 +318,7 @@ export function WorkspaceLayout() {
       <VStack height="100%" gap={0} className="min-h-0 min-w-0 overflow-hidden">
         {isHome ? (
           <ChatThreadHeader
+            className="hidden! md:flex!"
             title={
               sessionId && activeSession ? activeSession.title : "New Chat"
             }

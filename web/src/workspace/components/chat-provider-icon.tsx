@@ -14,7 +14,7 @@ export function ChatProviderIcon(props: Props) {
     <img
       src={`/providers/${props.providerId}.svg`}
       alt=""
-      className={`size-(--spacing-4) object-contain ${props.providerId === "muse" ? "" : "dark:invert"}`}
+      className={`size-(--spacing-4) object-contain dark:invert`}
     />
   );
 }

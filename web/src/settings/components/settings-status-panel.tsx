@@ -1,14 +1,15 @@
+import { Grid } from "@astryxdesign/core/Grid";
 import { useEffect } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
-import { Grid } from "@astryxdesign/core/Grid";
+import { SettingsGroup } from "./settings-group";
 import { Spinner } from "@astryxdesign/core/Spinner";
 import { VStack } from "@astryxdesign/core/VStack";
 import { useStatusStore } from "../status-store";
-import { StatusCpuCard } from "./status-cpu-card";
-import { StatusDatabaseCard } from "./status-database-card";
-import { StatusMemoryCard } from "./status-memory-card";
-import { StatusStorageCard } from "./status-storage-card";
+import { StatusCpuRow } from "./status-cpu-row";
+import { StatusDatabaseRow } from "./status-database-row";
+import { StatusMemoryRow } from "./status-memory-row";
+import { StatusStorageRow } from "./status-storage-row";
 
 const refreshIntervalMs = 10_000;
 
@@ -71,15 +72,14 @@ export function SettingsStatusPanel() {
         <Banner status="error" title="Refresh failed" description={error} />
       ) : null}
 
-      <Grid columns={{ minWidth: 280 }} gap={4}>
-        <StatusDatabaseCard database={data.database} />
-
-        <StatusCpuCard cpu={data.cpu} />
-
-        <StatusMemoryCard memory={data.memory} />
-
-        <StatusStorageCard storage={data.storage} />
-      </Grid>
+      <SettingsGroup>
+        <Grid columns={2} gap={0} className="veykor-status-grid">
+          <StatusDatabaseRow database={data.database} />
+          <StatusCpuRow cpu={data.cpu} />
+          <StatusMemoryRow memory={data.memory} />
+          <StatusStorageRow storage={data.storage} />
+        </Grid>
+      </SettingsGroup>
     </VStack>
   );
 }

@@ -89,61 +89,65 @@ export function SidebarSections(props: Props) {
   }
 
   return (
-    <ContextMenu
-      label="Sidebar actions"
-      items={[
-        {
-          label: "New section",
-          icon: <FontAwesomeIcon icon={faPlus} size="sm" aria-hidden="true" />,
-          onClick: () => {
-            props.onCreateSection();
+    <VStack className="veykor-sidebar-list min-h-0 flex-1 overflow-y-auto">
+      <ContextMenu
+        label="Sidebar actions"
+        items={[
+          {
+            label: "New section",
+            icon: (
+              <FontAwesomeIcon icon={faPlus} size="sm" aria-hidden="true" />
+            ),
+            onClick: () => {
+              props.onCreateSection();
+            },
           },
-        },
-      ]}
-    >
-      <VStack gap={4} className="min-h-full py-4">
-        {props.error ? (
-          <>
-            <Banner
-              status="error"
-              title="Sections unavailable"
-              description={props.error}
-            />
-            <Button label="Try again" clickAction={props.onRetry} />
-          </>
-        ) : !props.isReady ? null : props.sections.length === 0 ? (
-          <SidebarEmptyState onCreateSection={props.onCreateSection} />
-        ) : (
-          props.sections.map((section) => (
-            <WorkspaceSection
-              key={section.id}
-              section={section}
-              onToggle={() => {
-                props.onToggleSection(section);
-              }}
-              onAdd={
-                section.kind === "chats" || props.isHost
-                  ? () => {
-                      if (section.kind === "chats") {
-                        props.onAddChat(section.id);
-                      } else {
-                        props.onAddProject(section.id);
+        ]}
+      >
+        <VStack gap={4} className="min-h-full py-4">
+          {props.error ? (
+            <>
+              <Banner
+                status="error"
+                title="Sections unavailable"
+                description={props.error}
+              />
+              <Button label="Try again" clickAction={props.onRetry} />
+            </>
+          ) : !props.isReady ? null : props.sections.length === 0 ? (
+            <SidebarEmptyState onCreateSection={props.onCreateSection} />
+          ) : (
+            props.sections.map((section) => (
+              <WorkspaceSection
+                key={section.id}
+                section={section}
+                onToggle={() => {
+                  props.onToggleSection(section);
+                }}
+                onAdd={
+                  section.kind === "chats" || props.isHost
+                    ? () => {
+                        if (section.kind === "chats") {
+                          props.onAddChat(section.id);
+                        } else {
+                          props.onAddProject(section.id);
+                        }
                       }
-                    }
-                  : undefined
-              }
-              onEdit={() => {
-                props.onEditSection(section);
-              }}
-              onDelete={() => {
-                props.onDeleteSection(section);
-              }}
-            >
-              {sectionContent(section)}
-            </WorkspaceSection>
-          ))
-        )}
-      </VStack>
-    </ContextMenu>
+                    : undefined
+                }
+                onEdit={() => {
+                  props.onEditSection(section);
+                }}
+                onDelete={() => {
+                  props.onDeleteSection(section);
+                }}
+              >
+                {sectionContent(section)}
+              </WorkspaceSection>
+            ))
+          )}
+        </VStack>
+      </ContextMenu>
+    </VStack>
   );
 }

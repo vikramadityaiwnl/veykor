@@ -12,6 +12,7 @@ import type { ChatDraft } from "./chat-draft";
 import { useChatRuntimeStore } from "./chat-runtime-store";
 import { ChatComposerPanel } from "./components/chat-composer-panel";
 import { ConversationMessages } from "./components/conversation-messages";
+import { useProjectsStore } from "./projects-store";
 import { chatGreeting } from "./chat-greeting";
 
 const noMessages: SessionMessage[] = [];
@@ -30,6 +31,7 @@ export function ProjectHomePage() {
   const messages = useChatSessionsStore((state) =>
     sessionId ? state.messages[sessionId] || noMessages : noMessages,
   );
+  const projects = useProjectsStore((state) => state.projects);
   const session = sessions.find((entry) => entry.id === sessionId);
   const providers = useSettingsStore((state) => state.providers);
   const loading = useSettingsStore(
@@ -117,14 +119,18 @@ export function ProjectHomePage() {
     <ChatLayout
       className="min-h-0 flex-1"
       emptyState={
-        <Center>
-          <VStack gap={3} hAlign="center">
+        <Center className="px-6 text-center">
+          <VStack gap={8} hAlign="center">
             <img
-              className="size-[calc(var(--spacing-12)*2)] object-contain dark:invert"
+              className="size-[calc(var(--spacing-12)*2)] object-contain opacity-40 dark:invert"
               src="/logo.svg"
               alt=""
             />
-            <Heading level={1} weight="semibold">
+            <Heading
+              level={1}
+              weight="semibold"
+              className="max-w-2xl text-center text-xl! sm:text-2xl!"
+            >
               {missingSession
                 ? "Chat not found"
                 : status === "loading"
@@ -137,6 +143,11 @@ export function ProjectHomePage() {
       composer={
         <ChatComposerPanel
           key={sessionId || draft?.id || "home"}
+          isNewProjectChat={!sessionId && !!draft?.projectId}
+          project={projects.find(
+            (project) =>
+              project.id === (session?.projectId || draft?.projectId),
+          )}
           providers={providers}
           providerId={providerId}
           modelId={modelId}

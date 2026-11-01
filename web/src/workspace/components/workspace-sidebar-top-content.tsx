@@ -58,8 +58,8 @@ export function WorkspaceSidebarTopContent(props: Props) {
   }
 
   return (
-    <VStack gap={2} paddingBlockStart={2}>
-      <HStack className="group/search relative" vAlign="center">
+    <HStack gap={2} paddingBlockStart={2} vAlign="center">
+      <HStack className="group/search relative min-w-0 flex-1" vAlign="center">
         <TextInput
           ref={searchInputRef}
           label="Search"
@@ -78,9 +78,9 @@ export function WorkspaceSidebarTopContent(props: Props) {
         />
         <Kbd
           keys="mod+k"
-          className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2"
+          className="hidden! md:flex! pointer-events-none absolute top-1/2 right-3 -translate-y-1/2"
         />
-      </HStack>{" "}
-    </VStack>
+      </HStack>
+    </HStack>
   );
 }

@@ -1,6 +1,7 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faFolder, faFolderOpen, faFolderTree, faPen, faPlus } from "@fortawesome/free-solid-svg-icons";
+import { faFolder, faFolderOpen, faFolderTree, faPen, faPenToSquare } from "@fortawesome/free-solid-svg-icons";
 import type { Project, SidebarSection } from "@veykor/shared";
+import { useAppShellMobile } from "@astryxdesign/core/AppShell";
 import { Button } from "@astryxdesign/core/Button";
 import { ContextMenu, type ContextMenuOption } from "@astryxdesign/core/ContextMenu";
 import { SideNavItem } from "@astryxdesign/core/SideNav";
@@ -26,6 +27,8 @@ interface Props {
 }
 
 export function WorkspaceProjectsList(props: Props) {
+  const mobile = useAppShellMobile();
+
   if (props.projects.length === 0) {
     return <WorkspaceSectionEmpty />;
   }
@@ -123,16 +126,17 @@ export function WorkspaceProjectsList(props: Props) {
                     isIconOnly
                     variant="secondary"
                     size="sm"
-                    className="!border-0 !bg-transparent !shadow-none text-(--color-icon-secondary) opacity-0 group-hover:opacity-100 focus-visible:opacity-100 active:!bg-none hover:!bg-none hover:text-(--color-text-primary) [@media(hover:none)]:opacity-100"
+                    className="-me-2 !border-0 !bg-transparent !shadow-none text-(--color-icon-secondary) opacity-0 group-hover:opacity-100 focus-visible:opacity-100 active:!bg-none hover:!bg-none hover:text-(--color-text-primary) [@media(hover:none)]:opacity-100"
                     icon={
                       <FontAwesomeIcon
-                        icon={faPlus}
+                        icon={faPenToSquare}
                         size="sm"
                         aria-hidden="true"
                       />
                     }
                     clickAction={() => {
                       props.onAddSession(item.id);
+                      mobile.closeMobileNav();
                     }}
                   />
                 }
