@@ -24,6 +24,7 @@ export interface ConversationMetadata {
   nativeSessionId: string;
   permissionMode: ChatPermissionMode;
   attachments: StoredAttachment[];
+  turnTimings?: Record<string, { startedAt: number; seconds: number }>;
 }
 
 export function readConversation(
@@ -35,7 +36,9 @@ export function readConversation(
     .from(conversations)
     .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
     .get();
-  return row ? (JSON.parse(row.data) as ConversationMetadata) : undefined;
+  return row
+    ? ({ turnTimings: {}, ...JSON.parse(row.data) } as ConversationMetadata)
+    : undefined;
 }
 
 export function writeConversation(
@@ -58,7 +61,10 @@ export function listConversations(userId: number): ConversationMetadata[] {
     .from(conversations)
     .where(eq(conversations.userId, userId))
     .all()
-    .map((row) => JSON.parse(row.data) as ConversationMetadata);
+    .map(
+      (row) =>
+        ({ turnTimings: {}, ...JSON.parse(row.data) }) as ConversationMetadata,
+    );
 }
 
 export function metadataSession(metadata: ConversationMetadata): ChatSession {
@@ -141,6 +147,7 @@ async function slimSession(
     nativeSessionId: session.nativeSessionId || "",
     permissionMode: session.permissionMode || "promptUnmatched",
     attachments,
+    turnTimings: {},
   };
 }
 
@@ -153,6 +160,10 @@ function deleteConversation(userId: number, id: string) {
 export async function migrateStoredConversations(): Promise<void> {
   for (const row of db.select().from(conversations).all()) {
     const data = JSON.parse(row.data);
+    if (!data.turnTimings && !Array.isArray(data.messages) && !data.legacy) {
+      data.turnTimings = {};
+      writeConversation(row.userId, data as ConversationMetadata);
+    }
     const transcript = Boolean(
       (Array.isArray(data.messages) && data.messages.length > 0) || data.legacy,
     );

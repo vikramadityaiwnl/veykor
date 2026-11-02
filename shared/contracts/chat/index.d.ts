@@ -83,12 +83,23 @@ export interface ChatAttachment {
   text: string;
 }
 
+export interface ChatThoughtEntry {
+  id: string;
+  kind: "reasoning" | "commentary" | "tool" | "activity";
+  text: string;
+  toolId: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
   usage: ChatUsage;
   createdAt: number;
+  thinking?: string;
+  thoughtEntries?: ChatThoughtEntry[];
+  thinkingStartedAt?: number;
+  thinkingSeconds?: number;
   tools: ChatToolCall[];
   attachments: ChatAttachment[];
 }

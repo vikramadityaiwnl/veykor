@@ -125,6 +125,7 @@ chatRoute.put("/sessions", async (c) => {
             nativeSessionId: "",
             permissionMode: "promptUnmatched",
             attachments: [],
+            turnTimings: {},
           },
     );
   }

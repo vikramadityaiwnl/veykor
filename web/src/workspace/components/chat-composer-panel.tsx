@@ -191,7 +191,7 @@ export function ChatComposerPanel(props: Props) {
 
       <VStack gap={0} className="min-w-0">
         <form
-          className="relative z-10 min-w-0 rounded-(--radius-chat) border border-solid border-(--color-border-emphasized) bg-(--color-background-body) p-4"
+          className="relative z-10 min-w-0 rounded-(--radius-chat) border border-solid border-(--color-border-emphasized) bg-(--color-background-surface) p-4"
           onSubmit={(event) => {
             event.preventDefault();
             submit(draft);

@@ -43,6 +43,7 @@ export type {
   ChatProvider,
   ChatCatalogResponse,
   ChatUsage,
+  ChatThoughtEntry,
   ChatMessage,
   ChatSession,
   ChatSessionsResponse,

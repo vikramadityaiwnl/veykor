@@ -1,6 +1,6 @@
 import { mkdir, readFile, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import type { ChatActivity, ChatApproval, ChatAttachment, ChatMessage, ChatPermissionMode, ChatRequest, ChatSession, ChatToolCall, ChatUsage } from "@veykor/shared";
+import type { ChatActivity, ChatThoughtEntry, ChatApproval, ChatAttachment, ChatMessage, ChatPermissionMode, ChatRequest, ChatSession, ChatToolCall, ChatUsage } from "@veykor/shared";
 import type { ApprovalDecisionInput, FoldedItem, Session } from "@muse-code/sdk";
 import { spawnMuse } from "./muse-host.js";
 import { scanDetectedServers } from "../mcp/detect.js";
@@ -10,6 +10,8 @@ import { metadataSession, projectFolder, readConversation, writeConversation, ty
 import { attachmentAvailable, attachmentBytes, stageAttachment } from "./attachments.js";
 import { imageMimeType, isInsideFolder, savedScreenshotPaths, screenshotName } from "./tool-images.js";
 import { dbPath } from "../db/client.js";
+import { responseSeconds } from "./chat-response-timing.js";
+import { museThoughtText } from "./muse-thought-text.js";
 import { nativeInput } from "./muse-input.js";
 
 export const permissionModes: ChatPermissionMode[] = [
@@ -213,7 +215,13 @@ async function projectMessages(
 ): Promise<{ messages: ChatMessage[]; activities: ChatActivity[] }> {
   const groups = new Map<
     string,
-    { user: FoldedItem[]; agent: FoldedItem[]; tools: FoldedItem[] }
+    {
+      user: FoldedItem[];
+      agent: FoldedItem[];
+      tools: FoldedItem[];
+      thinking: FoldedItem[];
+      entries: ChatThoughtEntry[];
+    }
   >();
   const activities: ChatActivity[] = [];
   const liveItems = live.session.fold.items.list();
@@ -231,7 +239,8 @@ async function projectMessages(
     if (
       item.kind !== "userMessage" &&
       item.kind !== "agentMessage" &&
-      item.kind !== "toolCall"
+      item.kind !== "toolCall" &&
+      item.kind !== "reasoning"
     ) {
       activities.push(projectActivity(item));
       continue;
@@ -241,16 +250,40 @@ async function projectMessages(
     let group = groups.get(key);
 
     if (!group) {
-      group = { user: [], agent: [], tools: [] };
+      group = { user: [], agent: [], tools: [], thinking: [], entries: [] };
       groups.set(key, group);
     }
 
     if (item.kind === "userMessage") {
       group.user.push(item);
+    } else if (item.kind === "reasoning") {
+      group.thinking.push(item);
+      group.entries.push({
+        id: item.itemId,
+        kind: "reasoning",
+        text: museThoughtText(item, live.session.fold.items),
+        toolId: "",
+      });
     } else if (item.kind === "agentMessage") {
-      group.agent.push(item);
+      if (item.status === "inProgress" || item.messagePhase === "commentary") {
+        group.thinking.push(item);
+        group.entries.push({
+          id: item.itemId,
+          kind: "commentary",
+          text: museThoughtText(item, live.session.fold.items),
+          toolId: "",
+        });
+      } else {
+        group.agent.push(item);
+      }
     } else {
       group.tools.push(item);
+      group.entries.push({
+        id: item.itemId,
+        kind: "tool",
+        text: "",
+        toolId: item.itemId,
+      });
     }
   }
 
@@ -278,7 +311,11 @@ async function projectMessages(
       });
     }
 
-    if (group.agent.length > 0 || group.tools.length > 0) {
+    if (
+      group.agent.length > 0 ||
+      group.tools.length > 0 ||
+      group.thinking.length > 0
+    ) {
       const liveUsage = live.state.usage.get(turnId);
       const usage = liveUsage || {
         ...emptyUsage(),
@@ -291,12 +328,39 @@ async function projectMessages(
           0,
         ),
       };
-      const first = group.agent[0] || group.tools[0];
+      const first = group.thinking[0] || group.agent[0] || group.tools[0];
+      const timing = metadata.turnTimings?.[turnId];
+      if (group.agent.length > 0 && timing) {
+        const finalRecordedAt = Math.max(...group.agent.map(createdAt));
+        const seconds = responseSeconds(
+          timing.startedAt,
+          finalRecordedAt,
+          timing.seconds,
+        );
+        if (seconds !== timing.seconds) {
+          timing.seconds = seconds;
+          const saved = readConversation(userId, conversationId);
+          if (saved) {
+            saved.turnTimings = {
+              ...saved.turnTimings,
+              [turnId]: { ...timing },
+            };
+            writeConversation(userId, saved);
+          }
+        }
+      }
 
       messages.push({
-        id: first.itemId,
+        id: `assistant-${turnId}`,
         role: "assistant",
         text: agentText(group.agent, live),
+        thoughtEntries: group.entries,
+        thinkingStartedAt: metadata.turnTimings?.[turnId]?.startedAt || 0,
+        thinkingSeconds: metadata.turnTimings?.[turnId]?.seconds || 0,
+        thinking: group.thinking
+          .map((item) => museThoughtText(item, live.session.fold.items))
+          .filter(Boolean)
+          .join("\n\n"),
         usage,
         createdAt: createdAt(first),
         tools: group.tools.map(projectTool),
@@ -529,6 +593,25 @@ async function runtime(userId: number, id: string): Promise<Runtime> {
           state.usage.set(turnId, entry);
         }
       }
+      if (notification.method === "item/completed" && params) {
+        const item = params.item as FoldedItem | undefined;
+        if (
+          item?.kind === "agentMessage" &&
+          item.messagePhase !== "commentary" &&
+          item.turnId
+        ) {
+          const saved = readConversation(userId, id);
+          const timing = saved?.turnTimings?.[item.turnId];
+          if (saved && timing) {
+            timing.seconds = responseSeconds(
+              timing.startedAt,
+              createdAt(item),
+              timing.seconds,
+            );
+            writeConversation(userId, saved);
+          }
+        }
+      }
       if (notification.method === "approval/resolved") {
         state.approvals.delete(String(params?.approvalId));
       }
@@ -696,6 +779,8 @@ export async function runChat(userId: number, input: ChatRequest) {
     throw new Error("Conversation not found");
   }
   busy.add(key);
+  const startedAt = Date.now();
+  let submittedTurnId = "";
   pendingErrors.delete(key);
   try {
     const message = input.messages.at(-1)!;
@@ -748,6 +833,7 @@ export async function runChat(userId: number, input: ChatRequest) {
       reasoningEffort: input.reasoningEffort,
       composerInput: message.text,
     });
+    submittedTurnId = turn.turnId;
     live.state.currentTurn = turn.turnId;
     live.state.lastError = "";
     if (stopRequested.has(key)) {
@@ -758,6 +844,10 @@ export async function runChat(userId: number, input: ChatRequest) {
     }
     const settled = readConversation(userId, id);
     if (settled) {
+      settled.turnTimings = {
+        ...settled.turnTimings,
+        [turn.turnId]: { startedAt, seconds: 0 },
+      };
       for (const attachment of settled.attachments) {
         if (!attachment.turnId) {
           attachment.turnId = turn.turnId;
@@ -790,6 +880,21 @@ export async function runChat(userId: number, input: ChatRequest) {
       pendingErrors.set(key, message);
     }
   } finally {
+    if (submittedTurnId) {
+      const settled = readConversation(userId, id);
+      if (settled) {
+        settled.turnTimings = {
+          ...settled.turnTimings,
+          [submittedTurnId]: {
+            startedAt,
+            seconds:
+              settled.turnTimings?.[submittedTurnId]?.seconds ||
+              Math.max(1, Math.round((Date.now() - startedAt) / 1000)),
+          },
+        };
+        writeConversation(userId, settled);
+      }
+    }
     busy.delete(key);
     stopRequested.delete(key);
   }

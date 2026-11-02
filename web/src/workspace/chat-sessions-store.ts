@@ -44,6 +44,49 @@ function createId(): string {
   return `session-${Date.now()}-${Math.floor(Math.random() * 1_000_000_000)}`;
 }
 
+const optimisticMessages = new Map<
+  string,
+  { message: SessionMessage; userCount: number }
+>();
+const messageAliases = new Map<string, string>();
+
+function reconcileMessages(
+  sessionId: string,
+  incoming: SessionMessage[],
+  current: SessionMessage[],
+): SessionMessage[] {
+  const pending = optimisticMessages.get(sessionId);
+  const users = incoming.filter((message) => message.role === "user");
+  if (pending && users.length > pending.userCount) {
+    const acknowledged = users[pending.userCount];
+    if (acknowledged.text === pending.message.text) {
+      messageAliases.set(acknowledged.id, pending.message.id);
+      optimisticMessages.delete(sessionId);
+    }
+  }
+  const existing = new Map(current.map((message) => [message.id, message]));
+  const messages = incoming.map((message) => {
+    const next = {
+      ...message,
+      id: messageAliases.get(message.id) || message.id,
+    };
+    const previous = existing.get(next.id);
+    return previous && JSON.stringify(previous) === JSON.stringify(next)
+      ? previous
+      : next;
+  });
+  const remaining = optimisticMessages.get(sessionId);
+  if (remaining) {
+    return [
+      ...(incoming.length
+        ? messages
+        : current.filter((message) => message.id !== remaining.message.id)),
+      remaining.message,
+    ];
+  }
+  return incoming.length ? messages : current;
+}
+
 function sessionMetadata(session: SavedChatSession): ChatSession {
   return {
     id: session.id,
@@ -69,25 +112,28 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
         ...get().sessions.filter(
           (session) =>
             !payload.sessions.some((saved) => saved.id === session.id) &&
-            !get().messages[session.id]?.length,
+            (!get().messages[session.id]?.length ||
+              optimisticMessages.has(session.id)),
         ),
       ],
       messages: {
         ...get().messages,
         ...Object.fromEntries(
-          payload.sessions
-            .filter(
-              (session) =>
-                session.messages.length > 0 ||
-                !get().messages[session.id]?.length,
-            )
-            .map((session) => [session.id, session.messages]),
+          payload.sessions.map((session) => [
+            session.id,
+            reconcileMessages(
+              session.id,
+              session.messages,
+              get().messages[session.id] || [],
+            ),
+          ]),
         ),
       },
     });
   },
   openSession: async (sessionId) => {
     const userId = useAuthStore.getState().status?.user?.id;
+    const messagesAtStart = get().messages[sessionId];
     try {
       const response = await fetch(
         `/api/chat/sessions/${encodeURIComponent(sessionId)}`,
@@ -96,7 +142,10 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
         throw new Error("Unable to open conversation");
       }
       const payload = (await response.json()) as { session: SavedChatSession };
-      if (useAuthStore.getState().status?.user?.id !== userId) {
+      if (
+        useAuthStore.getState().status?.user?.id !== userId ||
+        get().messages[sessionId] !== messagesAtStart
+      ) {
         return;
       }
       set({
@@ -105,12 +154,11 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
         ),
         messages: {
           ...get().messages,
-          [sessionId]: payload.session.messages.map((message) => ({
-            ...message,
-            createdAt: message.createdAt ?? 0,
-            tools: message.tools ?? [],
-            attachments: message.attachments ?? [],
-          })),
+          [sessionId]: reconcileMessages(
+            sessionId,
+            payload.session.messages,
+            get().messages[sessionId] || [],
+          ),
         },
       });
     } catch {
@@ -350,6 +398,13 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
       attachments,
     };
 
+    optimisticMessages.set(sessionId, {
+      message,
+      userCount: get().messages[sessionId].filter(
+        (entry) => entry.role === "user",
+      ).length,
+    });
+
     set({
       sessions: get().sessions.map((session) =>
         session.id === sessionId &&
@@ -369,6 +424,8 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
 useAuthStore.subscribe((state, previous) => {
   if (state.status?.user?.id !== previous.status?.user?.id) {
     ++loadVersion;
+    optimisticMessages.clear();
+    messageAliases.clear();
     useChatSessionsStore.setState({
       sessions: [],
       messages: {},

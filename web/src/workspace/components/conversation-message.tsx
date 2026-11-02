@@ -1,5 +1,5 @@
 import type { ChatMessage as Message } from "@veykor/shared";
-import { ChatMessage, ChatMessageBubble, ChatToolCalls } from "@astryxdesign/core/Chat";
+import { ChatMessage, ChatMessageBubble } from "@astryxdesign/core/Chat";
 import { Markdown } from "@astryxdesign/core/Markdown";
 import { Text } from "@astryxdesign/core/Text";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -12,6 +12,7 @@ import { openInNewTab } from "../chat-attachments";
 interface Props {
   message: Message;
   isThinking: boolean;
+  thinkingStartedAt?: number;
 }
 
 export function ConversationMessage(props: Props) {
@@ -44,23 +45,20 @@ export function ConversationMessage(props: Props) {
             </HStack>
           )}
 
-          {props.message.tools.length > 0 ? (
-            <ChatToolCalls
-              calls={props.message.tools.map((tool) => ({
-                key: tool.id,
-                name: tool.name,
-                target: tool.target,
-                status: tool.status,
-                errorMessage: tool.errorMessage,
-                resultDetail: tool.result ? (
-                  <Text
-                    type="code"
-                    className="whitespace-pre-wrap wrap-anywhere"
-                  >
-                    {tool.result}
-                  </Text>
-                ) : undefined,
-              }))}
+          {props.message.role === "assistant" &&
+          (props.message.tools.length > 0 ||
+            props.message.thinkingStartedAt ||
+            props.message.thinking ||
+            (props.isThinking && !props.message.text)) ? (
+            <ThinkingMessage
+              text={props.message.thinking || ""}
+              entries={props.message.thoughtEntries || []}
+              tools={props.message.tools}
+              startedAt={
+                props.message.thinkingStartedAt || props.thinkingStartedAt || 0
+              }
+              seconds={props.message.thinkingSeconds || 0}
+              isThinking={props.isThinking && !props.message.text}
             />
           ) : null}
 
@@ -74,8 +72,6 @@ export function ConversationMessage(props: Props) {
                 {props.message.text}
               </Text>
             )
-          ) : props.isThinking ? (
-            <ThinkingMessage />
           ) : null}
         </VStack>
       </ChatMessageBubble>

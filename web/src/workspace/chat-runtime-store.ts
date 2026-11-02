@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { ChatRequest } from "@veykor/shared";
 import { useChatSessionsStore } from "./chat-sessions-store";
+import { watchChatSnapshots } from "./chat-live-connection";
 import { useAuthStore } from "../auth/auth-store";
 
 const pendingSubmissions = new Set<string>();
@@ -74,35 +75,25 @@ export const useChatRuntimeStore = create<ChatRuntimeState>()((set, get) => ({
   },
 }));
 
-let live: EventSource | undefined;
-
-const unsubscribeSessions = useChatSessionsStore.subscribe(
-  (state, previous) => {
-    if (
-      state.status === "ready" &&
-      previous.status !== "ready" &&
-      typeof EventSource !== "undefined"
-    ) {
-      live?.close();
-      live = new EventSource("/api/chat/sessions/live");
-      live.addEventListener("snapshot", (event) => {
-        const payload = JSON.parse(event.data);
-        useChatSessionsStore.getState().receive(payload);
-        const running = payload.sessions.find(
-          (session: { status: string }) => session.status === "running",
-        );
-        useChatRuntimeStore.setState({
-          runningSessionId: running?.id || [...pendingSubmissions][0] || "",
-        });
-      });
-    }
+const stopSnapshots = watchChatSnapshots({
+  isReady: () =>
+    useChatSessionsStore.getState().status === "ready" &&
+    typeof EventSource !== "undefined",
+  subscribe: (listener) => useChatSessionsStore.subscribe(listener),
+  createSource: () => new EventSource("/api/chat/sessions/live"),
+  receive: (payload) => {
+    useChatSessionsStore.getState().receive(payload);
+    const running = payload.sessions.find(
+      (session) => session.status === "running",
+    );
+    useChatRuntimeStore.setState({
+      runningSessionId: running?.id || [...pendingSubmissions][0] || "",
+    });
   },
-);
+});
 
 const unsubscribeAuth = useAuthStore.subscribe((state, previous) => {
   if (state.status?.user?.id !== previous.status?.user?.id) {
-    live?.close();
-    live = undefined;
     pendingSubmissions.clear();
     useChatRuntimeStore.setState({
       runningSessionId: "",
@@ -114,8 +105,7 @@ const unsubscribeAuth = useAuthStore.subscribe((state, previous) => {
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
-    live?.close();
-    unsubscribeSessions();
+    stopSnapshots();
     unsubscribeAuth();
   });
 }

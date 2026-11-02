@@ -63,20 +63,6 @@ export function ChatNativeActivity(props: Props) {
           </HStack>
         </VStack>
       ))}
-      {(props.session.activities || [])
-        .filter(
-          (activity) => !["hookRun", "reminderChild"].includes(activity.kind),
-        )
-        .map((activity) => (
-          <Text
-            key={activity.id}
-            type="supporting"
-            color="secondary"
-            className="whitespace-pre-wrap wrap-anywhere"
-          >
-            {activity.text}
-          </Text>
-        ))}
     </VStack>
   );
 }
