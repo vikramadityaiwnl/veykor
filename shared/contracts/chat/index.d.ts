@@ -90,7 +90,20 @@ export interface ChatThoughtEntry {
   toolId: string;
 }
 
+export type ChatMessageBehavior = "queue" | "steer";
+
+export interface QueuedChatMessage {
+  id: string;
+  clientMessageId: string;
+  text: string;
+  createdAt: number;
+  attachmentCount: number;
+  state: "queued" | "error";
+  error: string;
+}
+
 export interface ChatMessage {
+  submissionId?: string;
   id: string;
   role: "user" | "assistant";
   text: string;
@@ -117,6 +130,8 @@ export interface ChatSession {
   error?: string;
   approvals?: ChatApproval[];
   activities?: ChatActivity[];
+  queuedMessages?: QueuedChatMessage[];
+  queuePaused?: boolean;
   messages: ChatMessage[];
 }
 
@@ -125,6 +140,7 @@ export interface ChatSessionsResponse {
 }
 
 export interface ChatRequest {
+  delivery?: ChatMessageBehavior;
   conversationId: string;
   messageId: string;
   permissionMode: ChatPermissionMode;

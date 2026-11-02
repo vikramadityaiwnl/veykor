@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { commandId } from "../command-id.js";
 import { createInterface } from "node:readline";
 import { providerEnvironment } from "../environment.js";
 import { MuseSession } from "./session.js";
@@ -7,16 +7,6 @@ import { MuseSession } from "./session.js";
 export interface MuseEvent {
   method: string;
   params?: Record<string, unknown>;
-}
-
-export function commandId(): string {
-  const bytes = randomBytes(16);
-  bytes.writeUIntBE(Date.now(), 0, 6);
-  bytes[6] = (bytes[6] & 15) | 112;
-  bytes[8] = (bytes[8] & 63) | 128;
-  const hex = bytes.toString("hex");
-
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 export async function spawnMuse(workspaceRoot: string) {
@@ -166,7 +156,7 @@ export async function spawnMuse(workspaceRoot: string) {
   const connection = {
     request,
     command: (method: string, params: object) =>
-      request(method, { ...params, commandId: commandId() }),
+      request(method, { commandId: commandId(), ...params }),
     closed,
   };
   const onEvent = (handler: (event: MuseEvent) => void) => {

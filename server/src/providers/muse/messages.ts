@@ -239,18 +239,23 @@ export async function projectMessages(
   const messages: ChatMessage[] = [];
 
   for (const [turnId, group] of groups) {
-    if (group.user.length > 0) {
+    for (const [index, item] of group.user.entries()) {
       messages.push({
-        id: group.user[0].itemId,
+        id: item.itemId,
         role: "user",
-        text: group.user.map((item) => item.text || "").join("\n\n"),
+        submissionId: item.commandId || turnId,
+        text: item.text || "",
         usage: emptyUsage(),
-        createdAt: createdAt(group.user[0]),
+        createdAt: createdAt(item),
         tools: [],
         attachments: await projectAttachments(
           conversationId,
           metadata.attachments.filter(
-            (entry) => !entry.tool && entry.turnId && entry.turnId === turnId,
+            (entry) =>
+              !entry.tool &&
+              (entry.submissionId
+                ? entry.submissionId === item.commandId
+                : index === 0 && entry.turnId === turnId),
           ),
         ),
       });

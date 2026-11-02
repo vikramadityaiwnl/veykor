@@ -5,6 +5,7 @@ import { attachmentAvailable } from "../../chat/attachments.js";
 export interface OpenCodeMessage {
   id: string;
   type: string;
+  metadata?: { veykorSubmissionId?: string };
   text?: string;
   time: { created: number; completed?: number };
   error?: { message: string };
@@ -97,6 +98,7 @@ export async function projectMessages(
     messages.push({
       id: row.id,
       role: row.type,
+      submissionId: row.metadata?.veykorSubmissionId || "",
       text: row.type === "user" ? row.text || "" : text.join("\n\n"),
       thinking: thinking.join("\n\n"),
       thoughtEntries,

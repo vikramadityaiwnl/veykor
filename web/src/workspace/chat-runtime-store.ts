@@ -4,14 +4,14 @@ import { useChatSessionsStore } from "./chat-sessions-store";
 import { watchChatSnapshots } from "./chat-live-connection";
 import { useAuthStore } from "../auth/auth-store";
 
-const pendingSubmissions = new Set<string>();
+const pendingSubmissions = new Map<string, number>();
 
 interface ChatRuntimeState {
   runningSessionId: string;
   error: string;
   errorSessionId: string;
-  send: (sessionId: string, input: ChatRequest) => Promise<void>;
-  stop: () => void;
+  send: (sessionId: string, input: ChatRequest) => Promise<boolean>;
+  stop: (sessionId?: string) => void;
 }
 
 export async function chatAction(
@@ -37,8 +37,8 @@ export const useChatRuntimeStore = create<ChatRuntimeState>()((set, get) => ({
   runningSessionId: "",
   error: "",
   errorSessionId: "",
-  stop: () => {
-    const id = get().runningSessionId;
+  stop: (sessionId) => {
+    const id = sessionId || get().runningSessionId;
     if (id) {
       void chatAction(id, "stop", {}).catch((error) =>
         set({ error: error.message, errorSessionId: id }),
@@ -46,7 +46,10 @@ export const useChatRuntimeStore = create<ChatRuntimeState>()((set, get) => ({
     }
   },
   send: async (sessionId, input) => {
-    pendingSubmissions.add(sessionId);
+    pendingSubmissions.set(
+      sessionId,
+      (pendingSubmissions.get(sessionId) || 0) + 1,
+    );
     set({ runningSessionId: sessionId, error: "", errorSessionId: "" });
     try {
       await useChatSessionsStore.getState().save();
@@ -62,6 +65,7 @@ export const useChatRuntimeStore = create<ChatRuntimeState>()((set, get) => ({
         const payload = await response.json();
         throw new Error(payload.error || "Unable to send message");
       }
+      return true;
     } catch (error) {
       set({
         runningSessionId: "",
@@ -69,8 +73,14 @@ export const useChatRuntimeStore = create<ChatRuntimeState>()((set, get) => ({
         error:
           error instanceof Error ? error.message : "Unable to send message",
       });
+      return false;
     } finally {
-      pendingSubmissions.delete(sessionId);
+      const remaining = (pendingSubmissions.get(sessionId) || 1) - 1;
+      if (remaining > 0) {
+        pendingSubmissions.set(sessionId, remaining);
+      } else {
+        pendingSubmissions.delete(sessionId);
+      }
     }
   },
 }));
@@ -87,7 +97,7 @@ const stopSnapshots = watchChatSnapshots({
       (session) => session.status === "running",
     );
     useChatRuntimeStore.setState({
-      runningSessionId: running?.id || [...pendingSubmissions][0] || "",
+      runningSessionId: running?.id || [...pendingSubmissions.keys()][0] || "",
     });
   },
 });

@@ -8,6 +8,7 @@ export interface ChatRuntimeProvider {
   ) => Promise<ProviderSessionsResponse>;
   describe: (userId: number, id: string) => Promise<ChatSession | undefined>;
   open: (userId: number, id: string) => Promise<ChatSession | undefined>;
+  steer: (userId: number, input: ChatRequest) => Promise<void>;
   runTurn: (userId: number, input: ChatRequest) => Promise<void>;
   setPermissionMode: (
     userId: number,

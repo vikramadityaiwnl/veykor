@@ -13,11 +13,13 @@ import { integrationsRoute } from "./routes/integrations.js";
 import { statusRoute } from "./routes/status.js";
 import { closeChatProviders } from "./providers/index.js";
 import { migrateStoredConversations } from "./chat/conversations.js";
+import { startMessageQueue, stopMessageQueue } from "./chat/message-queue.js";
 import { chatRoute } from "./routes/chat.js";
 import { handleTranscribeUpgrade, isTranscribeUpgrade } from "./transcribe/live.js";
 
 runMigrations();
 await migrateStoredConversations();
+startMessageQueue();
 
 const app = new Hono<AuthEnv>();
 
@@ -64,6 +66,7 @@ export type AppType = typeof app;
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
+    stopMessageQueue();
     void closeChatProviders().finally(() => process.exit(0));
   });
 }

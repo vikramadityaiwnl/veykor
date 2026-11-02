@@ -1,8 +1,14 @@
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { databaseUrl } from "../auth/config.js";
 
-const stagingRoot = join(tmpdir(), "veykor-uploads");
+const legacyRoot = join(tmpdir(), "veykor-uploads");
+const stagingRoot = join(
+  legacyRoot,
+  createHash("sha256").update(resolve(databaseUrl)).digest("hex"),
+);
 
 function stagedPath(id: string): string {
   if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id)) {
@@ -29,16 +35,32 @@ async function readable(path: string): Promise<boolean> {
 }
 
 export async function attachmentBytes(id: string): Promise<Buffer | undefined> {
+  let path: string;
+
   try {
-    return await readFile(stagedPath(id));
+    path = stagedPath(id);
   } catch {
     return undefined;
+  }
+
+  try {
+    return await readFile(path);
+  } catch {
+    try {
+      const bytes = await readFile(join(legacyRoot, id));
+      await stageAttachment(id, bytes);
+      return bytes;
+    } catch {
+      return undefined;
+    }
   }
 }
 
 export async function attachmentAvailable(id: string): Promise<boolean> {
   try {
-    return await readable(stagedPath(id));
+    return (
+      (await readable(stagedPath(id))) || (await readable(join(legacyRoot, id)))
+    );
   } catch {
     return false;
   }

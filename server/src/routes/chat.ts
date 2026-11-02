@@ -12,6 +12,7 @@ import { db } from "../db/client.js";
 import { conversations, sessions as authSessions } from "../db/schema.js";
 import { listConversations, metadataSession, readConversation, writeConversation, validConversationLocation, projectFolder } from "../chat/conversations.js";
 import { attachmentBytes, removeStaged } from "../chat/attachments.js";
+import { withQueue, hasSubmittedMessages, submitMessage, pauseQueue, editQueuedMessage, deleteQueuedMessage, steerQueuedMessage } from "../chat/message-queue.js";
 import { getSettings } from "../settings/settings.js";
 
 export const chatRoute = new Hono<AuthEnv>();
@@ -26,7 +27,7 @@ async function snapshots(userId: number) {
         metadata.id,
       );
 
-      return live || metadataSession(metadata);
+      return withQueue(userId, live || metadataSession(metadata));
     }),
   );
 }
@@ -60,7 +61,9 @@ chatRoute.get("/providers/:providerId/sessions", async (c) => {
 
 chatRoute.get("/sessions", (c) =>
   c.json({
-    sessions: listConversations(c.get("user").id).map(metadataSession),
+    sessions: listConversations(c.get("user").id).map((metadata) =>
+      withQueue(c.get("user").id, metadataSession(metadata)),
+    ),
   }),
 );
 
@@ -140,7 +143,8 @@ chatRoute.put("/sessions", async (c) => {
         ? candidate.providerId
         : undefined;
     if (
-      existing?.nativeSessionId &&
+      existing &&
+      (existing.nativeSessionId || hasSubmittedMessages(userId, existing.id)) &&
       providerId &&
       existing.providerId !== providerId
     ) {
@@ -213,7 +217,7 @@ chatRoute.get("/sessions/:id", async (c) => {
   if (!session) {
     return c.json({ error: "Conversation not found" }, 404);
   }
-  return c.json({ session });
+  return c.json({ session: withQueue(c.get("user").id, session) });
 });
 
 chatRoute.delete("/sessions/:id", async (c) => {
@@ -264,6 +268,77 @@ chatRoute.get("/sessions/:id/attachments/:attachmentId", async (c) => {
     `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(attachment.name)}`,
   );
   return c.body(new Uint8Array(bytes));
+});
+
+chatRoute.patch("/sessions/:id/queue/:messageId", async (c) => {
+  const input = await c.req.json().catch(() => null);
+
+  if (
+    typeof input?.text !== "string" ||
+    !input.text.trim() ||
+    input.text.length > 100_000
+  ) {
+    return c.json(
+      { error: "Enter a message of at most 100,000 characters" },
+      400,
+    );
+  }
+
+  try {
+    editQueuedMessage(
+      c.get("user").id,
+      c.req.param("id"),
+      c.req.param("messageId"),
+      input.text.trim(),
+    );
+    return c.json({ ok: true });
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Unable to edit message",
+      },
+      409,
+    );
+  }
+});
+
+chatRoute.delete("/sessions/:id/queue/:messageId", (c) => {
+  try {
+    deleteQueuedMessage(
+      c.get("user").id,
+      c.req.param("id"),
+      c.req.param("messageId"),
+    );
+    return c.json({ ok: true });
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Unable to remove message",
+      },
+      409,
+    );
+  }
+});
+
+chatRoute.post("/sessions/:id/queue/:messageId/steer", async (c) => {
+  try {
+    await steerQueuedMessage(
+      c.get("user").id,
+      c.req.param("id"),
+      c.req.param("messageId"),
+    );
+    return c.json({ ok: true });
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Unable to steer message",
+      },
+      409,
+    );
+  }
 });
 
 chatRoute.post("/sessions/:id/mode", async (c) => {
@@ -334,6 +409,7 @@ chatRoute.post("/sessions/:id/stop", async (c) => {
     return c.json({ error: "Chat provider unavailable" }, 400);
   }
   try {
+    pauseQueue(c.get("user").id, c.req.param("id"), true);
     await provider.stop(
       c.get("user").id,
       c.req.param("id"),
@@ -368,7 +444,8 @@ chatRoute.post("/", async (c) => {
     return c.json({ error: "Conversation or project not found" }, 404);
   }
   if (
-    conversation.nativeSessionId &&
+    (conversation.nativeSessionId ||
+      hasSubmittedMessages(userId, conversation.id)) &&
     conversation.providerId !== input.providerId
   ) {
     return c.json(
@@ -383,9 +460,6 @@ chatRoute.post("/", async (c) => {
       providerRegistration(input.providerId)?.meta.label || "This provider";
     return c.json({ error: `Chat with ${label} is not supported yet.` }, 400);
   }
-  if (provider.isBusy(userId, input.conversationId)) {
-    return c.json({ error: "A reply is already running" }, 409);
-  }
   const settings = await getSettings();
   const catalog = settings.providers.find(
     (entry) => entry.id === input.providerId,
@@ -396,19 +470,34 @@ chatRoute.post("/", async (c) => {
   ) {
     return c.json({ error: catalog?.error || "Model unavailable" }, 400);
   }
-  if (provider.isBusy(userId, input.conversationId)) {
-    return c.json({ error: "A reply is already running" }, 409);
+  const latest = readConversation(userId, input.conversationId);
+  if (!latest || !validConversationLocation(userId, latest)) {
+    return c.json({ error: "Conversation or project not found" }, 404);
   }
   if (
-    !conversation.nativeSessionId &&
-    conversation.providerId !== input.providerId
+    (latest.nativeSessionId || hasSubmittedMessages(userId, latest.id)) &&
+    latest.providerId !== input.providerId
   ) {
-    conversation.providerId = input.providerId;
-    writeConversation(userId, conversation);
+    return c.json(
+      { error: "Start a new chat to use a different provider" },
+      409,
+    );
+  }
+  if (latest.providerId !== input.providerId) {
+    latest.providerId = input.providerId;
+    writeConversation(userId, latest);
   }
 
-  void provider.runTurn(userId, input).catch((error) => {
-    console.error("Chat provider failed before starting a turn", error);
-  });
-  return c.json({ accepted: true }, 202);
+  try {
+    await submitMessage(userId, input);
+    return c.json({ accepted: true }, 202);
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Unable to submit message",
+      },
+      409,
+    );
+  }
 });

@@ -387,6 +387,7 @@ export async function runChat(userId: number, input: ChatRequest) {
           metadata.attachments.push({
             id: attachment.id,
             turnId: "",
+            submissionId: input.messageId,
             name: attachment.name,
             mimeType: attachment.mimeType,
             size: attachment.size,
@@ -426,6 +427,7 @@ export async function runChat(userId: number, input: ChatRequest) {
       input: parts,
       reasoningEffort: input.reasoningEffort,
       composerInput: message.text,
+      submissionId: input.messageId,
     });
     submittedTurnId = turn.turnId;
     live.state.currentTurn = turn.turnId;
@@ -445,6 +447,7 @@ export async function runChat(userId: number, input: ChatRequest) {
       for (const attachment of settled.attachments) {
         if (!attachment.turnId) {
           attachment.turnId = turn.turnId;
+          attachment.submissionId = input.messageId;
         }
       }
       writeConversation(userId, settled);
@@ -509,12 +512,56 @@ export async function releaseConversation(userId: number, id: string) {
   pendingErrors.delete(key);
 }
 
+async function steer(userId: number, input: ChatRequest) {
+  const live = await runtime(userId, input.conversationId);
+  const turnId = live.session.activeTurnId;
+
+  if (!turnId) {
+    throw new Error("There is no active turn to steer");
+  }
+
+  const message = input.messages.at(-1)!;
+  const parts = await nativeInput(
+    message.attachments || [],
+    message.text,
+    live.modelId,
+  );
+  await live.muse.connection.command("turn/steer", {
+    commandId: input.messageId,
+    sessionId: live.session.sessionId,
+    expectedTurnId: turnId,
+    input: parts,
+    reasoningEffort: input.reasoningEffort,
+  });
+  const metadata = readConversation(userId, input.conversationId)!;
+
+  for (const attachment of message.attachments || []) {
+    const bytes = decodeDataUrl(attachment.dataUrl);
+
+    if (bytes) {
+      await stageAttachment(attachment.id, bytes);
+      metadata.attachments.push({
+        id: attachment.id,
+        turnId,
+        submissionId: input.messageId,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        kind: attachment.kind,
+      });
+    }
+  }
+
+  writeConversation(userId, metadata);
+}
+
 export const museProvider: ChatRuntimeProvider = {
   id: "muse",
   listSessions: listMuseSessions,
   describe: describeConversation,
   open: openConversation,
   runTurn: runChat,
+  steer,
   setPermissionMode,
   decideApproval,
   stop: stopConversation,

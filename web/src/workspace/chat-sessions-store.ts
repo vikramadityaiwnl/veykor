@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ChatAttachment, ChatMessage, ChatUsage, ChatSessionsResponse, ChatSession as SavedChatSession } from "@veykor/shared";
+import type { QueuedChatMessage, ChatAttachment, ChatMessage, ChatUsage, ChatSessionsResponse, ChatSession as SavedChatSession } from "@veykor/shared";
 import { useAuthStore } from "../auth/auth-store";
 
 export type SessionMessage = ChatMessage;
@@ -54,8 +54,17 @@ function reconcileMessages(
   sessionId: string,
   incoming: SessionMessage[],
   current: SessionMessage[],
+  queued: QueuedChatMessage[] = [],
 ): SessionMessage[] {
-  const pending = optimisticMessages.get(sessionId);
+  let pending = optimisticMessages.get(sessionId);
+  if (
+    pending &&
+    queued.some((entry) => entry.clientMessageId === pending!.message.id)
+  ) {
+    current = current.filter((message) => message.id !== pending!.message.id);
+    optimisticMessages.delete(sessionId);
+    pending = undefined;
+  }
   const users = incoming.filter((message) => message.role === "user");
   if (pending && users.length > pending.userCount) {
     const acknowledged = users[pending.userCount];
@@ -101,6 +110,8 @@ function sessionMetadata(session: SavedChatSession): ChatSession {
     error: session.error || "",
     approvals: session.approvals || [],
     activities: session.activities || [],
+    queuedMessages: session.queuedMessages || [],
+    queuePaused: session.queuePaused || false,
   };
 }
 
@@ -125,6 +136,7 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
               session.id,
               session.messages,
               get().messages[session.id] || [],
+              session.queuedMessages || [],
             ),
           ]),
         ),
@@ -158,6 +170,7 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
             sessionId,
             payload.session.messages,
             get().messages[sessionId] || [],
+            payload.session.queuedMessages || [],
           ),
         },
       });

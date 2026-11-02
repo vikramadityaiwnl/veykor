@@ -308,8 +308,10 @@ async function runTurn(userId: number, input: ChatRequest) {
     }
 
     const accepted = await connection.request("POST", `${path}/prompt`, {
+      id: `msg_${input.messageId.replaceAll("-", "")}`,
       text: message.text,
       files,
+      metadata: { veykorSubmissionId: input.messageId },
       delivery: "queue",
     });
     live.submittedId = accepted.data.id;
@@ -386,6 +388,48 @@ async function interrupt(live: Runtime) {
   }
 }
 
+async function steer(userId: number, input: ChatRequest) {
+  const live = await runtime(userId, input.conversationId);
+  const connection = await openCodeConnection();
+  const message = input.messages.at(-1)!;
+  const accepted = await connection.request(
+    "POST",
+    `${sessionPath(live.session.nativeSessionId!)}/prompt`,
+    {
+      id: `msg_${input.messageId.replaceAll("-", "")}`,
+      text: message.text,
+      files: (message.attachments || []).map((attachment) => ({
+        uri: attachment.dataUrl,
+        name: attachment.name,
+      })),
+      metadata: { veykorSubmissionId: input.messageId },
+      delivery: "steer",
+    },
+  );
+  const metadata = readConversation(userId, input.conversationId)!;
+
+  for (const attachment of message.attachments || []) {
+    const match = /^data:([^;,]+);base64,([A-Za-z0-9+/=]+)$/.exec(
+      attachment.dataUrl,
+    );
+
+    if (match) {
+      await stageAttachment(attachment.id, Buffer.from(match[2], "base64"));
+      metadata.attachments.push({
+        id: attachment.id,
+        turnId: accepted.data.id,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        kind: attachment.kind,
+      });
+    }
+  }
+
+  writeConversation(userId, metadata);
+  live.syncedAt = 0;
+}
+
 export const opencodeProvider: ChatRuntimeProvider = {
   id: "opencode",
   listSessions: listOpenCodeSessions,
@@ -407,6 +451,7 @@ export const opencodeProvider: ChatRuntimeProvider = {
     return live.session;
   },
   runTurn,
+  steer,
   setPermissionMode,
   decideApproval: async (userId, id, approvalId, choiceId) => {
     const live = await runtime(userId, id);

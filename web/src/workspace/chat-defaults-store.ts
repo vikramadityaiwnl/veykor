@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ChatDefaults, ChatPermissionMode, ChatReasoningEffort } from "@veykor/shared";
+import type { ChatDefaults, ChatMessageBehavior, ChatPermissionMode, ChatReasoningEffort } from "@veykor/shared";
 import { useAuthStore } from "../auth/auth-store";
 
 interface ChatDefaultsState extends ChatDefaults {
@@ -7,12 +7,14 @@ interface ChatDefaultsState extends ChatDefaults {
   load: () => Promise<void>;
   save: (providerId: string, modelId: string) => Promise<void>;
   saveEffort: (modelId: string, effort: ChatReasoningEffort) => Promise<void>;
+  saveBehavior: (behavior: ChatMessageBehavior) => Promise<void>;
   savePermission: (mode: ChatPermissionMode) => Promise<void>;
 }
 
 let loadVersion = 0;
 
 export const useChatDefaultsStore = create<ChatDefaultsState>()((set, get) => ({
+  messageBehavior: "queue",
   defaultProviderId: "",
   models: {},
   efforts: {},
@@ -44,6 +46,7 @@ export const useChatDefaultsStore = create<ChatDefaultsState>()((set, get) => ({
         userId === useAuthStore.getState().status?.user?.id
       ) {
         set({
+          messageBehavior: defaults.messageBehavior,
           defaultProviderId: defaults.defaultProviderId || "",
           models: defaults.models || {},
           efforts: defaults.efforts || {},
@@ -59,6 +62,7 @@ export const useChatDefaultsStore = create<ChatDefaultsState>()((set, get) => ({
   },
   save: async (providerId, modelId) => {
     const previous: ChatDefaults = {
+      messageBehavior: get().messageBehavior,
       defaultProviderId: get().defaultProviderId,
       models: get().models,
       efforts: get().efforts,
@@ -105,6 +109,7 @@ export const useChatDefaultsStore = create<ChatDefaultsState>()((set, get) => ({
   },
   saveEffort: async (modelId, effort) => {
     const previous: ChatDefaults = {
+      messageBehavior: get().messageBehavior,
       defaultProviderId: get().defaultProviderId,
       models: get().models,
       efforts: get().efforts,
@@ -145,8 +150,42 @@ export const useChatDefaultsStore = create<ChatDefaultsState>()((set, get) => ({
       console.error("Unable to save chat defaults", error);
     }
   },
+  saveBehavior: async (messageBehavior) => {
+    const previous = get().messageBehavior;
+    const userId = useAuthStore.getState().status?.user?.id;
+    set({ messageBehavior });
+    const next: ChatDefaults = {
+      messageBehavior,
+      defaultProviderId: get().defaultProviderId,
+      models: get().models,
+      efforts: get().efforts,
+      permissionMode: get().permissionMode,
+    };
+
+    try {
+      const response = await fetch("/api/settings/chat-defaults", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Veykor-Request": "1",
+        },
+        body: JSON.stringify(next),
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to save message behavior");
+      }
+    } catch (error) {
+      if (userId === useAuthStore.getState().status?.user?.id) {
+        set({ messageBehavior: previous });
+      }
+      throw error;
+    }
+  },
   savePermission: async (mode) => {
     const previous: ChatDefaults = {
+      messageBehavior: get().messageBehavior,
       defaultProviderId: get().defaultProviderId,
       models: get().models,
       efforts: get().efforts,
@@ -190,6 +229,7 @@ useAuthStore.subscribe((state, previous) => {
   if (state.status?.user?.id !== previous.status?.user?.id) {
     ++loadVersion;
     useChatDefaultsStore.setState({
+      messageBehavior: "queue",
       defaultProviderId: "",
       models: {},
       efforts: {},

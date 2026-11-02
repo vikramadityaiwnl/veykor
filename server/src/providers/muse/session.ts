@@ -261,6 +261,7 @@ export class MuseSession {
     input: object[];
     reasoningEffort: ChatReasoningEffort;
     composerInput: string;
+    submissionId?: string;
   }) {
     const result = await this.transport.connection.command("turn/start", {
       sessionId: this.sessionId,
@@ -268,6 +269,7 @@ export class MuseSession {
       reasoningEffort: options.reasoningEffort,
       displayText: options.composerInput,
       ifBusy: "queue",
+      ...(options.submissionId ? { commandId: options.submissionId } : {}),
     });
     const turnId = result.turnId as string;
     const completed = this.outcomes.has(turnId)

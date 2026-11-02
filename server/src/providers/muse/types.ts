@@ -1,5 +1,6 @@
 export interface FoldedItem {
   itemId: string;
+  commandId?: string;
   turnId?: string;
   kind: string;
   status: string;

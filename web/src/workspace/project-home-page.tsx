@@ -73,6 +73,9 @@ export function ProjectHomePage() {
   );
   const preferredModels = useChatDefaultsStore((state) => state.models);
   const savedEfforts = useChatDefaultsStore((state) => state.efforts);
+  const messageBehavior = useChatDefaultsStore(
+    (state) => state.messageBehavior,
+  );
   const savedPermissionMode = useChatDefaultsStore(
     (state) => state.permissionMode,
   );
@@ -182,13 +185,13 @@ export function ProjectHomePage() {
     }
   }
 
-  function submit(
+  async function submit(
     text: string,
     systemPrompt: string,
     attachments: ChatAttachment[],
   ) {
-    if (!ready || runningId) {
-      return;
+    if (!ready) {
+      return false;
     }
     const store = useChatSessionsStore.getState();
     const target =
@@ -196,11 +199,20 @@ export function ProjectHomePage() {
       (draft?.projectId
         ? store.createProjectSession(draft.projectId)
         : store.createChatSession(defaultSection!.id));
-    store.addMessage(target.id, text, attachments);
+    const willWait =
+      session?.status === "running" ||
+      runningId === target.id ||
+      (session?.queuedMessages || []).length > 0;
+    if (!willWait) {
+      store.addMessage(target.id, text, attachments);
+    }
     store.configure(target.id, providerId, modelId);
-    const message = useChatSessionsStore.getState().messages[target.id].at(-1)!;
+    const message = willWait
+      ? { id: crypto.randomUUID(), text, attachments }
+      : useChatSessionsStore.getState().messages[target.id].at(-1)!;
     navigate(`/chat/${target.id}`);
-    void useChatRuntimeStore.getState().send(target.id, {
+    return useChatRuntimeStore.getState().send(target.id, {
+      delivery: messageBehavior,
       conversationId: target.id,
       messageId: message.id,
       permissionMode: session?.nativeSessionId
@@ -285,14 +297,18 @@ export function ProjectHomePage() {
           preferredModels={isProjectChat ? noPreferredModels : preferredModels}
           loading={loading}
           isReady={ready}
-          isRunning={runningId === sessionId}
+          isRunning={session?.status === "running" || runningId === sessionId}
+          sessionId={sessionId || ""}
+          queuedMessages={session?.queuedMessages || []}
+          queuePaused={session?.queuePaused || false}
+          messageBehavior={messageBehavior}
           isBusy={!!runningId}
           error={runtimeError || session?.error || historyError || catalogError}
           usage={lastReply?.usage || emptyUsage()}
           hasMessages={messages.some((message) => message.role === "user")}
           onSelection={select}
           onSubmit={submit}
-          onStop={stop}
+          onStop={() => stop(sessionId)}
         />
       }
     >
@@ -301,7 +317,9 @@ export function ProjectHomePage() {
           {messages.length > 0 ? (
             <ConversationMessages
               messages={messages}
-              isRunning={runningId === sessionId}
+              isRunning={
+                session?.status === "running" || runningId === sessionId
+              }
             />
           ) : null}
           {session ? <ChatNativeActivity session={session} /> : null}

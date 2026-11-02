@@ -34,6 +34,8 @@ export type {
 } from "./providers/index.js";
 
 export type {
+  ChatMessageBehavior,
+  QueuedChatMessage,
   ChatPermissionMode,
   ChatReasoningEffort,
   ChatReasoningEffortOption,

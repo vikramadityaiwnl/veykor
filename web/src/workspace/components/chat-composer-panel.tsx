@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ChatPermissionMode, ChatAttachment, ChatProvider, ChatReasoningEffort, ChatUsage, Project } from "@veykor/shared";
+import type { ChatMessageBehavior, QueuedChatMessage, ChatPermissionMode, ChatAttachment, ChatProvider, ChatReasoningEffort, ChatUsage, Project } from "@veykor/shared";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCube, faPaperclip, faArrowUp, faStop } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "@astryxdesign/core/Button";
@@ -9,6 +9,7 @@ import { ComposerModelSelection } from "./composer-model-selection";
 import { ChatContextProgress } from "./chat-context-progress";
 import { ChatEffortSelection } from "./chat-effort-selection";
 import { ChatPermissionSelection } from "./chat-permission-selection";
+import { ComposerQueue } from "./composer-queue";
 import { ComposerProjectContext } from "./composer-project-context";
 import { ComposerTranscribeButton } from "./composer-transcribe-button";
 import { Banner } from "@astryxdesign/core/Banner";
@@ -19,6 +20,10 @@ import { getAttachmentKind, isImageFile, openInNewTab, readFileAsDataUrl } from 
 import { appendTranscript, useTranscribeRecorder } from "../transcribe-recorder";
 
 interface Props {
+  sessionId: string;
+  queuedMessages: QueuedChatMessage[];
+  queuePaused: boolean;
+  messageBehavior: ChatMessageBehavior;
   permissionMode: ChatPermissionMode;
   onPermissionMode: (mode: ChatPermissionMode) => void;
   reasoningEffort: ChatReasoningEffort;
@@ -42,13 +47,14 @@ interface Props {
     text: string,
     systemPrompt: string,
     attachments: ChatAttachment[],
-  ) => void;
+  ) => Promise<boolean>;
   onStop: () => void;
 }
 
 export function ChatComposerPanel(props: Props) {
   const [isModelDialogOpen, setIsModelDialogOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
   const [isReadingFiles, setIsReadingFiles] = useState(false);
@@ -85,8 +91,8 @@ export function ChatComposerPanel(props: Props) {
     !props.isReady ||
     !provider?.available ||
     !model ||
-    props.isBusy ||
-    isReadingFiles;
+    isReadingFiles ||
+    isSubmitting;
 
   async function attach(files: File[]) {
     if (isReadingFiles || files.length === 0) {
@@ -148,7 +154,7 @@ export function ChatComposerPanel(props: Props) {
     }
   }
 
-  function submit(value: string) {
+  async function submit(value: string) {
     if (transcribing) {
       recorder.cancel();
     }
@@ -168,9 +174,15 @@ export function ChatComposerPanel(props: Props) {
       return;
     }
 
-    props.onSubmit(text, "", attachments);
-    setDraft("");
-    setAttachments([]);
+    setIsSubmitting(true);
+    try {
+      if (await props.onSubmit(text, "", attachments)) {
+        setDraft("");
+        setAttachments([]);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -191,11 +203,19 @@ export function ChatComposerPanel(props: Props) {
       />
 
       <VStack gap={0} className="min-w-0">
+        {props.queuedMessages.length > 0 && (
+          <ComposerQueue
+            key={props.sessionId}
+            sessionId={props.sessionId}
+            messages={props.queuedMessages}
+            paused={props.queuePaused}
+          />
+        )}
         <form
           className="relative z-10 min-w-0 rounded-(--radius-chat) border border-solid border-(--color-border-emphasized) bg-(--color-background-surface) p-4"
           onSubmit={(event) => {
             event.preventDefault();
-            submit(draft);
+            void submit(draft);
           }}
           onKeyDown={(event) => {
             if (
@@ -205,7 +225,7 @@ export function ChatComposerPanel(props: Props) {
               !event.nativeEvent.isComposing
             ) {
               event.preventDefault();
-              submit(draft);
+              void submit(draft);
             }
           }}
           onDragOver={(event) => event.preventDefault()}
@@ -263,7 +283,7 @@ export function ChatComposerPanel(props: Props) {
                 size="sm"
                 variant="ghost"
                 isIconOnly
-                isDisabled={props.isBusy || isReadingFiles}
+                isDisabled={isReadingFiles}
                 icon={<FontAwesomeIcon icon={faPaperclip} />}
                 clickAction={() => fileInput.current?.click()}
               />
@@ -318,7 +338,7 @@ export function ChatComposerPanel(props: Props) {
                   onDismissError={recorder.clearError}
                 />
 
-                {props.isRunning ? (
+                {props.isRunning && (
                   <Button
                     label="Stop response"
                     size="sm"
@@ -327,17 +347,22 @@ export function ChatComposerPanel(props: Props) {
                     icon={<FontAwesomeIcon icon={faStop} />}
                     clickAction={props.onStop}
                   />
-                ) : (
-                  <Button
-                    className="rounded-full!"
-                    label="Send message"
-                    type="submit"
-                    size="sm"
-                    isIconOnly
-                    isDisabled={disabled || !draft.trim()}
-                    icon={<FontAwesomeIcon icon={faArrowUp} />}
-                  />
                 )}
+                <Button
+                  className="rounded-full!"
+                  label={
+                    props.isRunning
+                      ? props.messageBehavior === "queue"
+                        ? "Queue message"
+                        : "Steer message"
+                      : "Send message"
+                  }
+                  type="submit"
+                  size="sm"
+                  isIconOnly
+                  isDisabled={disabled || !draft.trim()}
+                  icon={<FontAwesomeIcon icon={faArrowUp} />}
+                />
               </HStack>
             </HStack>
           </VStack>

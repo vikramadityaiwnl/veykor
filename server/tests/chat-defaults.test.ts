@@ -7,12 +7,14 @@ test("chat defaults always parse to a complete state", () => {
     defaultProviderId: "",
     models: {},
     efforts: {},
+    messageBehavior: "queue",
     permissionMode: "promptUnmatched",
   });
   assert.deepEqual(parseChatDefaults("{}"), {
     defaultProviderId: "",
     models: {},
     efforts: {},
+    messageBehavior: "queue",
     permissionMode: "promptUnmatched",
   });
   assert.deepEqual(
@@ -21,6 +23,7 @@ test("chat defaults always parse to a complete state", () => {
         defaultProviderId: "muse",
         models: { muse: "muse-spark-1.3" },
         efforts: { "muse-spark-1.3": "max" },
+        messageBehavior: "queue",
         permissionMode: "allowAll",
       }),
     ),
@@ -28,6 +31,7 @@ test("chat defaults always parse to a complete state", () => {
       defaultProviderId: "muse",
       models: { muse: "muse-spark-1.3" },
       efforts: { "muse-spark-1.3": "max" },
+      messageBehavior: "queue",
       permissionMode: "allowAll",
     },
   );
@@ -49,6 +53,7 @@ test("chat defaults drop unknown providers and malformed models", () => {
         defaultProviderId: "muse",
         models: {},
         efforts: {},
+        messageBehavior: "queue",
         permissionMode: "promptUnmatched",
       });
     } else {
@@ -56,6 +61,7 @@ test("chat defaults drop unknown providers and malformed models", () => {
         defaultProviderId: "",
         models: {},
         efforts: {},
+        messageBehavior: "queue",
         permissionMode: "promptUnmatched",
       });
     }
@@ -76,6 +82,7 @@ test("chat defaults drop unknown providers and malformed models", () => {
           "--flag": "max",
           "muse-wonder-1.0": "turbo",
         },
+        messageBehavior: "queue",
         permissionMode: "auto",
       }),
     ),
@@ -83,6 +90,7 @@ test("chat defaults drop unknown providers and malformed models", () => {
       defaultProviderId: "muse",
       models: { muse: "muse-spark-1.3" },
       efforts: { "muse-spark-1.3": "max" },
+      messageBehavior: "queue",
       permissionMode: "promptUnmatched",
     },
   );
@@ -94,6 +102,7 @@ test("chat defaults reject invalid preference payloads", () => {
       defaultProviderId: "muse",
       models: { muse: "muse-spark-1.3" },
       efforts: { "muse-spark-1.3": "max" },
+      messageBehavior: "queue",
       permissionMode: "allowAll",
     }),
     true,
@@ -109,57 +118,86 @@ test("chat defaults reject invalid preference payloads", () => {
       defaultProviderId: "",
       models: {},
       efforts: {},
+      messageBehavior: "queue",
       permissionMode: "auto",
     },
     {
       defaultProviderId: "invented",
       models: {},
       efforts: {},
+      messageBehavior: "queue",
       permissionMode: "promptUnmatched",
     },
     {
       defaultProviderId: "claude",
       models: {},
       efforts: {},
+      messageBehavior: "queue",
       permissionMode: "promptUnmatched",
     },
     {
       defaultProviderId: "",
       models: { invented: "whatever" },
       efforts: {},
+      messageBehavior: "queue",
       permissionMode: "promptUnmatched",
     },
     {
       defaultProviderId: "",
       models: { muse: "" },
       efforts: {},
+      messageBehavior: "queue",
       permissionMode: "promptUnmatched",
     },
     {
       defaultProviderId: "",
       models: { muse: "--flag" },
       efforts: {},
+      messageBehavior: "queue",
       permissionMode: "promptUnmatched",
     },
     {
       defaultProviderId: "",
       models: [],
       efforts: {},
+      messageBehavior: "queue",
       permissionMode: "promptUnmatched",
     },
     {
       defaultProviderId: "",
       models: {},
       efforts: { "muse-spark-1.3": "turbo" },
+      messageBehavior: "queue",
       permissionMode: "promptUnmatched",
     },
     {
       defaultProviderId: "",
       models: {},
       efforts: { "--flag": "max" },
+      messageBehavior: "queue",
       permissionMode: "promptUnmatched",
     },
   ]) {
     assert.equal(validChatDefaults(value), false);
   }
+});
+
+test("message behavior defaults to queue and accepts only queue or steer", () => {
+  assert.equal(parseChatDefaults({}).messageBehavior, "queue");
+  assert.equal(
+    parseChatDefaults({ messageBehavior: "steer" }).messageBehavior,
+    "steer",
+  );
+  assert.equal(
+    parseChatDefaults({ messageBehavior: "invented" }).messageBehavior,
+    "queue",
+  );
+  assert.equal(
+    validChatDefaults({ ...emptyChatDefaults(), messageBehavior: "steer" }),
+    true,
+  );
+  assert.equal(
+    validChatDefaults({ ...emptyChatDefaults(), messageBehavior: "invented" }),
+    false,
+  );
 });

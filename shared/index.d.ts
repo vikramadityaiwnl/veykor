@@ -33,6 +33,8 @@ export type {
 } from "./contracts/index.js";
 
 export type {
+  ChatMessageBehavior,
+  QueuedChatMessage,
   ChatPermissionMode,
   ChatReasoningEffort,
   ChatReasoningEffortOption,

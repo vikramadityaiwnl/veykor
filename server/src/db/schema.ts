@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("users", {
   id: integer("id").primaryKey(),
@@ -61,6 +61,7 @@ export const conversations = sqliteTable("conversations", {
     .notNull()
     .references(() => users.id),
   data: text("data").notNull().default("{}"),
+  queuePaused: integer("queue_paused").notNull().default(0),
 });
 
 export const mcpServers = sqliteTable("mcp_servers", {
@@ -83,3 +84,36 @@ export const mcpServers = sqliteTable("mcp_servers", {
   createdAt: integer("created_at").notNull().default(0),
   updatedAt: integer("updated_at").notNull().default(0),
 });
+
+export const chatInputs = sqliteTable(
+  "chat_inputs",
+  {
+    id: text("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .default(0)
+      .references(() => users.id),
+    conversationId: text("conversation_id")
+      .notNull()
+      .default("")
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    clientMessageId: text("client_message_id").notNull().default(""),
+    payload: text("payload").notNull().default("{}"),
+    state: text("state").notNull().default("queued"),
+    error: text("error").notNull().default(""),
+    position: integer("position").notNull().default(0),
+    createdAt: integer("created_at").notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex("chat_inputs_submission").on(
+      table.userId,
+      table.conversationId,
+      table.clientMessageId,
+    ),
+    index("chat_inputs_queue").on(
+      table.state,
+      table.conversationId,
+      table.position,
+    ),
+  ],
+);

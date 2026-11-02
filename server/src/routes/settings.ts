@@ -72,6 +72,7 @@ settingsRoute.put("/chat-defaults", async (c) => {
   db.update(users)
     .set({
       chatDefaults: JSON.stringify({
+        messageBehavior: input.messageBehavior || "queue",
         defaultProviderId: input.defaultProviderId,
         models: input.models,
         efforts: input.efforts,

@@ -7,6 +7,7 @@ import { attachmentAvailable, stageAttachment, sweepStaging } from "./attachment
 export interface StoredAttachment {
   id: string;
   turnId: string;
+  submissionId?: string;
   name: string;
   mimeType: string;
   size: number;
@@ -24,6 +25,7 @@ export interface ConversationMetadata {
   nativeSessionId: string;
   permissionMode: ChatPermissionMode;
   attachments: StoredAttachment[];
+  queuePaused?: boolean;
   turnTimings?: Record<string, { startedAt: number; seconds: number }>;
 }
 
@@ -37,7 +39,11 @@ export function readConversation(
     .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
     .get();
   return row
-    ? ({ turnTimings: {}, ...JSON.parse(row.data) } as ConversationMetadata)
+    ? ({
+        turnTimings: {},
+        ...JSON.parse(row.data),
+        queuePaused: row.queuePaused === 1,
+      } as ConversationMetadata)
     : undefined;
 }
 
@@ -63,7 +69,11 @@ export function listConversations(userId: number): ConversationMetadata[] {
     .all()
     .map(
       (row) =>
-        ({ turnTimings: {}, ...JSON.parse(row.data) }) as ConversationMetadata,
+        ({
+          turnTimings: {},
+          ...JSON.parse(row.data),
+          queuePaused: row.queuePaused === 1,
+        }) as ConversationMetadata,
     );
 }
 
@@ -81,6 +91,8 @@ export function metadataSession(metadata: ConversationMetadata): ChatSession {
     error: "",
     approvals: [],
     activities: [],
+    queuedMessages: [],
+    queuePaused: metadata.queuePaused || false,
     messages: [],
   };
 }

@@ -62,6 +62,8 @@ export function validChatRequest(
   }
   const input = value as ChatRequest;
   return (
+    (input.delivery === undefined ||
+      ["queue", "steer"].includes(input.delivery)) &&
     providerIds.includes(input.providerId) &&
     typeof input.conversationId === "string" &&
     input.conversationId.length <= 100 &&
