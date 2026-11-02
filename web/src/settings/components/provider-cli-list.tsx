@@ -14,11 +14,7 @@ import { useSettingsStore } from "../settings-store";
 
 const logos: Record<string, { src: string; invertInDark: boolean } | null> = {
   muse: { src: "/providers/muse.svg", invertInDark: true },
-  codex: { src: "/providers/codex.svg", invertInDark: true },
-  claude: { src: "/providers/claude.svg", invertInDark: true },
   opencode: { src: "/providers/opencode.svg", invertInDark: true },
-  deepseek: { src: "/providers/deepseek.svg", invertInDark: true },
-  aider: null,
 };
 
 export function ProviderCliList() {
@@ -58,8 +54,8 @@ export function ProviderCliList() {
               gap={4}
               padding={4}
               vAlign="center"
-              className={`veykor-provider-tile min-w-0 ${provider.id !== "muse" ? "opacity-40 grayscale" : ""}`}
-              aria-disabled={provider.id !== "muse"}
+              className={`veykor-provider-tile min-w-0 ${provider.available ? "" : "opacity-40 grayscale"}`}
+              aria-disabled={!provider.available}
             >
               <HStack
                 vAlign="center"
@@ -100,22 +96,12 @@ export function ProviderCliList() {
 
                 <HStack gap={2} vAlign="center">
                   <StatusDot
-                    variant={provider.installed ? "success" : "neutral"}
-                    label={
-                      provider.id !== "muse"
-                        ? "Coming soon"
-                        : provider.available
-                          ? "Available"
-                          : "Unavailable"
-                    }
+                    variant={provider.available ? "success" : "neutral"}
+                    label={provider.available ? "Available" : "Unavailable"}
                   />
 
                   <Text type="supporting" color="secondary">
-                    {provider.id !== "muse"
-                      ? "Coming soon"
-                      : provider.available
-                        ? "Available"
-                        : "Unavailable"}
+                    {provider.available ? "Available" : "Unavailable"}
                   </Text>
                 </HStack>
               </VStack>

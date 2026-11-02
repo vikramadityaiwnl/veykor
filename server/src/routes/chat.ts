@@ -5,7 +5,7 @@ import { streamSSE } from "hono/streaming";
 import { bodyLimit } from "hono/body-limit";
 import { and, eq, gt } from "drizzle-orm";
 import { requireAuth, type AuthEnv } from "../auth/auth.js";
-import { chatProvider, validChatRequest, hasNonImageAttachment, permissionModes } from "../chat/chat-runner.js";
+import { chatProviderFor, validChatRequest, hasNonImageAttachment, permissionModes, registeredProviderIds } from "../chat/chat-runner.js";
 import { db } from "../db/client.js";
 import { conversations, sessions as authSessions } from "../db/schema.js";
 import { listConversations, metadataSession, readConversation, writeConversation, validConversationLocation } from "../chat/conversations.js";
@@ -19,7 +19,10 @@ chatRoute.use("*", bodyLimit({ maxSize: 80_000_000 }));
 async function snapshots(userId: number) {
   return Promise.all(
     listConversations(userId).map(async (metadata) => {
-      const live = await chatProvider.describe(userId, metadata.id);
+      const live = await chatProviderFor(metadata.providerId)?.describe(
+        userId,
+        metadata.id,
+      );
 
       return live || metadataSession(metadata);
     }),
@@ -102,12 +105,21 @@ chatRoute.put("/sessions", async (c) => {
     ) {
       return c.json({ error: "Conversation location cannot be changed" }, 400);
     }
+    const providerId =
+      typeof candidate.providerId === "string" &&
+      chatProviderFor(candidate.providerId)
+        ? candidate.providerId
+        : undefined;
     updates.push(
       existing
         ? {
             ...existing,
             title: candidate.title,
-            providerId: "muse",
+            providerId:
+              providerId ||
+              (chatProviderFor(existing.providerId)
+                ? existing.providerId
+                : "muse"),
             modelId:
               typeof candidate.modelId === "string" &&
               /^[a-zA-Z0-9][a-zA-Z0-9._:@+/-]{0,199}$/.test(candidate.modelId)
@@ -119,7 +131,7 @@ chatRoute.put("/sessions", async (c) => {
             title: candidate.title,
             projectId: candidate.projectId || null,
             sectionId: candidate.sectionId || null,
-            providerId: "muse",
+            providerId: providerId || "muse",
             modelId:
               typeof candidate.modelId === "string" ? candidate.modelId : "",
             nativeSessionId: "",
@@ -154,7 +166,10 @@ chatRoute.get("/sessions/:id", async (c) => {
   ) {
     return c.json({ error: "Conversation not found" }, 404);
   }
-  const session = await chatProvider.open(c.get("user").id, c.req.param("id"));
+  const provider = chatProviderFor(conversation.providerId);
+  const session = provider
+    ? await provider.open(c.get("user").id, c.req.param("id"))
+    : undefined;
   if (!session) {
     return c.json({ error: "Conversation not found" }, 404);
   }
@@ -164,14 +179,15 @@ chatRoute.get("/sessions/:id", async (c) => {
 chatRoute.delete("/sessions/:id", async (c) => {
   const userId = c.get("user").id;
   const id = c.req.param("id");
-  if (chatProvider.isBusy(userId, id)) {
-    return c.json({ error: "Stop the conversation before deleting it" }, 409);
-  }
   const metadata = readConversation(userId, id);
   if (!metadata) {
     return c.json({ error: "Conversation not found" }, 404);
   }
-  await chatProvider.release(userId, id);
+  const provider = chatProviderFor(metadata.providerId);
+  if (provider?.isBusy(userId, id)) {
+    return c.json({ error: "Stop the conversation before deleting it" }, 409);
+  }
+  await provider?.release(userId, id);
   await Promise.all(
     metadata.attachments.map((attachment) => removeStaged(attachment.id)),
   );
@@ -215,8 +231,15 @@ chatRoute.post("/sessions/:id/mode", async (c) => {
   if (!permissionModes.includes(input?.mode)) {
     return c.json({ error: "Invalid permission mode" }, 400);
   }
+  const conversation = readConversation(c.get("user").id, c.req.param("id"));
+  const provider = conversation
+    ? chatProviderFor(conversation.providerId)
+    : undefined;
+  if (!provider) {
+    return c.json({ error: "Chat provider unavailable" }, 400);
+  }
   try {
-    await chatProvider.setPermissionMode(
+    await provider.setPermissionMode(
       c.get("user").id,
       c.req.param("id"),
       input.mode as ChatPermissionMode,
@@ -238,8 +261,15 @@ chatRoute.post("/sessions/:id/approval", async (c) => {
   ) {
     return c.json({ error: "Invalid approval decision" }, 400);
   }
+  const conversation = readConversation(c.get("user").id, c.req.param("id"));
+  const provider = conversation
+    ? chatProviderFor(conversation.providerId)
+    : undefined;
+  if (!provider) {
+    return c.json({ error: "Chat provider unavailable" }, 400);
+  }
   try {
-    await chatProvider.decideApproval(
+    await provider.decideApproval(
       c.get("user").id,
       c.req.param("id"),
       input.approvalId,
@@ -256,8 +286,15 @@ chatRoute.post("/sessions/:id/approval", async (c) => {
 
 chatRoute.post("/sessions/:id/stop", async (c) => {
   const input = await c.req.json().catch(() => ({}));
+  const conversation = readConversation(c.get("user").id, c.req.param("id"));
+  const provider = conversation
+    ? chatProviderFor(conversation.providerId)
+    : undefined;
+  if (!provider) {
+    return c.json({ error: "Chat provider unavailable" }, 400);
+  }
   try {
-    await chatProvider.stop(
+    await provider.stop(
       c.get("user").id,
       c.req.param("id"),
       input.cancel === true,
@@ -276,11 +313,11 @@ chatRoute.post("/", async (c) => {
   if (hasNonImageAttachment(input)) {
     return c.json({ error: "Only image files can be attached for now." }, 400);
   }
-  if (!validChatRequest(input)) {
+  if (!validChatRequest(input, registeredProviderIds())) {
     return c.json(
       {
         error:
-          "Choose Muse Code, a supported permission mode and reasoning effort, and a nonempty message.",
+          "Choose a supported provider, permission mode and reasoning effort, and a nonempty message.",
       },
       400,
     );
@@ -290,21 +327,23 @@ chatRoute.post("/", async (c) => {
   if (!conversation || !validConversationLocation(userId, conversation)) {
     return c.json({ error: "Conversation or project not found" }, 404);
   }
-  if (chatProvider.isBusy(userId, input.conversationId)) {
+  const provider = chatProviderFor(input.providerId);
+  if (!provider) {
+    return c.json({ error: "Chat provider unavailable" }, 400);
+  }
+  if (provider.isBusy(userId, input.conversationId)) {
     return c.json({ error: "A reply is already running" }, 409);
   }
   const settings = await getSettings();
-  if (
-    !settings.providers[0]?.models.some((model) => model.id === input.modelId)
-  ) {
-    return c.json(
-      { error: settings.providers[0]?.error || "Model unavailable" },
-      400,
-    );
+  const catalog = settings.providers.find(
+    (entry) => entry.id === input.providerId,
+  );
+  if (!catalog?.models.some((model) => model.id === input.modelId)) {
+    return c.json({ error: catalog?.error || "Model unavailable" }, 400);
   }
-  if (chatProvider.isBusy(userId, input.conversationId)) {
+  if (provider.isBusy(userId, input.conversationId)) {
     return c.json({ error: "A reply is already running" }, 409);
   }
-  void chatProvider.runTurn(userId, input);
+  void provider.runTurn(userId, input);
   return c.json({ accepted: true }, 202);
 });

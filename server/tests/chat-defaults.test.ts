@@ -68,7 +68,7 @@ test("chat defaults drop unknown providers and malformed models", () => {
         models: {
           muse: "muse-spark-1.3",
           invented: "whatever",
-          codex: "--flag",
+          codex: "gpt-5",
           claude: "",
         },
         efforts: {
@@ -113,6 +113,12 @@ test("chat defaults reject invalid preference payloads", () => {
     },
     {
       defaultProviderId: "invented",
+      models: {},
+      efforts: {},
+      permissionMode: "promptUnmatched",
+    },
+    {
+      defaultProviderId: "claude",
       models: {},
       efforts: {},
       permissionMode: "promptUnmatched",

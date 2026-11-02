@@ -71,10 +71,9 @@ function modelDescription(model: ChatModel): string | undefined {
 }
 
 export function ComposerModelSelection(props: Props) {
-  const available = props.providers.filter((entry) => entry.available);
-  const provider =
-    available.find((entry) => entry.id === props.providerId) ||
-    props.providers.find((entry) => entry.id === props.providerId);
+  const provider = props.providers.find(
+    (entry) => entry.id === props.providerId,
+  );
 
   return (
     <VStack
@@ -101,13 +100,15 @@ export function ComposerModelSelection(props: Props) {
         value={props.providerId}
         isLoading={props.loading}
         emptyText="No providers available"
-        options={available.map((entry) => ({
+        options={props.providers.map((entry) => ({
           value: entry.id,
           label: entry.name,
+          description: entry.available ? undefined : "Unavailable",
+          disabled: !entry.available,
           icon: <ChatProviderIcon providerId={entry.id} />,
         }))}
         onChange={(id) => {
-          const next = available.find((entry) => entry.id === id);
+          const next = props.providers.find((entry) => entry.id === id);
           const preferred = props.preferredModels[id];
           const model =
             (preferred &&

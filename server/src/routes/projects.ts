@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import type { CreateProjectInput, ProjectsResponse, UpdateProjectInput } from "@veykor/shared";
 import { requireAuth, type AuthEnv } from "../auth/auth.js";
 import { isHostRequest } from "../auth/host-access.js";
-import { chatProvider } from "../chat/chat-runner.js";
+import { chatProviderFor } from "../chat/chat-runner.js";
 import { removeStaged } from "../chat/attachments.js";
 import { deleteProjectConversations, listProjectConversations } from "../chat/conversations.js";
 import { createProject, deleteProject, listProjects, updateProject } from "../db/projects.js";
@@ -177,7 +177,11 @@ projectsRoute.delete("/:id", async (c) => {
 
   const doomed = listProjectConversations(userId, id);
 
-  if (doomed.some((metadata) => chatProvider.isBusy(userId, metadata.id))) {
+  if (
+    doomed.some((metadata) =>
+      chatProviderFor(metadata.providerId)?.isBusy(userId, metadata.id),
+    )
+  ) {
     return c.json(
       { error: "Stop the project's running chats before deleting it" },
       409,
@@ -185,7 +189,7 @@ projectsRoute.delete("/:id", async (c) => {
   }
 
   for (const metadata of doomed) {
-    await chatProvider.release(userId, metadata.id);
+    await chatProviderFor(metadata.providerId)?.release(userId, metadata.id);
   }
 
   await Promise.all(

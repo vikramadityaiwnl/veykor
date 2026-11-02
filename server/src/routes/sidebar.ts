@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { CreateSidebarSectionInput, SidebarSectionsResponse, UpdateSidebarSectionInput } from "@veykor/shared";
 import { requireAuth, type AuthEnv } from "../auth/auth.js";
-import { chatProvider } from "../chat/chat-runner.js";
+import { chatProviderFor } from "../chat/chat-runner.js";
 import { removeStaged } from "../chat/attachments.js";
 import { deleteProjectConversations, listProjectConversations } from "../chat/conversations.js";
 import { listProjects } from "../db/projects.js";
@@ -135,7 +135,11 @@ sidebarRoute.delete("/sections/:id", async (c) => {
     .filter((project) => project.sectionId === id)
     .flatMap((project) => listProjectConversations(userId, project.id));
 
-  if (doomed.some((metadata) => chatProvider.isBusy(userId, metadata.id))) {
+  if (
+    doomed.some((metadata) =>
+      chatProviderFor(metadata.providerId)?.isBusy(userId, metadata.id),
+    )
+  ) {
     return c.json(
       { error: "Stop the section's running chats before deleting it" },
       409,
@@ -153,7 +157,7 @@ sidebarRoute.delete("/sections/:id", async (c) => {
   }
 
   for (const metadata of doomed) {
-    await chatProvider.release(userId, metadata.id);
+    await chatProviderFor(metadata.providerId)?.release(userId, metadata.id);
   }
 
   await Promise.all(

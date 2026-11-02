@@ -53,13 +53,16 @@ const permissionModes = [
   "allowAll",
 ];
 
-export function validChatRequest(value: unknown): value is ChatRequest {
+export function validChatRequest(
+  value: unknown,
+  providerIds: readonly string[],
+): value is ChatRequest {
   if (!value || typeof value !== "object") {
     return false;
   }
   const input = value as ChatRequest;
   return (
-    input.providerId === "muse" &&
+    providerIds.includes(input.providerId) &&
     typeof input.conversationId === "string" &&
     input.conversationId.length <= 100 &&
     typeof input.messageId === "string" &&

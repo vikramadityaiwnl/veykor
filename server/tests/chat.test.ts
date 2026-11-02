@@ -15,15 +15,20 @@ const input = {
 };
 
 test("native chat validates Muse requests and rejects removed providers and invented modes", () => {
-  assert.equal(validChatRequest(input), true);
-  for (const providerId of [
-    "aider",
-    "claude",
-    "codex",
-    "opencode",
-    "deepseek",
-  ]) {
-    assert.equal(validChatRequest({ ...input, providerId }), false);
+  assert.equal(validChatRequest(input, ["muse"]), true);
+  assert.equal(
+    validChatRequest({ ...input, providerId: "opencode" }, ["muse"]),
+    false,
+  );
+  assert.equal(
+    validChatRequest({ ...input, providerId: "opencode" }, [
+      "muse",
+      "opencode",
+    ]),
+    true,
+  );
+  for (const providerId of ["aider", "claude", "codex", "deepseek"]) {
+    assert.equal(validChatRequest({ ...input, providerId }, ["muse"]), false);
   }
   for (const value of [
     null,
@@ -35,7 +40,7 @@ test("native chat validates Muse requests and rejects removed providers and inve
     { ...input, messages: [] },
     { ...input, conversationId: null },
   ]) {
-    assert.equal(validChatRequest(value), false);
+    assert.equal(validChatRequest(value, ["muse"]), false);
   }
 });
 
@@ -54,9 +59,9 @@ test("chat accepts image attachments and rejects other file kinds", () => {
     messages: [{ role: "user", text: "Hello", attachments }],
   });
 
-  assert.equal(validChatRequest(withAttachments([image])), true);
+  assert.equal(validChatRequest(withAttachments([image]), ["muse"]), true);
   assert.equal(
-    validChatRequest(withAttachments([{ ...image, kind: "text" }])),
+    validChatRequest(withAttachments([{ ...image, kind: "text" }]), ["muse"]),
     false,
   );
   assert.equal(hasNonImageAttachment(withAttachments([image])), false);
