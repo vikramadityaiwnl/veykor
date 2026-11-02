@@ -157,6 +157,28 @@ function deleteConversation(userId: number, id: string) {
     .run();
 }
 
+export function listProjectConversations(
+  userId: number,
+  projectId: string,
+): ConversationMetadata[] {
+  return listConversations(userId).filter(
+    (metadata) => metadata.projectId === projectId,
+  );
+}
+
+export function deleteProjectConversations(
+  userId: number,
+  projectId: string,
+): ConversationMetadata[] {
+  const doomed = listProjectConversations(userId, projectId);
+
+  for (const metadata of doomed) {
+    deleteConversation(userId, metadata.id);
+  }
+
+  return doomed;
+}
+
 export async function migrateStoredConversations(): Promise<void> {
   for (const row of db.select().from(conversations).all()) {
     const data = JSON.parse(row.data);

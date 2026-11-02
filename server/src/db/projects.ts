@@ -78,3 +78,21 @@ export function updateProject(
 
   return updated ? toProject(updated) : null;
 }
+
+export function deleteProject(userId: number, id: string): boolean {
+  const existing = db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, id), eq(projects.userId, userId)))
+    .get();
+
+  if (!existing) {
+    return false;
+  }
+
+  db.delete(projects)
+    .where(and(eq(projects.id, id), eq(projects.userId, userId)))
+    .run();
+
+  return true;
+}
