@@ -63,7 +63,9 @@ export async function describeConversation(
 
   if (!live) {
     const running = busy.has(`${userId}:${id}`);
-    const failure = running ? "" : pendingErrors.get(`${userId}:${id}`) || "";
+    const failure = running
+      ? ""
+      : pendingErrors.get(`${userId}:${id}`) || metadata.recoveryError || "";
 
     return {
       ...metadataSession(metadata),
@@ -232,7 +234,12 @@ async function runtime(userId: number, id: string): Promise<Runtime> {
     }
     if (session.activeTurnId) {
       state.lastError =
-        "The backend restarted during execution. Send a message to resume this Muse session.";
+        "Execution was interrupted by a backend restart and its outcome is uncertain. Review the conversation before sending again; nothing was resent automatically.";
+      const saved = readConversation(userId, id);
+      if (saved) {
+        saved.recoveryError = state.lastError;
+        writeConversation(userId, saved);
+      }
     }
 
     const result: Runtime = {
@@ -293,6 +300,7 @@ export async function decideApproval(
   if (!request || !request.choiceIds.includes(choiceId)) {
     throw new Error("This permission choice is no longer available");
   }
+  live.state.approvals.delete(approvalId);
   request.resolve({ choiceId });
 }
 
@@ -397,6 +405,7 @@ export async function runChat(userId: number, input: ChatRequest) {
       }
     }
     metadata.modelId = input.modelId;
+    metadata.recoveryError = "";
     writeConversation(userId, metadata);
     const live = await runtime(userId, id);
     const parts = await nativeInput(

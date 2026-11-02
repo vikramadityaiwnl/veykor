@@ -70,7 +70,11 @@ export function ComposerQueueMessage(props: Props) {
         )}
         {props.message.error && (
           <Text type="supporting" color="secondary">
-            {props.message.error}
+            {props.message.errorKind === "uncertain"
+              ? `Delivery uncertain: ${props.message.error}`
+              : props.message.errorKind === "rejected"
+                ? `Not delivered: ${props.message.error}`
+                : props.message.error}
           </Text>
         )}
       </VStack>
@@ -101,7 +105,11 @@ export function ComposerQueueMessage(props: Props) {
         ) : (
           <>
             <Button
-              label={`Steer queued message ${props.index + 1}`}
+              label={
+                props.message.state === "error"
+                  ? `Retry queued message ${props.index + 1}`
+                  : `Steer queued message ${props.index + 1}`
+              }
               size="sm"
               variant="ghost"
               isIconOnly

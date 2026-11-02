@@ -29,12 +29,12 @@ function resolveEffort(
 ): ChatReasoningEffort {
   const tiers = (model?.reasoningEfforts || []).map((option) => option.tier);
 
-  if (choice && choice.modelId === model?.id && tiers.includes(choice.effort)) {
-    return choice.effort;
-  }
-
   if (saved && tiers.includes(saved)) {
     return saved;
+  }
+
+  if (choice && choice.modelId === model?.id && tiers.includes(choice.effort)) {
+    return choice.effort;
   }
 
   if (model && tiers.includes(model.defaultReasoningEffort)) {
@@ -88,6 +88,9 @@ export function ProjectHomePage() {
   const runtimeError = useChatRuntimeStore((state) =>
     state.errorSessionId === sessionId ? state.error : "",
   );
+  const runtimeErrorKind = useChatRuntimeStore((state) =>
+    state.errorSessionId === sessionId ? state.errorKind : "",
+  );
   const stop = useChatRuntimeStore((state) => state.stop);
   const sections = useSidebarSectionsStore((state) => state.sections);
   const defaultSection =
@@ -129,7 +132,7 @@ export function ProjectHomePage() {
   const model = provider?.models.find((entry) => entry.id === modelId);
   const reasoningEffort = resolveEffort(
     model,
-    isProjectChat ? undefined : savedEfforts[modelId],
+    session?.reasoningEffort || savedEfforts[modelId],
     effortChoice,
   );
   const lastReply = messages
@@ -168,7 +171,11 @@ export function ProjectHomePage() {
       return;
     }
 
-    useChatRuntimeStore.setState({ error: "", errorSessionId: "" });
+    useChatRuntimeStore.setState({
+      error: "",
+      errorKind: "",
+      errorSessionId: "",
+    });
     setEffortChoice(null);
 
     if (session) {
@@ -206,7 +213,7 @@ export function ProjectHomePage() {
     if (!willWait) {
       store.addMessage(target.id, text, attachments);
     }
-    store.configure(target.id, providerId, modelId);
+    store.configure(target.id, providerId, modelId, reasoningEffort);
     const message = willWait
       ? { id: crypto.randomUUID(), text, attachments }
       : useChatSessionsStore.getState().messages[target.id].at(-1)!;
@@ -215,9 +222,7 @@ export function ProjectHomePage() {
       delivery: messageBehavior,
       conversationId: target.id,
       messageId: message.id,
-      permissionMode: session?.nativeSessionId
-        ? session.permissionMode || permissionMode
-        : permissionMode,
+      permissionMode: session?.permissionMode || permissionMode,
       reasoningEffort,
       providerId: providerId as ProviderCliId,
       modelId,
@@ -256,18 +261,18 @@ export function ProjectHomePage() {
       composer={
         <ChatComposerPanel
           key={sessionId || draft?.id || "home"}
-          permissionMode={
-            session?.nativeSessionId
-              ? session.permissionMode || permissionMode
-              : permissionMode
-          }
+          permissionMode={session?.permissionMode || permissionMode}
           onPermissionMode={(mode) => {
             setPermissionChoice(mode);
 
-            if (session?.nativeSessionId) {
+            if (session) {
+              useChatSessionsStore
+                .getState()
+                .configure(session.id, providerId, modelId, undefined, mode);
               void chatAction(session.id, "mode", { mode }).catch((error) =>
                 useChatRuntimeStore.setState({
                   error: error.message,
+                  errorKind: "rejected",
                   errorSessionId: session.id,
                 }),
               );
@@ -280,6 +285,21 @@ export function ProjectHomePage() {
           reasoningEffort={reasoningEffort}
           onReasoningEffort={(effort) => {
             setEffortChoice({ modelId, effort });
+
+            if (session) {
+              useChatSessionsStore
+                .getState()
+                .configure(session.id, providerId, modelId, effort);
+              void chatAction(session.id, "settings", {
+                reasoningEffort: effort,
+              }).catch((error) =>
+                useChatRuntimeStore.setState({
+                  error: error.message,
+                  errorKind: "rejected",
+                  errorSessionId: session.id,
+                }),
+              );
+            }
 
             if (!isProjectChat && modelId) {
               void useChatDefaultsStore.getState().saveEffort(modelId, effort);
@@ -304,6 +324,7 @@ export function ProjectHomePage() {
           messageBehavior={messageBehavior}
           isBusy={!!runningId}
           error={runtimeError || session?.error || historyError || catalogError}
+          errorKind={runtimeError ? runtimeErrorKind : ""}
           usage={lastReply?.usage || emptyUsage()}
           hasMessages={messages.some((message) => message.role === "user")}
           onSelection={select}

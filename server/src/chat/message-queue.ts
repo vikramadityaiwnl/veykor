@@ -5,7 +5,7 @@ import { chatInputs, conversations, users } from "../db/schema.js";
 import { commandId } from "../providers/command-id.js";
 import { chatProviderFor } from "../providers/index.js";
 import { parseChatDefaults } from "../settings/chat-defaults.js";
-import { readConversation, validConversationLocation } from "./conversations.js";
+import { readConversation, validConversationLocation, writeConversation } from "./conversations.js";
 
 type InputRow = typeof chatInputs.$inferSelect;
 
@@ -47,6 +47,12 @@ export function queuedMessages(
         createdAt: row.createdAt,
         state: row.state === "error" ? "error" : "queued",
         error: row.error,
+        errorKind:
+          row.state === "error"
+            ? row.errorKind === "rejected"
+              ? "rejected"
+              : "uncertain"
+            : "",
       };
     });
 }
@@ -79,17 +85,36 @@ export function pauseQueue(
 
 function markSent(row: InputRow) {
   db.update(chatInputs)
-    .set({ state: "sent", payload: "{}", error: "" })
+    .set({ state: "sent", payload: "{}", error: "", errorKind: "" })
     .where(eq(chatInputs.id, row.id))
     .run();
 }
 
-function markError(row: InputRow, error: unknown) {
+export function queueErrorKind(error: unknown): "rejected" | "uncertain" {
+  const message = error instanceof Error ? error.message : "";
+
+  if (
+    /conversation not found|project not found|invalid image|no enabled|model must use|not supported/i.test(
+      message,
+    )
+  ) {
+    return "rejected";
+  }
+
+  return "uncertain";
+}
+
+function markError(
+  row: InputRow,
+  error: unknown,
+  kind: "rejected" | "uncertain" = queueErrorKind(error),
+) {
   db.update(chatInputs)
     .set({
       state: "error",
       error:
         error instanceof Error ? error.message : "Unable to send this message",
+      errorKind: kind,
     })
     .where(eq(chatInputs.id, row.id))
     .run();
@@ -129,8 +154,9 @@ async function drain(userId: number, conversationId: string) {
         markError(
           row,
           new Error(
-            "Delivery was interrupted. Use Steer to retry this message or delete it.",
+            "Delivery is uncertain after an interruption. The message may already have been accepted, so it was not resent. Check the conversation, then use Retry to send it or delete it.",
           ),
+          "uncertain",
         );
       } catch (error) {
         markError(row, error);
@@ -171,8 +197,9 @@ async function drain(userId: number, conversationId: string) {
           row,
           new Error(
             snapshot?.error ||
-              "The provider did not confirm delivery. Use Steer to retry.",
+              "Delivery is uncertain. The provider did not confirm this message, so it was not resent. Check the conversation, then use Retry to send it or delete it.",
           ),
+          "uncertain",
         );
         return;
       }
@@ -248,6 +275,19 @@ export async function submitMessage(userId: number, input: ChatRequest) {
     input.delivery ||
     parseChatDefaults(preference?.chatDefaults).messageBehavior;
   const provider = chatProviderFor(input.providerId)!;
+  const conversation = readConversation(userId, input.conversationId);
+
+  if (conversation) {
+    writeConversation(userId, {
+      ...conversation,
+      providerId: input.providerId,
+      modelId: input.modelId,
+      reasoningEffort: input.reasoningEffort,
+      permissionMode: input.permissionMode,
+      recoveryError: "",
+    });
+  }
+
   pauseQueue(userId, input.conversationId, false);
 
   if (delivery === "steer" && provider.isBusy(userId, input.conversationId)) {
@@ -285,7 +325,12 @@ export function editQueuedMessage(
   const input = JSON.parse(row.payload) as ChatRequest;
   input.messages[input.messages.length - 1].text = text;
   db.update(chatInputs)
-    .set({ payload: JSON.stringify(input), state: "queued", error: "" })
+    .set({
+      payload: JSON.stringify(input),
+      state: "queued",
+      error: "",
+      errorKind: "",
+    })
     .where(and(eq(chatInputs.id, row.id), ne(chatInputs.state, "sending")))
     .run();
 }
@@ -310,6 +355,7 @@ async function steerRow(row: InputRow) {
       .set({
         state: "queued",
         error: "",
+        errorKind: "",
         position: (first?.position || Date.now()) - 1,
       })
       .where(eq(chatInputs.id, row.id))
@@ -321,7 +367,7 @@ async function steerRow(row: InputRow) {
 
   steering.add(row.id);
   db.update(chatInputs)
-    .set({ state: "sending", error: "" })
+    .set({ state: "sending", error: "", errorKind: "" })
     .where(eq(chatInputs.id, row.id))
     .run();
 
@@ -342,6 +388,7 @@ async function steerRow(row: InputRow) {
         .set({
           state: "queued",
           error: "",
+          errorKind: "",
           position: (first?.position || Date.now()) - 1,
         })
         .where(eq(chatInputs.id, row.id))

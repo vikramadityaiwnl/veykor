@@ -163,7 +163,7 @@ async function sync(
         ? "OpenCode execution failed. Check the session in OpenCode for details."
         : "") ||
       (interruptedHost
-        ? "The previous execution is not active in this backend. Send a message to continue the OpenCode session."
+        ? "Execution was interrupted and its outcome is uncertain. Review the conversation before sending again; nothing was resent automatically."
         : "");
     live.session = {
       ...metadataSession(metadata),

@@ -13,7 +13,11 @@ import { conversations, sessions as authSessions } from "../db/schema.js";
 import { listConversations, metadataSession, readConversation, writeConversation, validConversationLocation, projectFolder } from "../chat/conversations.js";
 import { attachmentBytes, removeStaged } from "../chat/attachments.js";
 import { withQueue, hasSubmittedMessages, submitMessage, pauseQueue, editQueuedMessage, deleteQueuedMessage, steerQueuedMessage } from "../chat/message-queue.js";
+import { LiveSnapshotTracker } from "../chat/live-cursor.js";
+import { isReasoningEffort } from "../providers/reasoning-effort.js";
 import { getSettings } from "../settings/settings.js";
+
+const liveSnapshots = new LiveSnapshotTracker();
 
 export const chatRoute = new Hono<AuthEnv>();
 chatRoute.use("*", requireAuth);
@@ -69,6 +73,7 @@ chatRoute.get("/sessions", (c) =>
 
 chatRoute.get("/sessions/live", (c) =>
   streamSSE(c, async (stream) => {
+    const userId = c.get("user").id;
     let previous = "";
     const deadline = Date.now() + 25_000;
     while (!stream.aborted && Date.now() < deadline) {
@@ -85,12 +90,16 @@ chatRoute.get("/sessions/live", (c) =>
       if (!authenticated) {
         return;
       }
-      const snapshot = JSON.stringify({
-        sessions: await snapshots(c.get("user").id),
-      });
-      if (snapshot !== previous) {
-        await stream.writeSSE({ event: "snapshot", data: snapshot });
-        previous = snapshot;
+      const sessions = await snapshots(userId);
+      const snapshotJson = JSON.stringify({ sessions });
+      if (snapshotJson !== previous) {
+        previous = snapshotJson;
+        const cursor = liveSnapshots.cursorFor(userId, snapshotJson);
+        await stream.writeSSE({
+          id: cursor,
+          event: "snapshot",
+          data: JSON.stringify({ sessions, cursor }),
+        });
       }
       await stream.sleep(200);
     }
@@ -169,6 +178,9 @@ chatRoute.put("/sessions", async (c) => {
               /^[a-zA-Z0-9][a-zA-Z0-9._:@+/-]{0,199}$/.test(candidate.modelId)
                 ? candidate.modelId
                 : existing.modelId,
+            reasoningEffort: isReasoningEffort(candidate.reasoningEffort)
+              ? candidate.reasoningEffort
+              : existing.reasoningEffort || "",
           }
         : {
             id: candidate.id,
@@ -178,6 +190,9 @@ chatRoute.put("/sessions", async (c) => {
             providerId: providerId || "muse",
             modelId:
               typeof candidate.modelId === "string" ? candidate.modelId : "",
+            reasoningEffort: isReasoningEffort(candidate.reasoningEffort)
+              ? candidate.reasoningEffort
+              : "",
             nativeSessionId: "",
             permissionMode: "promptUnmatched",
             attachments: [],
@@ -350,8 +365,18 @@ chatRoute.post("/sessions/:id/mode", async (c) => {
   const provider = conversation
     ? chatProviderFor(conversation.providerId)
     : undefined;
-  if (!provider) {
+  if (!provider || !conversation) {
     return c.json({ error: "Chat provider unavailable" }, 400);
+  }
+  if (
+    !conversation.nativeSessionId &&
+    !hasSubmittedMessages(c.get("user").id, conversation.id)
+  ) {
+    writeConversation(c.get("user").id, {
+      ...conversation,
+      permissionMode: input.mode as ChatPermissionMode,
+    });
+    return c.json({ ok: true });
   }
   try {
     await provider.setPermissionMode(
@@ -366,6 +391,22 @@ chatRoute.post("/sessions/:id/mode", async (c) => {
       409,
     );
   }
+});
+
+chatRoute.post("/sessions/:id/settings", async (c) => {
+  const input = await c.req.json().catch(() => null);
+  if (!isReasoningEffort(input?.reasoningEffort)) {
+    return c.json({ error: "Invalid reasoning effort" }, 400);
+  }
+  const conversation = readConversation(c.get("user").id, c.req.param("id"));
+  if (!conversation) {
+    return c.json({ error: "Conversation not found" }, 404);
+  }
+  writeConversation(c.get("user").id, {
+    ...conversation,
+    reasoningEffort: input.reasoningEffort,
+  });
+  return c.json({ ok: true });
 });
 
 chatRoute.post("/sessions/:id/approval", async (c) => {

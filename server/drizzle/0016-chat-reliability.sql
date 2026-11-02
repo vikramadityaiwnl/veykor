@@ -1,0 +1,1 @@
+ALTER TABLE `chat_inputs` ADD `error_kind` text DEFAULT '' NOT NULL;

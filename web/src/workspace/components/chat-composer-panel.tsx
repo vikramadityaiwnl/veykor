@@ -40,6 +40,7 @@ interface Props {
   isRunning: boolean;
   isBusy: boolean;
   error: string;
+  errorKind: "" | "rejected" | "uncertain";
   usage: ChatUsage;
   hasMessages: boolean;
   onSelection: (providerId: string, modelId: string) => void;
@@ -187,7 +188,18 @@ export function ChatComposerPanel(props: Props) {
 
   return (
     <VStack gap={2} className="mx-auto w-full max-w-4xl px-4 pb-4">
-      {error && <Banner status="error" title={error} />}
+      {error && (
+        <Banner
+          status="error"
+          title={
+            props.errorKind === "uncertain"
+              ? `${error} Nothing was resent automatically.`
+              : props.errorKind === "rejected"
+                ? `${error} Your text and images are still here; edit them or send again.`
+                : error
+          }
+        />
+      )}
 
       <input
         ref={fileInput}

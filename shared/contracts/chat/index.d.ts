@@ -92,6 +92,8 @@ export interface ChatThoughtEntry {
 
 export type ChatMessageBehavior = "queue" | "steer";
 
+export type QueuedMessageErrorKind = "" | "rejected" | "uncertain";
+
 export interface QueuedChatMessage {
   id: string;
   clientMessageId: string;
@@ -100,6 +102,7 @@ export interface QueuedChatMessage {
   attachmentCount: number;
   state: "queued" | "error";
   error: string;
+  errorKind: QueuedMessageErrorKind;
 }
 
 export interface ChatMessage {
@@ -124,6 +127,7 @@ export interface ChatSession {
   sectionId: string | null;
   providerId: string;
   modelId: string;
+  reasoningEffort?: ChatReasoningEffort;
   nativeSessionId?: string;
   permissionMode?: ChatPermissionMode;
   status?: "idle" | "running" | "error";
@@ -137,6 +141,7 @@ export interface ChatSession {
 
 export interface ChatSessionsResponse {
   sessions: ChatSession[];
+  cursor?: string;
 }
 
 export interface ChatRequest {

@@ -36,6 +36,7 @@ export type {
 export type {
   ChatMessageBehavior,
   QueuedChatMessage,
+  QueuedMessageErrorKind,
   ChatPermissionMode,
   ChatReasoningEffort,
   ChatReasoningEffortOption,

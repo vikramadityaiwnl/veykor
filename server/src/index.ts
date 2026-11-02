@@ -49,10 +49,13 @@ app.route("/api/health", healthRoute);
 
 app.notFound((c) => c.json({ error: "Not found" }, 404));
 
-const server = serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`veykor API listening on http://localhost:${info.port}`);
-  console.log(`SQLite database: ${dbPath}`);
-});
+const server = serve(
+  { fetch: app.fetch, port, hostname: "0.0.0.0" },
+  (info) => {
+    console.log(`veykor API listening on http://localhost:${info.port}`);
+    console.log(`SQLite database: ${dbPath}`);
+  },
+);
 
 server.on("upgrade", (request, socket, head) => {
   if (isTranscribeUpgrade(request)) {

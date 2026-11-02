@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import type { ChatAttachment, ChatPermissionMode, ChatSession } from "@veykor/shared";
+import type { ChatAttachment, ChatPermissionMode, ChatReasoningEffort, ChatSession } from "@veykor/shared";
 import { db } from "../db/client.js";
 import { conversations, chatHistories, projects, sidebarSections } from "../db/schema.js";
 import { attachmentAvailable, stageAttachment, sweepStaging } from "./attachments.js";
@@ -22,10 +22,12 @@ export interface ConversationMetadata {
   sectionId: string | null;
   providerId: string;
   modelId: string;
+  reasoningEffort?: ChatReasoningEffort | "";
   nativeSessionId: string;
   permissionMode: ChatPermissionMode;
   attachments: StoredAttachment[];
   queuePaused?: boolean;
+  recoveryError?: string;
   turnTimings?: Record<string, { startedAt: number; seconds: number }>;
 }
 
@@ -85,10 +87,11 @@ export function metadataSession(metadata: ConversationMetadata): ChatSession {
     sectionId: metadata.sectionId,
     providerId: metadata.providerId,
     modelId: metadata.modelId,
+    reasoningEffort: metadata.reasoningEffort || undefined,
     nativeSessionId: metadata.nativeSessionId,
     permissionMode: metadata.permissionMode,
-    status: "idle",
-    error: "",
+    status: metadata.recoveryError ? "error" : "idle",
+    error: metadata.recoveryError || "",
     approvals: [],
     activities: [],
     queuedMessages: [],
@@ -156,6 +159,7 @@ async function slimSession(
     sectionId: session.sectionId,
     providerId: session.providerId || "muse",
     modelId: session.modelId,
+    reasoningEffort: session.reasoningEffort || "",
     nativeSessionId: session.nativeSessionId || "",
     permissionMode: session.permissionMode || "promptUnmatched",
     attachments,

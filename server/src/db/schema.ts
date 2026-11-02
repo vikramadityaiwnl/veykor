@@ -101,6 +101,7 @@ export const chatInputs = sqliteTable(
     payload: text("payload").notNull().default("{}"),
     state: text("state").notNull().default("queued"),
     error: text("error").notNull().default(""),
+    errorKind: text("error_kind").notNull().default(""),
     position: integer("position").notNull().default(0),
     createdAt: integer("created_at").notNull().default(0),
   },

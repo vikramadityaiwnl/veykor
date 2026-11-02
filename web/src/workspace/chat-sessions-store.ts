@@ -16,7 +16,13 @@ interface ChatSessionsState {
   save: () => Promise<void>;
   renameSession: (sessionId: string, title: string) => Promise<boolean>;
   deleteSession: (sessionId: string) => Promise<boolean>;
-  configure: (sessionId: string, providerId: string, modelId: string) => void;
+  configure: (
+    sessionId: string,
+    providerId: string,
+    modelId: string,
+    reasoningEffort?: ChatSession["reasoningEffort"],
+    permissionMode?: ChatSession["permissionMode"],
+  ) => void;
   messages: Record<string, SessionMessage[]>;
   activeSessionId: string | null;
   createChatSession: (sectionId: string) => ChatSession;
@@ -104,6 +110,7 @@ function sessionMetadata(session: SavedChatSession): ChatSession {
     sectionId: session.sectionId,
     providerId: session.providerId,
     modelId: session.modelId,
+    reasoningEffort: session.reasoningEffort,
     nativeSessionId: session.nativeSessionId || "",
     permissionMode: session.permissionMode || "promptUnmatched",
     status: session.status || "idle",
@@ -342,11 +349,23 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
     });
     return true;
   },
-  configure: (sessionId, providerId, modelId) => {
+  configure: (
+    sessionId,
+    providerId,
+    modelId,
+    reasoningEffort,
+    permissionMode,
+  ) => {
     set({
       sessions: get().sessions.map((session) =>
         session.id === sessionId
-          ? { ...session, providerId, modelId }
+          ? {
+              ...session,
+              providerId,
+              modelId,
+              ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
+              ...(permissionMode !== undefined ? { permissionMode } : {}),
+            }
           : session,
       ),
     });

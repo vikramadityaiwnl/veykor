@@ -4,13 +4,20 @@ import { watchChatSnapshots } from "../src/workspace/chat-live-connection";
 
 class Source extends EventTarget {
   closed = false;
+  readyState = 1;
   close() {
     this.closed = true;
   }
-  snapshot() {
+  snapshot(cursor?: string) {
     this.dispatchEvent(
-      new MessageEvent("snapshot", { data: JSON.stringify({ sessions: [] }) }),
+      new MessageEvent("snapshot", {
+        data: JSON.stringify({ sessions: [], ...(cursor ? { cursor } : {}) }),
+      }),
     );
+  }
+  fail() {
+    this.readyState = 2;
+    this.dispatchEvent(new Event("error"));
   }
 }
 
@@ -87,5 +94,38 @@ test("live snapshots close on logout, ignore old account events, and start when 
   sources[0].snapshot();
   sources[1].snapshot();
   assert.equal(received, 2);
+  stop();
+});
+
+test("live snapshots ignore duplicate cursors, accept newer ones and reconnect after close", async () => {
+  const sources: Source[] = [];
+  const cursors: string[] = [];
+  let received = 0;
+  const stop = watchChatSnapshots({
+    isReady: () => true,
+    subscribe: () => () => {},
+    createSource: (cursor) => {
+      cursors.push(cursor);
+      const source = new Source();
+      sources.push(source);
+      return source as unknown as EventSource;
+    },
+    receive: () => {
+      received += 1;
+    },
+  });
+  sources[0].snapshot("boot-a:1");
+  sources[0].snapshot("boot-a:1");
+  sources[0].snapshot("boot-a:0");
+  assert.equal(received, 1);
+  sources[0].snapshot("boot-a:2");
+  assert.equal(received, 2);
+  sources[0].fail();
+  assert.equal(sources.length, 1);
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  assert.equal(sources.length, 2);
+  assert.equal(cursors[1], "boot-a:2");
+  sources[1].snapshot("boot-b:0");
+  assert.equal(received, 3);
   stop();
 });
