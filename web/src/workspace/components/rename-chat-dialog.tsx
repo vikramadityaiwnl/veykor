@@ -54,7 +54,8 @@ export function RenameChatDialog(props: Props) {
       <Layout
         header={
           <DialogHeader
-            title={`Rename "${props.session.title}"`}
+            title="Rename chat"
+            subtitle="Keep the title short and concise."
             onOpenChange={(isOpen) => {
               if (!isOpen) {
                 props.onClose();

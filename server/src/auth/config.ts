@@ -42,6 +42,10 @@ for (const origin of origins) {
 
 export const databaseUrl = required("DATABASE_URL");
 
+export function asrWebSocketUrl(): string {
+  return process.env.META_ASR_WS_URL || "wss://api.meta.ai/v1/asr/realtime";
+}
+
 export const port = Number(required("PORT"));
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) {

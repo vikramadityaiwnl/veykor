@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import type { ConfigurationUsersResponse } from "@veykor/shared";
 import { Avatar } from "@astryxdesign/core/Avatar";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
-import { Grid } from "@astryxdesign/core/Grid";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Divider } from "@astryxdesign/core/Divider";
 import { Layout, LayoutHeader, LayoutContent, VStack } from "@astryxdesign/core/Layout";
 import { List, ListItem } from "@astryxdesign/core/List";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -14,6 +15,7 @@ import { SessionLoading } from "../auth/auth-routes";
 import { useAuthStore } from "../auth/auth-store";
 
 export function ConfigurationPage() {
+  const navigate = useNavigate();
   const status = useAuthStore((state) => state.status);
   const isHost = status?.registrationAllowed ?? null;
 
@@ -24,14 +26,6 @@ export function ConfigurationPage() {
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (isHost === false) {
-      setResult(null);
-      setError("");
-      setDenied(true);
-
-      return;
-    }
-
     if (isHost !== true) {
       return;
     }
@@ -94,22 +88,48 @@ export function ConfigurationPage() {
     return <Navigate to="/auth" replace />;
   }
 
+  const currentUserId = status.user.id;
+
   return (
     <Layout
       height="fill"
       className="h-dvh overflow-hidden"
-      contentWidth={1440}
+      contentWidth="100%"
       header={
         <LayoutHeader hasDivider>
-          <Heading level={1} weight="semibold">
-            veykor configuration
-          </Heading>
+          <HStack gap={4} vAlign="center" className="w-full">
+            <img
+              src="/logo.svg"
+              alt=""
+              className="size-(--spacing-8) object-contain dark:invert"
+            />
+            <Text weight="semibold" className="flex-1">
+              veykor
+            </Text>
+            <Button
+              label="Back to workspace"
+              variant="secondary"
+              clickAction={() => navigate("/")}
+            />
+          </HStack>
         </LayoutHeader>
       }
       content={
-        <LayoutContent padding={4}>
-          <VStack gap={4}>
-            {denied ? (
+        <LayoutContent padding={6}>
+          <VStack gap={8} className="mx-auto w-full max-w-4xl py-6">
+            <VStack gap={2}>
+              <Text type="supporting" color="secondary">
+                SERVER ADMINISTRATION
+              </Text>
+              <Heading level={1} weight="semibold">
+                Configuration
+              </Heading>
+              <Text color="secondary">
+                Manage the accounts registered on your veykor server.
+              </Text>
+            </VStack>
+            <Divider />
+            {denied || isHost === false ? (
               <VStack gap={4}>
                 <Banner
                   status="error"
@@ -117,35 +137,6 @@ export function ConfigurationPage() {
                   description="Configuration is available only on the host computer through localhost."
                   role="alert"
                 />
-
-                <Grid columns={{ minWidth: 320 }} gap={10}>
-                  <VStack gap={1}>
-                    <Heading level={2} weight="semibold">
-                      Users
-                    </Heading>
-
-                    <Text color="secondary">
-                      Registered accounts on this veykor server.
-                    </Text>
-
-                    <Text color="secondary">
-                      Organization preferences and settings will be available
-                      here in the future.
-                    </Text>
-                  </VStack>
-
-                  <VStack gap={4}>
-                    <Text color="secondary">
-                      Registered accounts are unavailable on this network.
-                    </Text>
-
-                    <Button
-                      label="Refresh users"
-                      isDisabled
-                      clickAction={() => {}}
-                    />
-                  </VStack>
-                </Grid>
               </VStack>
             ) : error ? (
               <>
@@ -162,7 +153,7 @@ export function ConfigurationPage() {
             ) : !result ? (
               <Spinner label="Loading configuration…" />
             ) : (
-              <Grid columns={{ minWidth: 320 }} gap={10}>
+              <VStack gap={6}>
                 <VStack gap={1}>
                   <Heading level={2} weight="semibold">
                     Users
@@ -170,14 +161,21 @@ export function ConfigurationPage() {
                   <Text color="secondary">
                     Registered accounts on this veykor server.
                   </Text>
-                  <Text color="secondary">
-                    Organization preferences and settings will be available here
-                    in the future.
-                  </Text>
                 </VStack>
 
                 <VStack gap={4}>
-                  <Text>{result.users.length} registered users</Text>
+                  <HStack gap={4} vAlign="center" justify="between">
+                    <Text color="secondary">
+                      {result.users.length} registered{" "}
+                      {result.users.length === 1 ? "account" : "accounts"}
+                    </Text>
+                    <Button
+                      label="Refresh users"
+                      variant="secondary"
+                      size="sm"
+                      clickAction={() => setAttempt((value) => value + 1)}
+                    />
+                  </HStack>
                   {result.users.length === 0 ? (
                     <Text color="secondary">No users have registered yet.</Text>
                   ) : (
@@ -186,7 +184,11 @@ export function ConfigurationPage() {
                         <ListItem
                           key={user.id}
                           label={user.username}
-                          description={`User ID: ${user.id}`}
+                          description={
+                            user.id === currentUserId
+                              ? "Your account"
+                              : "Member"
+                          }
                           startContent={
                             <Avatar
                               name={user.username}
@@ -197,12 +199,8 @@ export function ConfigurationPage() {
                       ))}
                     </List>
                   )}
-                  <Button
-                    label="Refresh users"
-                    clickAction={() => setAttempt((value) => value + 1)}
-                  />
                 </VStack>
-              </Grid>
+              </VStack>
             )}
           </VStack>
         </LayoutContent>

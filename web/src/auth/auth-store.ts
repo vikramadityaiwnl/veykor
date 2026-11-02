@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AuthCredentials, AuthStatus } from "@veykor/shared";
+import type { AuthCredentials, AuthStatus, UpdateProfileInput } from "@veykor/shared";
 
 interface AuthState {
   status: AuthStatus | null;
@@ -9,6 +9,7 @@ interface AuthState {
     action: "register" | "login",
     input: AuthCredentials,
   ) => Promise<void>;
+  updateProfile: (input: UpdateProfileInput) => Promise<void>;
   logout: () => Promise<void>;
   expire: () => void;
 }
@@ -70,6 +71,12 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
     const status = await request<AuthStatus>(action, input);
 
+    ++requestVersion;
+    set({ status, error: "" });
+  },
+
+  updateProfile: async (input) => {
+    const status = await request<AuthStatus>("profile", input);
     ++requestVersion;
     set({ status, error: "" });
   },

@@ -17,6 +17,7 @@ Reference: [ASTRYX documentation](https://astryx.atmeta.com/docs/getting-started
 - Import components from their dedicated entry points, such as `@astryxdesign/core/Button`.
 - Use ASTRYX components for patterns they cover. Use `Heading` for document headings, `Text` for other copy, and `Stack`/`HStack`/`VStack`/`Grid` for layout and spacing.
 - Read `npx astryx component <Name>` before adding or changing a component. Use documented props; do not invent APIs.
+- Use the ASTRYX `Dialog` default padding for dialog content. Do not set `padding={0}`; the default provides the dialog's standard inset and spacing.
 - Start larger screens from the closest ASTRYX template. Set the shell and its regions before filling in content. For a small component preview, use the component and the lightest layout wrapper needed.
 - Keep dense information in edge-to-edge rows or tables with dividers. Use cards for independent widgets, galleries, or grouped settings rather than wrapping every section in a card.
 - Import `@astryxdesign/core/reset.css` and `@astryxdesign/core/astryx.css` once at the app entry and wrap the app in the selected `Theme`.

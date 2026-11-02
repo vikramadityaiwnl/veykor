@@ -1,4 +1,5 @@
-export type ProviderCliId = "muse" | "codex" | "claude" | "opencode" | "aider";
+export type ProviderCliId =
+  "muse" | "claude" | "codex" | "opencode" | "deepseek" | "aider";
 
 export interface ProviderCliStatus {
   id: ProviderCliId;

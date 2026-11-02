@@ -8,10 +8,16 @@ import { configurationRoute } from "./routes/configuration.js";
 import { sidebarRoute } from "./routes/sidebar.js";
 import { projectsRoute } from "./routes/projects.js";
 import { settingsRoute } from "./routes/settings.js";
+import { mcpRoute } from "./routes/mcp.js";
+import { integrationsRoute } from "./routes/integrations.js";
 import { statusRoute } from "./routes/status.js";
+import { chatProvider } from "./chat/chat-runner.js";
+import { migrateStoredConversations } from "./chat/conversations.js";
 import { chatRoute } from "./routes/chat.js";
+import { handleTranscribeUpgrade, isTranscribeUpgrade } from "./transcribe/live.js";
 
 runMigrations();
+await migrateStoredConversations();
 
 const app = new Hono<AuthEnv>();
 
@@ -27,6 +33,10 @@ app.route("/api/projects", projectsRoute);
 
 app.route("/api/settings", settingsRoute);
 
+app.route("/api/mcp", mcpRoute);
+
+app.route("/api/integrations", integrationsRoute);
+
 app.route("/api/status", statusRoute);
 
 app.route("/api/chat", chatRoute);
@@ -37,9 +47,23 @@ app.route("/api/health", healthRoute);
 
 app.notFound((c) => c.json({ error: "Not found" }, 404));
 
-serve({ fetch: app.fetch, port }, (info) => {
+const server = serve({ fetch: app.fetch, port }, (info) => {
   console.log(`veykor API listening on http://localhost:${info.port}`);
   console.log(`SQLite database: ${dbPath}`);
 });
 
+server.on("upgrade", (request, socket, head) => {
+  if (isTranscribeUpgrade(request)) {
+    handleTranscribeUpgrade(request, socket, head);
+  } else {
+    socket.destroy();
+  }
+});
+
 export type AppType = typeof app;
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => {
+    void chatProvider.close().finally(() => process.exit(0));
+  });
+}

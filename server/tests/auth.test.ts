@@ -267,8 +267,49 @@ test("multi-user auth, isolated sessions, persistence, CSRF, expiration and LAN 
       }
     }
 
+    assert.equal((await request("settings/general")).status, 401);
+    assert.deepEqual(
+      await (await request("settings/general", undefined, cookie)).json(),
+      { theme: "dark" },
+    );
+    const preferenceUpdate = await fetch(origin + "/api/settings/general", {
+      method: "PUT",
+      headers: {
+        Origin: origin,
+        "Content-Type": "application/json",
+        "X-Veykor-Request": "1",
+        Cookie: cookie,
+      },
+      body: JSON.stringify({ theme: "light" }),
+    });
+    assert.equal(preferenceUpdate.status, 200);
+    assert.deepEqual(await preferenceUpdate.json(), { theme: "light" });
+    assert.deepEqual(
+      await (await request("settings/general", undefined, otherCookie)).json(),
+      { theme: "dark" },
+    );
+    assert.equal(
+      (
+        await fetch(origin + "/api/settings/general", {
+          method: "PUT",
+          headers: {
+            Origin: origin,
+            "Content-Type": "application/json",
+            "X-Veykor-Request": "1",
+            Cookie: cookie,
+          },
+          body: JSON.stringify({ theme: "invalid" }),
+        })
+      ).status,
+      400,
+    );
+
     await stop();
     await start();
+    assert.deepEqual(
+      await (await request("settings/general", undefined, cookie)).json(),
+      { theme: "light" },
+    );
     assert.equal((await request("me", undefined, cookie)).status, 200);
     assert.equal((await request("auth/logout", {}, cookie)).status, 200);
     assert.equal((await request("me", undefined, cookie)).status, 401);
@@ -315,6 +356,85 @@ test("multi-user auth, isolated sessions, persistence, CSRF, expiration and LAN 
     assert.equal(
       (await request("me", undefined, "veykor_session=" + mismatched)).status,
       401,
+    );
+
+    assert.equal(
+      (
+        await request("auth/profile", {
+          username: "renamed",
+          photo: "",
+          password: "",
+        })
+      ).status,
+      401,
+    );
+    assert.equal(
+      (
+        await request(
+          "auth/profile",
+          { username: "x", photo: "", password: "" },
+          secondCookie,
+        )
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await request(
+          "auth/profile",
+          {
+            username: "renamed",
+            photo: "data:image/svg+xml;base64,PHN2Zz4=",
+            password: "",
+          },
+          secondCookie,
+        )
+      ).status,
+      400,
+    );
+    const updated = await request(
+      "auth/profile",
+      { username: "renamed", photo: "", password: "" },
+      secondCookie,
+    );
+    assert.equal(updated.status, 200);
+    assert.equal((await updated.json()).user!.username, "renamed");
+    assert.equal(
+      (await (await request("auth/status", undefined, otherCookie)).json())
+        .user!.username,
+      otherUser.username,
+    );
+    const passwordUpdate = await request(
+      "auth/profile",
+      { username: "renamed", photo: "", password: "a-new-strong-password" },
+      secondCookie,
+    );
+    assert.equal(passwordUpdate.status, 200);
+    assert.equal((await request("me", undefined, secondCookie)).status, 401);
+    const replacementCookie = passwordUpdate.headers
+      .get("set-cookie")!
+      .split(";")[0];
+    assert.equal(
+      (await request("me", undefined, replacementCookie)).status,
+      200,
+    );
+    assert.equal(
+      (
+        await request("auth/login", {
+          username: "renamed",
+          password: credentials.password,
+        })
+      ).status,
+      401,
+    );
+    assert.equal(
+      (
+        await request("auth/login", {
+          username: "renamed",
+          password: "a-new-strong-password",
+        })
+      ).status,
+      200,
     );
 
     sqlite.prepare("update sessions set expires_at=1").run();

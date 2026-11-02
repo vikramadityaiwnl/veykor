@@ -1,20 +1,34 @@
-import { useRef, useState } from "react";
-import type { ChatProvider, ChatUsage } from "@veykor/shared";
+import { useEffect, useRef, useState } from "react";
+import type { ChatPermissionMode, ChatAttachment, ChatProvider, ChatReasoningEffort, ChatUsage, Project } from "@veykor/shared";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCube, faPaperclip } from "@fortawesome/free-solid-svg-icons";
+import { faCube, faPaperclip, faArrowUp, faStop } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "@astryxdesign/core/Button";
-import { ChatComposer, ChatComposerDrawer, ChatComposerInput, ChatSendButton } from "@astryxdesign/core/Chat";
-import { HStack } from "@astryxdesign/core/HStack";
-import { Selector } from "@astryxdesign/core/Selector";
+import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
+import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
+import { ComposerModelSelection } from "./composer-model-selection";
 import { ChatContextProgress } from "./chat-context-progress";
-import { Token } from "@astryxdesign/core/Token";
+import { ChatEffortSelection } from "./chat-effort-selection";
+import { ChatPermissionSelection } from "./chat-permission-selection";
+import { ComposerProjectContext } from "./composer-project-context";
+import { ComposerTranscribeButton } from "./composer-transcribe-button";
+import { Banner } from "@astryxdesign/core/Banner";
+import { ComposerAttachment } from "./composer-attachment";
+import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
-import { ChatProviderIcon } from "./chat-provider-icon";
+import { getAttachmentKind, isImageFile, openInNewTab, readFileAsDataUrl } from "../chat-attachments";
+import { appendTranscript, useTranscribeRecorder } from "../transcribe-recorder";
 
 interface Props {
+  permissionMode: ChatPermissionMode;
+  onPermissionMode: (mode: ChatPermissionMode) => void;
+  reasoningEffort: ChatReasoningEffort;
+  onReasoningEffort: (effort: ChatReasoningEffort) => void;
+  project?: Project;
+  isNewProjectChat: boolean;
   providers: ChatProvider[];
   providerId: string;
   modelId: string;
+  preferredModels: Record<string, string>;
   loading: boolean;
   isReady: boolean;
   isRunning: boolean;
@@ -23,22 +37,43 @@ interface Props {
   usage: ChatUsage;
   hasMessages: boolean;
   onSelection: (providerId: string, modelId: string) => void;
-  onSubmit: (text: string, systemPrompt: string) => void;
+  onSubmit: (
+    text: string,
+    systemPrompt: string,
+    attachments: ChatAttachment[],
+  ) => void;
   onStop: () => void;
 }
 
-interface Attachment {
-  id: string;
-  name: string;
-  text: string;
-}
-
 export function ChatComposerPanel(props: Props) {
+  const [isModelDialogOpen, setIsModelDialogOpen] = useState(false);
   const [draft, setDraft] = useState("");
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
   const [isReadingFiles, setIsReadingFiles] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const draftRef = useRef(draft);
+  const transcriptBase = useRef("");
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
+  const recorder = useTranscribeRecorder({
+    onStart: () => {
+      transcriptBase.current = draftRef.current;
+    },
+    onPartial: (text) => {
+      setDraft(appendTranscript(transcriptBase.current, text));
+    },
+    onFinal: (text) => {
+      transcriptBase.current = appendTranscript(transcriptBase.current, text);
+      setDraft(transcriptBase.current);
+    },
+  });
+
+  const transcribing =
+    recorder.status === "recording" || recorder.status === "stopping";
   const provider = props.providers.find(
     (entry) => entry.id === props.providerId,
   );
@@ -53,38 +88,46 @@ export function ChatComposerPanel(props: Props) {
     isReadingFiles;
 
   async function attach(files: File[]) {
-    if (isReadingFiles) {
+    if (isReadingFiles || files.length === 0) {
       return;
     }
+
     setIsReadingFiles(true);
+
     try {
-      if (
-        files.length + attachments.length > 5 ||
-        files.some(
-          (file) =>
-            file.size > 20_000 ||
-            !(
-              /^(text\/|application\/(json|yaml|xml))/.test(file.type) ||
-              /\.(txt|md|csv|json|ya?ml|tsx?|jsx?|py|css|html|xml|log)$/i.test(
-                file.name,
-              )
-            ),
-        )
-      ) {
-        throw new Error(
-          "Attach up to 5 text or code files, each under 20 KB. PDF and binary files are not supported yet.",
-        );
+      if (files.length + attachments.length > 5) {
+        throw new Error("Attach up to 5 files per message.");
       }
+
+      if (files.some((file) => file.size > 10_000_000)) {
+        throw new Error("Each file must be under 10 MB.");
+      }
+
+      if (files.some((file) => !isImageFile(file))) {
+        throw new Error("Only image files can be attached for now.");
+      }
+
       const next = await Promise.all(
-        files.map(async (file) => ({
-          id: crypto.randomUUID(),
-          name: file.name,
-          text: await file.text(),
-        })),
+        files.map(async (file) => {
+          if (!model?.inputModalities?.includes("image")) {
+            throw new Error(
+              "This model has no verified native image input support.",
+            );
+          }
+          const dataUrl = await readFileAsDataUrl(file);
+
+          return {
+            id: crypto.randomUUID(),
+            name: file.name,
+            mimeType: file.type,
+            size: file.size,
+            kind: getAttachmentKind(file.type, file.name),
+            dataUrl,
+            text: "",
+          } satisfies ChatAttachment;
+        }),
       );
-      if (next.some((file) => file.text.includes("\0"))) {
-        throw new Error("Only text files are supported");
-      }
+
       setAttachments((current) => [...current, ...next]);
       setAttachmentError("");
     } catch (error) {
@@ -96,147 +139,238 @@ export function ChatComposerPanel(props: Props) {
     }
   }
 
+  function toggleTranscription() {
+    if (recorder.status === "idle") {
+      void recorder.start();
+    } else if (recorder.status === "recording") {
+      recorder.stop();
+    }
+  }
+
   function submit(value: string) {
-    if (disabled || !value.trim()) {
+    if (transcribing) {
+      recorder.cancel();
+    }
+
+    if (disabled) {
       return;
     }
-    const text =
-      value.trim() +
-      attachments
-        .map((file) => `\n\nAttached file: ${file.name}\n${file.text}`)
-        .join("");
+
+    const text = value.trim();
+
+    if (!text) {
+      return;
+    }
+
     if (text.length > 100_000) {
-      setAttachmentError(
-        "Message and attachments must fit within 100,000 characters.",
-      );
+      setAttachmentError("Message must fit within 100,000 characters.");
       return;
     }
-    props.onSubmit(text, "");
+
+    props.onSubmit(text, "", attachments);
     setDraft("");
     setAttachments([]);
   }
 
   return (
     <VStack gap={2} className="mx-auto w-full max-w-4xl px-4 pb-4">
+      {error && <Banner status="error" title={error} />}
+
       <input
         ref={fileInput}
         type="file"
+        accept="image/*"
         multiple
-        accept="text/*,.json,.yaml,.yml,.xml,.ts,.tsx,.js,.jsx,.py,.md,.csv"
         className="hidden"
-        aria-label="Attach text files"
+        aria-label="Attach images"
         onChange={(event) => {
           void attach(Array.from(event.target.files || []));
           event.target.value = "";
         }}
       />
-      <ChatComposer
-        value={draft}
-        onChange={setDraft}
-        onSubmit={submit}
-        placeholder={
-          provider?.available
-            ? "Send a message…"
-            : "Choose an available provider to chat…"
-        }
-        elevation="none"
-        className="[&>div]:shadow-none! [&>div]:outline-none! [&>div]:border-(--color-border-emphasized)!"
-        isStopShown={props.isRunning}
-        onStop={props.onStop}
-        sendButton={<ChatSendButton isDisabled={disabled || !draft.trim()} />}
-        input={
-          <ChatComposerInput
-            isDisabled={disabled}
-            onFiles={(files) => {
-              void attach(files);
-            }}
-            pasteAsToken={false}
-          />
-        }
-        status={error ? { type: "error", message: error } : undefined}
-        drawer={
-          attachments.length > 0 ? (
-            <ChatComposerDrawer count={attachments.length}>
-              {attachments.map((file) => (
-                <Token
-                  key={file.id}
-                  label={file.name}
-                  onRemove={() => {
-                    setAttachments((current) =>
-                      current.filter((entry) => entry.id !== file.id),
-                    );
-                  }}
-                />
-              ))}
-            </ChatComposerDrawer>
-          ) : undefined
-        }
-        headerContext={
-          props.hasMessages && model && model.contextWindow > 0 ? (
-            <ChatContextProgress
-              tokens={contextTokens}
-              limit={model.contextWindow}
-            />
-          ) : undefined
-        }
-        footerActions={
-          <HStack gap={1} wrap="wrap" className="min-w-0">
-            <Button
-              label={isReadingFiles ? "Reading files…" : "Attach text files"}
-              size="sm"
-              variant="ghost"
-              isIconOnly
-              isDisabled={props.isBusy || isReadingFiles}
-              icon={
-                <FontAwesomeIcon
-                  icon={faPaperclip}
-                  className="size-(--spacing-3)!"
-                />
+
+      <VStack gap={0} className="min-w-0">
+        <form
+          className="relative z-10 min-w-0 rounded-(--radius-chat) border border-solid border-(--color-border-emphasized) bg-(--color-background-surface) p-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submit(draft);
+          }}
+          onKeyDown={(event) => {
+            if (
+              event.target instanceof HTMLTextAreaElement &&
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing
+            ) {
+              event.preventDefault();
+              submit(draft);
+            }
+          }}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault();
+            void attach(Array.from(event.dataTransfer.files));
+          }}
+        >
+          <VStack gap={3}>
+            {attachments.length > 0 && (
+              <HStack
+                gap={3}
+                className="min-w-0 overflow-x-auto pb-2"
+                role="region"
+                aria-label="Image previews"
+                tabIndex={0}
+              >
+                {attachments.map((file) => (
+                  <ComposerAttachment
+                    key={file.id}
+                    attachment={file}
+                    onOpen={() => openInNewTab(file.dataUrl)}
+                    onRemove={() => {
+                      setAttachments((current) =>
+                        current.filter((entry) => entry.id !== file.id),
+                      );
+                      setAttachmentError("");
+                    }}
+                  />
+                ))}
+              </HStack>
+            )}
+
+            <textarea
+              aria-label="Message"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              disabled={disabled || transcribing}
+              placeholder={
+                transcribing ? "Listening…" : "What would you like to work on?"
               }
-              clickAction={() => fileInput.current?.click()}
-            />
-            <Selector
-              startIcon={<ChatProviderIcon providerId={props.providerId} />}
-              label="Provider"
-              isLabelHidden
-              variant="ghost"
-              size="sm"
-              value={props.providerId}
-              isLoading={props.loading}
-              options={props.providers
-                .filter((entry) => entry.available)
-                .map((entry) => ({
-                  value: entry.id,
-                  label: entry.name,
-                  icon: <ChatProviderIcon providerId={entry.id} />,
-                }))}
-              onChange={(id) => {
-                props.onSelection(
-                  id,
-                  props.providers.find((entry) => entry.id === id)?.models[0]
-                    ?.id || "",
-                );
+              rows={3}
+              className="veykor-composer-input w-full resize-none border-0 bg-transparent px-1 py-2 text-base font-light text-(--color-text-primary) outline-none placeholder:text-(--color-text-secondary)"
+              onPaste={(event) => {
+                if (event.clipboardData.files.length > 0) {
+                  event.preventDefault();
+                  void attach(Array.from(event.clipboardData.files));
+                }
               }}
             />
-            <Selector
-              startIcon={<FontAwesomeIcon icon={faCube} aria-hidden="true" />}
-              label="Model"
-              isLabelHidden
-              variant="ghost"
-              size="sm"
-              hasSearch
-              value={props.modelId}
-              options={(provider?.models || []).map((entry) => ({
-                value: entry.id,
-                label: entry.name,
-                icon: <FontAwesomeIcon icon={faCube} aria-hidden="true" />,
-              }))}
-              emptyText="No models available"
-              onChange={(id) => props.onSelection(props.providerId, id)}
-            />
-          </HStack>
-        }
-      />
+
+            <HStack gap={2} vAlign="center" wrap="wrap">
+              <Button
+                label={isReadingFiles ? "Reading images…" : "Attach images"}
+                size="sm"
+                variant="ghost"
+                isIconOnly
+                isDisabled={props.isBusy || isReadingFiles}
+                icon={<FontAwesomeIcon icon={faPaperclip} />}
+                clickAction={() => fileInput.current?.click()}
+              />
+
+              <HStack className="hidden! min-w-0 md:flex!">
+                <ComposerModelSelection
+                  providers={props.providers}
+                  providerId={props.providerId}
+                  modelId={props.modelId}
+                  preferredModels={props.preferredModels}
+                  loading={props.loading}
+                  onSelection={props.onSelection}
+                />
+              </HStack>
+
+              <HStack className="md:hidden!">
+                <Button
+                  label="Choose provider and model"
+                  size="sm"
+                  variant="ghost"
+                  isIconOnly
+                  icon={<FontAwesomeIcon icon={faCube} />}
+                  clickAction={() => setIsModelDialogOpen(true)}
+                />
+              </HStack>
+
+              <ChatEffortSelection
+                model={model}
+                value={props.reasoningEffort}
+                onChange={props.onReasoningEffort}
+              />
+
+              <HStack gap={3} vAlign="center" className="ml-auto">
+                {props.hasMessages && model && model.contextWindow > 0 && (
+                  <ChatContextProgress
+                    tokens={contextTokens}
+                    limit={model.contextWindow}
+                  />
+                )}
+
+                <ChatPermissionSelection
+                  value={props.permissionMode}
+                  onChange={props.onPermissionMode}
+                />
+
+                <ComposerTranscribeButton
+                  status={recorder.status}
+                  error={recorder.error}
+                  onToggle={toggleTranscription}
+                  onDismissError={recorder.clearError}
+                />
+
+                {props.isRunning ? (
+                  <Button
+                    label="Stop response"
+                    size="sm"
+                    isIconOnly
+                    variant="secondary"
+                    icon={<FontAwesomeIcon icon={faStop} />}
+                    clickAction={props.onStop}
+                  />
+                ) : (
+                  <Button
+                    className="rounded-full!"
+                    label="Send message"
+                    type="submit"
+                    size="sm"
+                    isIconOnly
+                    isDisabled={disabled || !draft.trim()}
+                    icon={<FontAwesomeIcon icon={faArrowUp} />}
+                  />
+                )}
+              </HStack>
+            </HStack>
+          </VStack>
+        </form>
+
+        {props.isNewProjectChat && props.project && (
+          <ComposerProjectContext
+            key={props.project.id}
+            project={props.project}
+          />
+        )}
+
+        <Dialog isOpen={isModelDialogOpen} onOpenChange={setIsModelDialogOpen}>
+          <Layout
+            header={
+              <DialogHeader
+                title="Provider and model"
+                onOpenChange={setIsModelDialogOpen}
+              />
+            }
+            content={
+              <LayoutContent>
+                <ComposerModelSelection
+                  providers={props.providers}
+                  providerId={props.providerId}
+                  modelId={props.modelId}
+                  preferredModels={props.preferredModels}
+                  loading={props.loading}
+                  onSelection={props.onSelection}
+                  isCompact
+                />
+              </LayoutContent>
+            }
+          />
+        </Dialog>
+      </VStack>
     </VStack>
   );
 }

@@ -1,30 +1,76 @@
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faGear } from "@fortawesome/free-solid-svg-icons";
-import { Center } from "@astryxdesign/core/Center";
+import { useState } from "react";
+import { Banner } from "@astryxdesign/core/Banner";
+import { HStack } from "@astryxdesign/core/HStack";
+import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
+import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
-import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { useThemeStore } from "../../theme-store";
+import { SettingsGroup } from "./settings-group";
 
 export function SettingsGeneralPanel() {
+  const mode = useThemeStore((state) => state.mode);
+  const save = useThemeStore((state) => state.save);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function changeTheme(value: string) {
+    if (busy || (value !== "light" && value !== "dark")) {
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+
+    try {
+      await save(value);
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "Unable to save preference",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <VStack
       id="settings-panel-general"
+      gap={4}
       isScrollable
       className="min-h-0 flex-1 overscroll-contain"
     >
-      <Center className="min-h-full shrink-0">
-        <EmptyState
-          title="General settings are coming soon"
-          description="Workspace-wide preferences will live here."
-          icon={
-            <FontAwesomeIcon
-              icon={faGear}
-              size="sm"
-              className="text-(--color-icon-secondary)"
-              aria-hidden="true"
-            />
-          }
+      <SettingsGroup>
+        <HStack
+          gap={4}
+          vAlign="center"
+          justify="between"
+          wrap="wrap"
+          padding={4}
+        >
+          <VStack gap={1}>
+            <Text weight="semibold">Theme</Text>
+            <Text color="secondary" type="supporting">
+              Choose the appearance of your workspace.
+            </Text>
+          </VStack>
+          <SegmentedControl
+            label="Theme"
+            value={mode}
+            onChange={(value) => void changeTheme(value)}
+            isDisabled={busy}
+          >
+            <SegmentedControlItem value="light" label="Light" />
+            <SegmentedControlItem value="dark" label="Dark" />
+          </SegmentedControl>
+        </HStack>
+      </SettingsGroup>
+      {error && (
+        <Banner
+          status="error"
+          title="Couldn't save preference"
+          description={error}
         />
-      </Center>
+      )}
     </VStack>
   );
 }

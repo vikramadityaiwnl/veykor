@@ -15,3 +15,9 @@ export interface AuthCredentials {
   password: string;
   photo?: string;
 }
+
+export interface UpdateProfileInput {
+  username: string;
+  photo: string;
+  password: string;
+}

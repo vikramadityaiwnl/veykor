@@ -8,6 +8,7 @@ import { chatMenuItems } from "../chat-menu-items";
 
 interface Props {
   title: string;
+  className?: string;
   onRename?: () => void;
   onDelete?: () => void;
 }
@@ -16,7 +17,7 @@ export function ChatThreadHeader(props: Props) {
   return (
     <TopNav
       label="Chat"
-      className="shrink-0 px-6! py-4! md:px-8!"
+      className={`shrink-0 px-6! py-4! md:px-8! ${props.className || ""}`}
       startContent={
         <HStack gap={2} vAlign="center">
           <FontAwesomeIcon icon={faComment} aria-hidden="true" />

@@ -5,6 +5,10 @@ export const users = sqliteTable("users", {
   username: text("username").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   photo: text("photo"),
+  theme: text("theme").notNull().default("dark"),
+  chatDefaults: text("chat_defaults").notNull().default("{}"),
+  transcriptionDefaults: text("transcription_defaults").notNull().default("{}"),
+  transcriptionApiKey: text("transcription_api_key").notNull().default(""),
 });
 
 export const sessions = sqliteTable("sessions", {
@@ -49,4 +53,33 @@ export const chatHistories = sqliteTable("chat_histories", {
     .primaryKey()
     .references(() => users.id),
   sessions: text("sessions").notNull().default("[]"),
+});
+
+export const conversations = sqliteTable("conversations", {
+  id: text("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  data: text("data").notNull().default("{}"),
+});
+
+export const mcpServers = sqliteTable("mcp_servers", {
+  id: text("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  name: text("name").notNull().default(""),
+  transport: text("transport").notNull().default("stdio"),
+  command: text("command").notNull().default(""),
+  args: text("args").notNull().default("[]"),
+  env: text("env").notNull().default("{}"),
+  url: text("url").notNull().default(""),
+  headers: text("headers").notNull().default("{}"),
+  enabled: integer("enabled").notNull().default(1),
+  status: text("status").notNull().default("unknown"),
+  lastError: text("last_error").notNull().default(""),
+  toolCount: integer("tool_count").notNull().default(0),
+  lastChecked: integer("last_checked").notNull().default(0),
+  createdAt: integer("created_at").notNull().default(0),
+  updatedAt: integer("updated_at").notNull().default(0),
 });

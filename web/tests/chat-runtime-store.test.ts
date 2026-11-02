@@ -1,113 +1,179 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { useAuthStore } from "../src/auth/auth-store";
 import { useChatSessionsStore } from "../src/workspace/chat-sessions-store";
-import { useChatRuntimeStore } from "../src/workspace/chat-runtime-store";
+import { emptyUsage } from "../src/workspace/chat-sessions-store";
 
-test("reply placeholder appears before the request completes; streamed tools and text persist without duplicate replies", async () => {
-  const originalFetch = globalThis.fetch;
-  let reply: (response: Response) => void = () => {};
-  let saved: any;
-  globalThis.fetch = async (url, options) => {
-    if (url === "/api/chat/sessions") {
-      saved = JSON.parse(String(options?.body));
-      return Response.json(saved);
-    }
-    return new Promise<Response>((resolve) => {
-      reply = resolve;
-    });
-  };
-
-  try {
-    useAuthStore.setState({
-      status: {
-        user: { id: 1, username: "runtime-test", photo: null },
-        expiresAt: 9999999999,
-        registrationAllowed: true,
-      },
-    });
-    useChatSessionsStore.setState({ status: "ready" });
-    const session = useChatSessionsStore.getState().createChatSession("chats");
-    useChatSessionsStore.getState().addMessage(session.id, "Hello");
-    const running = useChatRuntimeStore.getState().send(session.id, {
-      providerId: "muse",
-      modelId: "muse-test",
-      systemPrompt: "",
-      messages: [{ role: "user", text: "Hello" }],
-    });
-    const optimistic = useChatSessionsStore.getState().messages[session.id];
-    assert.equal(optimistic.length, 2);
-    assert.equal(optimistic[1].role, "assistant");
-    assert.equal(optimistic[1].text, "");
-    assert.ok(optimistic[1].createdAt > 0);
-    assert.equal(useChatRuntimeStore.getState().runningSessionId, session.id);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.equal(saved.sessions[0].messages.length, 1);
-    const events = [
+test("backend snapshots replace streamed messages and restore native state without duplicate replies", () => {
+  useChatSessionsStore.setState({ sessions: [], messages: {}, status: "idle" });
+  const session = {
+    id: "native-chat",
+    title: "Persisted chat",
+    projectId: null,
+    sectionId: "chats-1",
+    providerId: "muse",
+    modelId: "muse-spark-1.3",
+    nativeSessionId: "native-session",
+    permissionMode: "promptUnmatched" as const,
+    status: "running" as const,
+    error: "",
+    approvals: [],
+    activities: [],
+    messages: [
       {
-        type: "tool",
-        tool: {
-          id: "call-1",
-          name: "read",
-          target: "readme.md",
-          status: "complete",
-          result: "Contents",
-          errorMessage: "",
-        },
+        id: "reply",
+        role: "assistant" as const,
+        text: "Partial",
+        createdAt: 1,
+        usage: emptyUsage(),
+        tools: [],
+        attachments: [],
       },
-      { type: "text", text: "Hello back" },
-      { type: "done" },
-    ];
-    reply(
-      new Response(
-        events.map((event) => JSON.stringify(event)).join("\n") + "\n",
-      ),
-    );
-    await running;
-    const messages = useChatSessionsStore.getState().messages[session.id];
-    assert.equal(messages.length, 2);
-    assert.equal(messages[1].text, "Hello back");
-    assert.equal(messages[1].tools[0].name, "read");
-    assert.deepEqual(saved.sessions[0].messages, messages);
-    assert.equal(useChatRuntimeStore.getState().runningSessionId, "");
-  } finally {
-    globalThis.fetch = originalFetch;
-    useAuthStore.setState({ status: null });
-  }
+    ],
+  };
+  useChatSessionsStore.getState().receive({ sessions: [session] });
+  useChatSessionsStore.getState().receive({
+    sessions: [
+      {
+        ...session,
+        messages: [{ ...session.messages[0], text: "Partial answer" }],
+      },
+    ],
+  });
+  assert.equal(useChatSessionsStore.getState().messages[session.id].length, 1);
+  assert.equal(
+    useChatSessionsStore.getState().messages[session.id][0].text,
+    "Partial answer",
+  );
+  assert.equal(
+    useChatSessionsStore.getState().sessions[0].nativeSessionId,
+    "native-session",
+  );
 });
 
-test("failed requests remove the optimistic empty reply instead of leaving a thinking message", async () => {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (url, options) =>
-    url === "/api/chat/sessions"
-      ? Response.json(JSON.parse(String(options?.body)))
-      : Response.json({ error: "Provider unavailable" }, { status: 503 });
-
-  try {
-    useAuthStore.setState({
-      status: {
-        user: { id: 2, username: "failure-test", photo: null },
-        expiresAt: 9999999999,
-        registrationAllowed: true,
+test("metadata-only snapshots keep optimistic messages until native history arrives", () => {
+  useChatSessionsStore.setState({ sessions: [], messages: {}, status: "idle" });
+  useChatSessionsStore.setState({
+    messages: {
+      "pending-chat": [
+        {
+          id: "optimistic",
+          role: "user",
+          text: "Hello",
+          createdAt: 1,
+          usage: emptyUsage(),
+          tools: [],
+          attachments: [],
+        },
+      ],
+    },
+  });
+  useChatSessionsStore.getState().receive({
+    sessions: [
+      {
+        id: "pending-chat",
+        title: "Pending chat",
+        projectId: null,
+        sectionId: "chats-1",
+        providerId: "muse",
+        modelId: "muse-spark-1.3",
+        nativeSessionId: "",
+        permissionMode: "promptUnmatched",
+        status: "idle",
+        error: "",
+        approvals: [],
+        activities: [],
+        messages: [],
       },
-    });
-    useChatSessionsStore.setState({ status: "ready" });
-    const session = useChatSessionsStore.getState().createChatSession("chats");
-    useChatSessionsStore.getState().addMessage(session.id, "Hello");
-    await useChatRuntimeStore.getState().send(session.id, {
-      providerId: "muse",
-      modelId: "muse-test",
-      systemPrompt: "",
-      messages: [{ role: "user", text: "Hello" }],
-    });
-    assert.equal(
-      useChatSessionsStore.getState().messages[session.id].length,
-      1,
+    ],
+  });
+  assert.equal(
+    useChatSessionsStore.getState().messages["pending-chat"][0].text,
+    "Hello",
+  );
+});
+
+test("stale history and open responses preserve a follow-up until native acknowledgement", async () => {
+  const store = useChatSessionsStore;
+  store.setState({ sessions: [], messages: {}, status: "ready" });
+  const session = store.getState().createChatSession("chats-1");
+  const original = {
+    id: "old-user",
+    role: "user" as const,
+    text: "First",
+    createdAt: 1,
+    usage: emptyUsage(),
+    tools: [],
+    attachments: [],
+  };
+  store.setState({ messages: { [session.id]: [original] } });
+  store.getState().addMessage(session.id, "Follow-up");
+  const optimistic = store.getState().messages[session.id][1];
+  store.getState().receive({ sessions: [] });
+  assert.ok(store.getState().sessions.some((entry) => entry.id === session.id));
+  store
+    .getState()
+    .receive({ sessions: [{ ...session, messages: [original] }] });
+  assert.equal(store.getState().messages[session.id][1], optimistic);
+  store.getState().receive({ sessions: [{ ...session, messages: [] }] });
+  assert.equal(store.getState().messages[session.id][0], original);
+  assert.equal(store.getState().messages[session.id][1], optimistic);
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({ session: { ...session, messages: [original] } }),
     );
-    assert.equal(useChatRuntimeStore.getState().error, "Provider unavailable");
-    assert.equal(useChatRuntimeStore.getState().runningSessionId, "");
+  try {
+    await store.getState().openSession(session.id);
+    assert.equal(store.getState().messages[session.id][1], optimistic);
   } finally {
     globalThis.fetch = originalFetch;
-    useAuthStore.setState({ status: null });
+  }
+  const native = { ...optimistic, id: "native-user" };
+  store
+    .getState()
+    .receive({ sessions: [{ ...session, messages: [original, native] }] });
+  const acknowledged = store.getState().messages[session.id];
+  assert.equal(acknowledged.length, 2);
+  assert.equal(acknowledged[1].id, optimistic.id);
+  store
+    .getState()
+    .receive({ sessions: [{ ...session, messages: [original, native] }] });
+  assert.equal(store.getState().messages[session.id][1], acknowledged[1]);
+});
+
+test("an older open response cannot roll back a newer live snapshot", async () => {
+  const store = useChatSessionsStore;
+  const session = store.getState().createChatSession("chats-1");
+  let resolveResponse!: (response: Response) => void;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () =>
+    new Promise<Response>((resolve) => {
+      resolveResponse = resolve;
+    });
+  try {
+    const opening = store.getState().openSession(session.id);
+    const message = {
+      id: "new-answer",
+      role: "assistant" as const,
+      text: "Latest answer",
+      createdAt: 1,
+      usage: emptyUsage(),
+      tools: [],
+      attachments: [],
+    };
+    store
+      .getState()
+      .receive({ sessions: [{ ...session, messages: [message] }] });
+    resolveResponse(
+      new Response(JSON.stringify({ session: { ...session, messages: [] } })),
+    );
+    await opening;
+    assert.equal(
+      store.getState().messages[session.id][0].text,
+      "Latest answer",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });

@@ -20,3 +20,8 @@ export interface UpdateProjectInput {
   name?: string;
   sectionId?: string;
 }
+
+export interface ProjectContext {
+  branch: string;
+  isWorktree: boolean;
+}

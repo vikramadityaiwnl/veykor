@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPen, faPlus, faTrash } from "@fortawesome/free-solid-svg-icons";
 import type { SidebarSection } from "@veykor/shared";
+import { useAppShellMobile } from "@astryxdesign/core/AppShell";
 import { Button } from "@astryxdesign/core/Button";
 import { ContextMenu, type ContextMenuOption } from "@astryxdesign/core/ContextMenu";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -17,6 +18,8 @@ interface Props {
 }
 
 export function WorkspaceSection(props: Props) {
+  const mobile = useAppShellMobile();
+
   const listId = `workspace-section-${props.section.id}`;
 
   const editItem: ContextMenuOption = {
@@ -73,7 +76,10 @@ export function WorkspaceSection(props: Props) {
               icon={
                 <FontAwesomeIcon icon={faPlus} size="xs" aria-hidden="true" />
               }
-              clickAction={props.onAdd}
+              clickAction={() => {
+                props.onAdd?.();
+                mobile.closeMobileNav();
+              }}
             />
           ) : null}
         </HStack>

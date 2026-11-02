@@ -1,3 +1,7 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { resolve } from "node:path";
+import type { ProjectContext } from "@veykor/shared";
 import { Hono } from "hono";
 import type { CreateProjectInput, ProjectsResponse, UpdateProjectInput } from "@veykor/shared";
 import { requireAuth, type AuthEnv } from "../auth/auth.js";
@@ -156,4 +160,39 @@ projectsRoute.patch("/:id", async (c) => {
   };
 
   return c.json(response);
+});
+
+projectsRoute.get("/:id/context", async (c) => {
+  const project = listProjects(c.get("user").id).find(
+    (entry) => entry.id === c.req.param("id"),
+  );
+
+  if (!project) {
+    return c.json({ error: "Project not found" }, 404);
+  }
+
+  const context: ProjectContext = { branch: "", isWorktree: false };
+  const git = async (args: string[]) =>
+    (
+      await promisify(execFile)("git", args, {
+        cwd: project.folder,
+        timeout: 3000,
+        maxBuffer: 4096,
+      })
+    ).stdout.trim();
+
+  try {
+    const [branch, gitDir, commonDir] = await Promise.all([
+      git(["branch", "--show-current"]),
+      git(["rev-parse", "--git-dir"]),
+      git(["rev-parse", "--git-common-dir"]),
+    ]);
+    context.branch = branch || (await git(["rev-parse", "--short", "HEAD"]));
+    context.isWorktree =
+      resolve(project.folder, gitDir) !== resolve(project.folder, commonDir);
+  } catch {
+    return c.json(context);
+  }
+
+  return c.json(context);
 });

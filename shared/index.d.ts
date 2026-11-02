@@ -3,6 +3,7 @@ export type {
   AuthUser,
   AuthStatus,
   AuthCredentials,
+  UpdateProfileInput,
 } from "./contracts/index.js";
 
 export type { ConfigurationUsersResponse } from "./contracts/index.js";
@@ -18,6 +19,7 @@ export type {
 export type {
   Project,
   ProjectsResponse,
+  ProjectContext,
   CreateProjectInput,
   UpdateProjectInput,
 } from "./contracts/index.js";
@@ -29,19 +31,42 @@ export type {
 } from "./contracts/index.js";
 
 export type {
+  ChatPermissionMode,
+  ChatReasoningEffort,
+  ChatReasoningEffortOption,
+  ChatApproval,
+  ChatActivity,
+  ChatAttachment,
   ChatToolCall,
   ChatModel,
   ChatProvider,
   ChatCatalogResponse,
   ChatUsage,
+  ChatThoughtEntry,
   ChatMessage,
   ChatSession,
   ChatSessionsResponse,
   ChatRequest,
-  ChatEvent,
 } from "./contracts/index.js";
 
-export type { SettingsProvider, SettingsResponse } from "./contracts/index.js";
+export type {
+  SettingsProvider,
+  SettingsResponse,
+  GeneralPreferences,
+  ChatDefaults,
+} from "./contracts/index.js";
+
+export type {
+  TranscriptionModel,
+  TranscriptionProvider,
+  TranscriptionCatalogResponse,
+  TranscriptionDefaults,
+  TranscribeEndFrame,
+  TranscribeClientFrame,
+  TranscribeServerFrame,
+  TranscriptionKeyStatus,
+  UpdateTranscriptionKeyInput,
+} from "./contracts/index.js";
 
 export type {
   StatusCpu,
@@ -49,4 +74,28 @@ export type {
   StatusMemory,
   StatusStorage,
   SystemStatusResponse,
+} from "./contracts/index.js";
+
+export type {
+  McpTransport,
+  McpServerStatus,
+  McpServer,
+  McpServersResponse,
+  CreateMcpServerInput,
+  UpdateMcpServerInput,
+  McpTool,
+  McpTestResult,
+  McpDetectedServer,
+  McpDetectedSource,
+  McpDetectedResponse,
+  McpDetectedAction,
+} from "./contracts/index.js";
+
+export type {
+  DetectedSkill,
+  DetectedSkillSource,
+  DetectedSkillsResponse,
+  SkillDetail,
+  CreateSkillInput,
+  UpdateSkillInput,
 } from "./contracts/index.js";

@@ -7,7 +7,7 @@ import { sign, verify } from "hono/jwt";
 import { bodyLimit } from "hono/body-limit";
 import { hash, verify as verifyPassword, argon2id } from "argon2";
 import { and, eq, gt, lte } from "drizzle-orm";
-import type { AuthUser, AuthCredentials } from "@veykor/shared";
+import type { AuthUser, AuthCredentials, UpdateProfileInput } from "@veykor/shared";
 import { db } from "../db/client.js";
 import { users, sessions, loginLimits } from "../db/schema.js";
 import { insertDefaultSidebarSections } from "../db/sidebar-sections.js";
@@ -17,7 +17,7 @@ export type AuthEnv = {
   Variables: { user: AuthUser; sessionId: string; expiresAt: number };
 };
 
-const cookie = "veykor_session";
+export const sessionCookieName = "veykor_session";
 
 const options = {
   httpOnly: true,
@@ -54,14 +54,12 @@ export const csrfProtection = createMiddleware(async (c, next) => {
   await next();
 });
 
-async function authenticate(c: Context<AuthEnv>): Promise<boolean> {
+export async function verifySessionToken(
+  token: string,
+): Promise<
+  { user: AuthUser; sessionId: string; expiresAt: number } | undefined
+> {
   try {
-    const token = getCookie(c, cookie);
-
-    if (!token) {
-      return false;
-    }
-
     const payload = await verify(token, authConfig.secret, "HS256");
 
     if (
@@ -69,7 +67,7 @@ async function authenticate(c: Context<AuthEnv>): Promise<boolean> {
       typeof payload.jti !== "string" ||
       typeof payload.sub !== "string"
     ) {
-      return false;
+      return undefined;
     }
 
     const session = db
@@ -79,7 +77,7 @@ async function authenticate(c: Context<AuthEnv>): Promise<boolean> {
       .get();
 
     if (!session || String(session.userId) !== payload.sub) {
-      return false;
+      return undefined;
     }
 
     const user = db
@@ -89,22 +87,42 @@ async function authenticate(c: Context<AuthEnv>): Promise<boolean> {
       .get();
 
     if (!user) {
-      return false;
+      return undefined;
     }
 
-    c.set("user", publicUser(user));
-    c.set("sessionId", session.id);
-    c.set("expiresAt", session.expiresAt);
-
-    return true;
+    return {
+      user: publicUser(user),
+      sessionId: session.id,
+      expiresAt: session.expiresAt,
+    };
   } catch {
+    return undefined;
+  }
+}
+
+async function authenticate(c: Context<AuthEnv>): Promise<boolean> {
+  const token = getCookie(c, sessionCookieName);
+
+  if (!token) {
     return false;
   }
+
+  const session = await verifySessionToken(token);
+
+  if (!session) {
+    return false;
+  }
+
+  c.set("user", session.user);
+  c.set("sessionId", session.sessionId);
+  c.set("expiresAt", session.expiresAt);
+
+  return true;
 }
 
 export const requireAuth = createMiddleware<AuthEnv>(async (c, next) => {
   if (!(await authenticate(c))) {
-    deleteCookie(c, cookie, options);
+    deleteCookie(c, sessionCookieName, options);
 
     return c.json({ error: "Authentication required" }, 401);
   }
@@ -133,7 +151,10 @@ async function startSession(
   db.delete(sessions).where(lte(sessions.expiresAt, now())).run();
   db.insert(sessions).values({ id, userId: user.id, expiresAt }).run();
 
-  setCookie(c, cookie, token, { ...options, maxAge: authConfig.lifetime });
+  setCookie(c, sessionCookieName, token, {
+    ...options,
+    maxAge: authConfig.lifetime,
+  });
 
   return c.json({
     user: publicUser(user),
@@ -182,8 +203,8 @@ authRoute.use("*", bodyLimit({ maxSize: 400_000 }));
 authRoute.get("/status", async (c) => {
   const authenticated = await authenticate(c);
 
-  if (!authenticated && getCookie(c, cookie)) {
-    deleteCookie(c, cookie, options);
+  if (!authenticated && getCookie(c, sessionCookieName)) {
+    deleteCookie(c, sessionCookieName, options);
   }
 
   return c.json({
@@ -295,7 +316,82 @@ authRoute.post("/logout", requireAuth, (c) => {
   db.delete(sessions)
     .where(eq(sessions.id, c.get("sessionId")))
     .run();
-  deleteCookie(c, cookie, options);
+  deleteCookie(c, sessionCookieName, options);
 
   return c.json({ ok: true });
+});
+
+authRoute.post("/profile", requireAuth, async (c) => {
+  let input: UpdateProfileInput;
+
+  try {
+    input = await c.req.json<UpdateProfileInput>();
+  } catch {
+    return c.json({ error: "Invalid JSON" }, 400);
+  }
+
+  if (
+    !input ||
+    typeof input.username !== "string" ||
+    !/^[a-zA-Z0-9_.-]{3,64}$/.test(input.username) ||
+    typeof input.password !== "string" ||
+    (input.password !== "" &&
+      (input.password.length < 8 || input.password.length > 256)) ||
+    typeof input.photo !== "string" ||
+    input.photo.length > 350_000 ||
+    (input.photo !== "" &&
+      !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(
+        input.photo,
+      ))
+  ) {
+    return c.json(
+      {
+        error:
+          "Use a 3–64 character username, an 8–256 character password, and a PNG, JPEG, or WebP photo under 250 KB.",
+      },
+      400,
+    );
+  }
+
+  const existing = db
+    .select()
+    .from(users)
+    .where(eq(users.username, input.username))
+    .get();
+
+  if (existing && existing.id !== c.get("user").id) {
+    return c.json({ error: "Username is already taken" }, 409);
+  }
+
+  const passwordHash = input.password
+    ? await hash(input.password, {
+        type: argon2id,
+        memoryCost: 65536,
+        timeCost: 3,
+        parallelism: 1,
+      })
+    : undefined;
+  const user = db
+    .update(users)
+    .set({
+      username: input.username,
+      photo: input.photo || null,
+      ...(passwordHash ? { passwordHash } : {}),
+    })
+    .where(eq(users.id, c.get("user").id))
+    .returning()
+    .get()!;
+
+  if (passwordHash) {
+    db.delete(sessions)
+      .where(and(eq(sessions.userId, user.id), gt(sessions.expiresAt, 0)))
+      .run();
+    return startSession(c, user);
+  }
+
+  return c.json({
+    user: publicUser(user),
+    registrationAllowed: isHostRequest(c),
+    expiresAt: c.get("expiresAt"),
+  });
 });
