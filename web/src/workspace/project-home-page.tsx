@@ -37,10 +37,6 @@ function resolveEffort(
     return saved;
   }
 
-  if (tiers.includes("max")) {
-    return "max";
-  }
-
   if (model && tiers.includes(model.defaultReasoningEffort)) {
     return model.defaultReasoningEffort;
   }
@@ -98,18 +94,26 @@ export function ProjectHomePage() {
     sections.find((section) => section.kind === "chats" && section.isFixed) ||
     sections.find((section) => section.kind === "chats");
   const isProjectChat = !!session?.projectId || !!draft?.projectId;
-  const permissionMode =
+  const permissionPreference =
     permissionChoice ||
     (isProjectChat ? "promptUnmatched" : savedPermissionMode);
   const preferredProviderId =
     session?.providerId ||
     defaultProvider ||
     (!isProjectChat ? defaultProviderPreference : "");
-  const provider =
-    providers.find(
-      (entry) => entry.available && entry.id === preferredProviderId,
-    ) || providers.find((entry) => entry.available);
+  const isProviderLocked =
+    !!session?.nativeSessionId ||
+    messages.some((message) => message.role === "user");
+  const provider = isProviderLocked
+    ? providers.find((entry) => entry.id === preferredProviderId)
+    : providers.find(
+        (entry) => entry.available && entry.id === preferredProviderId,
+      ) || providers.find((entry) => entry.available);
   const providerId = provider?.id || "";
+  const permissionMode =
+    providerId === "opencode" && permissionPreference === "onRequest"
+      ? "promptUnmatched"
+      : permissionPreference;
   const preferredModelId =
     session?.providerId === providerId
       ? session.modelId
@@ -157,6 +161,10 @@ export function ProjectHomePage() {
   }, [userId, loadDefaults]);
 
   function select(providerId: string, modelId: string) {
+    if (isProviderLocked && session?.providerId !== providerId) {
+      return;
+    }
+
     useChatRuntimeStore.setState({ error: "", errorSessionId: "" });
     setEffortChoice(null);
 
@@ -271,6 +279,7 @@ export function ProjectHomePage() {
               project.id === (session?.projectId || draft?.projectId),
           )}
           providers={providers}
+          isProviderLocked={isProviderLocked}
           providerId={providerId}
           modelId={modelId}
           preferredModels={isProjectChat ? noPreferredModels : preferredModels}

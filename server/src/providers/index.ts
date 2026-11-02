@@ -1,7 +1,10 @@
 import type { ChatProvider, ProviderCliId } from "@veykor/shared";
-import type { NativeChatProvider } from "./native-chat-provider.js";
-import { discoverModelCatalog } from "./model-catalog.js";
-import { describeConversation, openConversation, runChat, setPermissionMode, decideApproval, stopConversation, isBusy, closeMuseSessions, releaseConversation } from "./muse-session-provider.js";
+import type { ChatRuntimeProvider } from "./provider.js";
+import { detectMuseCLI, detectOpencodeCLI, type CliProbe } from "./detection.js";
+import { discoverModelCatalog } from "./muse/models.js";
+import { discoverOpencodeCatalog } from "./opencode/models.js";
+import { opencodeProvider } from "./opencode/provider.js";
+import { museProvider } from "./muse/provider.js";
 
 export interface ProviderDisplayMeta {
   label: string;
@@ -11,36 +14,28 @@ export interface ProviderDisplayMeta {
 
 export interface ProviderRegistration {
   meta: ProviderDisplayMeta;
-  chat?: NativeChatProvider;
-  discoverCatalog?: () => Promise<ChatProvider & { version: string }>;
+  chat?: ChatRuntimeProvider;
+  discoverCatalog?: () => Promise<ChatProvider>;
+  detectCLI: () => Promise<CliProbe>;
 }
-
-const museChat: NativeChatProvider = {
-  id: "muse",
-  describe: describeConversation,
-  open: openConversation,
-  runTurn: runChat,
-  setPermissionMode,
-  decideApproval,
-  stop: stopConversation,
-  isBusy,
-  release: releaseConversation,
-  close: closeMuseSessions,
-};
 
 const registry = new Map<ProviderCliId, ProviderRegistration>([
   [
     "muse",
     {
       meta: { label: "Muse Code", company: "Meta", cli: "muse" },
-      chat: museChat,
+      chat: museProvider,
       discoverCatalog: discoverModelCatalog,
+      detectCLI: detectMuseCLI,
     },
   ],
   [
     "opencode",
     {
-      meta: { label: "OpenCode", company: "SST", cli: "opencode" },
+      meta: { label: "OpenCode", company: "Anomaly", cli: "opencode" },
+      chat: opencodeProvider,
+      discoverCatalog: discoverOpencodeCatalog,
+      detectCLI: detectOpencodeCLI,
     },
   ],
 ]);
@@ -63,7 +58,7 @@ export function providerRegistration(
 
 export function chatProviderFor(
   providerId: string,
-): NativeChatProvider | undefined {
+): ChatRuntimeProvider | undefined {
   return providerRegistration(providerId)?.chat;
 }
 

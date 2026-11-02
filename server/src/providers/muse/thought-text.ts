@@ -1,4 +1,4 @@
-import type { FoldedItem } from "@muse-code/sdk";
+import type { FoldedItem } from "./types.js";
 
 interface ThoughtStream {
   accumulated: (itemId: string, field?: string) => string | undefined;

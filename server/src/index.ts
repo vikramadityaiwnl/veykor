@@ -11,7 +11,7 @@ import { settingsRoute } from "./routes/settings.js";
 import { mcpRoute } from "./routes/mcp.js";
 import { integrationsRoute } from "./routes/integrations.js";
 import { statusRoute } from "./routes/status.js";
-import { closeChatProviders } from "./chat/chat-runner.js";
+import { closeChatProviders } from "./providers/index.js";
 import { migrateStoredConversations } from "./chat/conversations.js";
 import { chatRoute } from "./routes/chat.js";
 import { handleTranscribeUpgrade, isTranscribeUpgrade } from "./transcribe/live.js";

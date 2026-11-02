@@ -26,6 +26,7 @@ interface Props {
   project?: Project;
   isNewProjectChat: boolean;
   providers: ChatProvider[];
+  isProviderLocked: boolean;
   providerId: string;
   modelId: string;
   preferredModels: Record<string, string>;
@@ -271,6 +272,7 @@ export function ChatComposerPanel(props: Props) {
                 <ComposerModelSelection
                   providers={props.providers}
                   providerId={props.providerId}
+                  isProviderLocked={props.isProviderLocked}
                   modelId={props.modelId}
                   preferredModels={props.preferredModels}
                   loading={props.loading}
@@ -304,6 +306,7 @@ export function ChatComposerPanel(props: Props) {
                 )}
 
                 <ChatPermissionSelection
+                  providerId={props.providerId}
                   value={props.permissionMode}
                   onChange={props.onPermissionMode}
                 />
@@ -360,6 +363,7 @@ export function ChatComposerPanel(props: Props) {
                 <ComposerModelSelection
                   providers={props.providers}
                   providerId={props.providerId}
+                  isProviderLocked={props.isProviderLocked}
                   modelId={props.modelId}
                   preferredModels={props.preferredModels}
                   loading={props.loading}

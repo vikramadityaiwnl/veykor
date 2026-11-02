@@ -1,25 +1,20 @@
-import { mkdir, readFile, stat } from "node:fs/promises";
+import type { ChatRuntimeProvider } from "../provider.js";
+import { listMuseSessions } from "./sessions.js";
+import { mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import type { ChatActivity, ChatThoughtEntry, ChatApproval, ChatAttachment, ChatMessage, ChatPermissionMode, ChatRequest, ChatSession, ChatToolCall, ChatUsage } from "@veykor/shared";
-import type { ApprovalDecisionInput, FoldedItem, Session } from "@muse-code/sdk";
-import { spawnMuse } from "./muse-host.js";
-import { scanDetectedServers } from "../mcp/detect.js";
-import { listMcpServers } from "../mcp/store.js";
-import { mergeSessionMcpSources, toSessionMcpServers, type SessionMcpServerConfig } from "../mcp/session-config.js";
-import { metadataSession, projectFolder, readConversation, writeConversation, type ConversationMetadata, type StoredAttachment } from "./conversations.js";
-import { attachmentAvailable, attachmentBytes, stageAttachment } from "./attachments.js";
-import { imageMimeType, isInsideFolder, savedScreenshotPaths, screenshotName } from "./tool-images.js";
-import { dbPath } from "../db/client.js";
-import { responseSeconds } from "./chat-response-timing.js";
-import { museThoughtText } from "./muse-thought-text.js";
-import { nativeInput } from "./muse-input.js";
-
-export const permissionModes: ChatPermissionMode[] = [
-  "promptUnmatched",
-  "onRequest",
-  "denyUnmatched",
-  "allowAll",
-];
+import type { ChatApproval, ChatAttachment, ChatPermissionMode, ChatRequest, ChatSession, ChatUsage } from "@veykor/shared";
+import type { ApprovalDecisionInput, FoldedItem, Session } from "./types.js";
+import { spawnMuse } from "./connection.js";
+import { scanDetectedServers } from "../../mcp/detect.js";
+import { listMcpServers } from "../../mcp/store.js";
+import { mergeSessionMcpSources, toSessionMcpServers } from "../../mcp/session-config.js";
+import { metadataSession, projectFolder, readConversation, writeConversation, type StoredAttachment } from "../../chat/conversations.js";
+import { attachmentBytes, stageAttachment } from "../../chat/attachments.js";
+import { dbPath } from "../../db/client.js";
+import { responseSeconds } from "../../chat/chat-response-timing.js";
+import { projectMessages, emptyUsage, createdAt } from "./messages.js";
+import { openNativeSession } from "./resume.js";
+import { nativeInput } from "./input.js";
 
 type Muse = Awaited<ReturnType<typeof spawnMuse>>;
 
@@ -37,19 +32,15 @@ interface RuntimeState {
   stagedToolImages: Set<string>;
   currentTurn: string;
   lastError: string;
-  history: FoldedItem[];
 }
 
-interface SessionRead {
-  history: { items: FoldedItem[] | null };
-  session: { turnId: string | null };
-}
-
-interface Runtime {
+export interface Runtime {
   muse: Muse;
   session: Session;
   state: RuntimeState;
   folder: string;
+  modelId: string;
+  permissionMode: ChatPermissionMode;
 }
 
 const runtimes = new Map<string, Runtime>();
@@ -57,325 +48,6 @@ const opening = new Map<string, Promise<Runtime>>();
 const busy = new Set<string>();
 const stopRequested = new Map<string, boolean>();
 const pendingErrors = new Map<string, string>();
-
-function emptyUsage(): ChatUsage {
-  return { inputTokens: 0, outputTokens: 0, cost: 0, costAvailable: false };
-}
-
-function createdAt(item: FoldedItem): number {
-  const time = item.recordedAt ? Date.parse(item.recordedAt) : NaN;
-
-  return Number.isSafeInteger(time) ? time : 0;
-}
-
-function toolStatus(item: FoldedItem): ChatToolCall["status"] {
-  return item.status === "inProgress"
-    ? "running"
-    : item.status === "completed"
-      ? "complete"
-      : "error";
-}
-
-function projectTool(item: FoldedItem): ChatToolCall {
-  return {
-    id: item.itemId,
-    name: item.tool || "Tool",
-    target: item.args || "",
-    status: toolStatus(item),
-    result: item.visibleOutput || "",
-    errorMessage: item.failureReason || "",
-  };
-}
-
-function projectActivity(item: FoldedItem): ChatActivity {
-  return {
-    id: item.itemId,
-    kind: String(item.kind),
-    status: String(item.status),
-    text: String(
-      item.text ||
-        item.summary?.join("\n") ||
-        item.statusLine ||
-        item.fallbackText ||
-        item.kind,
-    ),
-  };
-}
-
-function agentText(items: readonly FoldedItem[], live: Runtime): string {
-  return items
-    .map((item) =>
-      item.status === "inProgress"
-        ? live.session.fold.items.accumulated(item.itemId) || item.text || ""
-        : item.text || "",
-    )
-    .filter((text) => text)
-    .join("\n\n");
-}
-
-async function projectAttachments(
-  conversationId: string,
-  attachments: StoredAttachment[],
-): Promise<ChatAttachment[]> {
-  return Promise.all(
-    attachments.map(async (attachment) => ({
-      id: attachment.id,
-      name: attachment.name,
-      mimeType: attachment.mimeType,
-      size: attachment.size,
-      kind: attachment.kind,
-      dataUrl: (await attachmentAvailable(attachment.id))
-        ? `/api/chat/sessions/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(attachment.id)}`
-        : "",
-      text: "",
-    })),
-  );
-}
-
-const maxToolImageBytes = 15_000_000;
-
-async function stageToolImages(
-  userId: number,
-  live: Runtime,
-  metadata: ConversationMetadata,
-  turnId: string,
-  tools: FoldedItem[],
-): Promise<boolean> {
-  let changed = false;
-
-  for (const item of tools) {
-    if (item.status !== "completed") {
-      continue;
-    }
-
-    const paths = savedScreenshotPaths(item.visibleOutput || "");
-
-    for (const [index, path] of paths.entries()) {
-      const mimeType = imageMimeType(path);
-
-      if (!mimeType || !isInsideFolder(live.folder, path)) {
-        continue;
-      }
-
-      const attachmentId = `tool-${item.itemId}-${index}`;
-
-      if (live.state.stagedToolImages.has(attachmentId)) {
-        continue;
-      }
-
-      const existing = metadata.attachments.some(
-        (entry) => entry.id === attachmentId,
-      );
-
-      if (existing && (await attachmentAvailable(attachmentId))) {
-        live.state.stagedToolImages.add(attachmentId);
-        continue;
-      }
-
-      try {
-        const info = await stat(path);
-
-        if (!info.isFile() || info.size > maxToolImageBytes) {
-          continue;
-        }
-
-        await stageAttachment(attachmentId, await readFile(path));
-        live.state.stagedToolImages.add(attachmentId);
-
-        if (!existing) {
-          metadata.attachments.push({
-            id: attachmentId,
-            turnId,
-            name: screenshotName(path),
-            mimeType,
-            size: info.size,
-            kind: "image",
-            tool: true,
-          });
-          changed = true;
-        }
-      } catch {
-        continue;
-      }
-    }
-  }
-
-  if (changed) {
-    writeConversation(userId, metadata);
-  }
-
-  return changed;
-}
-
-async function projectMessages(
-  userId: number,
-  conversationId: string,
-  live: Runtime,
-  metadata: ConversationMetadata,
-): Promise<{ messages: ChatMessage[]; activities: ChatActivity[] }> {
-  const groups = new Map<
-    string,
-    {
-      user: FoldedItem[];
-      agent: FoldedItem[];
-      tools: FoldedItem[];
-      thinking: FoldedItem[];
-      entries: ChatThoughtEntry[];
-    }
-  >();
-  const activities: ChatActivity[] = [];
-  const liveItems = live.session.fold.items.list();
-  const liveIds = new Set(liveItems.map((item) => item.itemId));
-  const items = [
-    ...live.state.history.filter((item) => !liveIds.has(item.itemId)),
-    ...liveItems,
-  ];
-
-  for (const item of items) {
-    if (item.retracted) {
-      continue;
-    }
-
-    if (
-      item.kind !== "userMessage" &&
-      item.kind !== "agentMessage" &&
-      item.kind !== "toolCall" &&
-      item.kind !== "reasoning"
-    ) {
-      activities.push(projectActivity(item));
-      continue;
-    }
-
-    const key = item.turnId || item.itemId;
-    let group = groups.get(key);
-
-    if (!group) {
-      group = { user: [], agent: [], tools: [], thinking: [], entries: [] };
-      groups.set(key, group);
-    }
-
-    if (item.kind === "userMessage") {
-      group.user.push(item);
-    } else if (item.kind === "reasoning") {
-      group.thinking.push(item);
-      group.entries.push({
-        id: item.itemId,
-        kind: "reasoning",
-        text: museThoughtText(item, live.session.fold.items),
-        toolId: "",
-      });
-    } else if (item.kind === "agentMessage") {
-      if (item.status === "inProgress" || item.messagePhase === "commentary") {
-        group.thinking.push(item);
-        group.entries.push({
-          id: item.itemId,
-          kind: "commentary",
-          text: museThoughtText(item, live.session.fold.items),
-          toolId: "",
-        });
-      } else {
-        group.agent.push(item);
-      }
-    } else {
-      group.tools.push(item);
-      group.entries.push({
-        id: item.itemId,
-        kind: "tool",
-        text: "",
-        toolId: item.itemId,
-      });
-    }
-  }
-
-  for (const [turnId, group] of groups) {
-    await stageToolImages(userId, live, metadata, turnId, group.tools);
-  }
-
-  const messages: ChatMessage[] = [];
-
-  for (const [turnId, group] of groups) {
-    if (group.user.length > 0) {
-      messages.push({
-        id: group.user[0].itemId,
-        role: "user",
-        text: group.user.map((item) => item.text || "").join("\n\n"),
-        usage: emptyUsage(),
-        createdAt: createdAt(group.user[0]),
-        tools: [],
-        attachments: await projectAttachments(
-          conversationId,
-          metadata.attachments.filter(
-            (entry) => !entry.tool && entry.turnId && entry.turnId === turnId,
-          ),
-        ),
-      });
-    }
-
-    if (
-      group.agent.length > 0 ||
-      group.tools.length > 0 ||
-      group.thinking.length > 0
-    ) {
-      const liveUsage = live.state.usage.get(turnId);
-      const usage = liveUsage || {
-        ...emptyUsage(),
-        inputTokens: group.agent.reduce(
-          (total, item) => total + (item.usage?.inputTokens || 0),
-          0,
-        ),
-        outputTokens: group.agent.reduce(
-          (total, item) => total + (item.usage?.outputTokens || 0),
-          0,
-        ),
-      };
-      const first = group.thinking[0] || group.agent[0] || group.tools[0];
-      const timing = metadata.turnTimings?.[turnId];
-      if (group.agent.length > 0 && timing) {
-        const finalRecordedAt = Math.max(...group.agent.map(createdAt));
-        const seconds = responseSeconds(
-          timing.startedAt,
-          finalRecordedAt,
-          timing.seconds,
-        );
-        if (seconds !== timing.seconds) {
-          timing.seconds = seconds;
-          const saved = readConversation(userId, conversationId);
-          if (saved) {
-            saved.turnTimings = {
-              ...saved.turnTimings,
-              [turnId]: { ...timing },
-            };
-            writeConversation(userId, saved);
-          }
-        }
-      }
-
-      messages.push({
-        id: `assistant-${turnId}`,
-        role: "assistant",
-        text: agentText(group.agent, live),
-        thoughtEntries: group.entries,
-        thinkingStartedAt: metadata.turnTimings?.[turnId]?.startedAt || 0,
-        thinkingSeconds: metadata.turnTimings?.[turnId]?.seconds || 0,
-        thinking: group.thinking
-          .map((item) => museThoughtText(item, live.session.fold.items))
-          .filter(Boolean)
-          .join("\n\n"),
-        usage,
-        createdAt: createdAt(first),
-        tools: group.tools.map(projectTool),
-        attachments: await projectAttachments(
-          conversationId,
-          metadata.attachments.filter(
-            (entry) => entry.tool && entry.turnId && entry.turnId === turnId,
-          ),
-        ),
-      });
-    }
-  }
-
-  return { messages, activities };
-}
 
 export async function describeConversation(
   userId: number,
@@ -439,90 +111,6 @@ export async function openConversation(
   return describeConversation(userId, id);
 }
 
-function startedSessionId(result: Record<string, unknown>): string {
-  const session =
-    result.session && typeof result.session === "object"
-      ? (result.session as Record<string, unknown>)
-      : null;
-
-  const id = session?.sessionId;
-
-  if (typeof id !== "string" || !id) {
-    throw new Error("Muse did not return a session id");
-  }
-
-  return id;
-}
-
-function mcpWarning(action: string, error: unknown): void {
-  console.warn(
-    `${action}: ${error instanceof Error ? error.message : "unknown error"}`,
-  );
-}
-
-async function openNativeSession(
-  muse: Muse,
-  folder: string,
-  metadata: ConversationMetadata,
-  options: {
-    onApproval: Parameters<Session["onApproval"]>[0];
-    onApprovalError: Parameters<Session["onApprovalError"]>[0];
-    mcpServers: Record<string, SessionMcpServerConfig> | undefined;
-  },
-): Promise<Session> {
-  const approvalMode = metadata.permissionMode || "promptUnmatched";
-
-  if (metadata.nativeSessionId) {
-    if (options.mcpServers) {
-      try {
-        await muse.connection.command("session/resume", {
-          sessionId: metadata.nativeSessionId,
-          config: { mcpServers: options.mcpServers },
-        });
-      } catch (error) {
-        mcpWarning("Continuing without updating chat MCP servers", error);
-      }
-    }
-
-    return muse.client.resumeSession({
-      sessionId: metadata.nativeSessionId,
-      onApproval: options.onApproval,
-      onApprovalError: options.onApprovalError,
-    });
-  }
-
-  if (options.mcpServers) {
-    let nativeSessionId: string | undefined;
-
-    try {
-      nativeSessionId = startedSessionId(
-        await muse.connection.command("session/start", {
-          workspaceRoot: folder,
-          modelId: metadata.modelId,
-          approvalMode,
-          config: { mcpServers: options.mcpServers },
-        }),
-      );
-    } catch (error) {
-      mcpWarning("Continuing without chat MCP servers", error);
-    }
-
-    if (nativeSessionId !== undefined) {
-      return muse.client.resumeSession({
-        sessionId: nativeSessionId,
-        onApproval: options.onApproval,
-        onApprovalError: options.onApprovalError,
-      });
-    }
-  }
-
-  return muse.client.startSession({
-    workspaceRoot: folder,
-    modelId: metadata.modelId,
-    approvalMode,
-  });
-}
-
 async function runtime(userId: number, id: string): Promise<Runtime> {
   const key = `${userId}:${id}`;
   const existing = runtimes.get(key);
@@ -551,7 +139,6 @@ async function runtime(userId: number, id: string): Promise<Runtime> {
       stagedToolImages: new Set(),
       currentTurn: "",
       lastError: "",
-      history: [],
     };
     const onApproval: Parameters<Session["onApproval"]>[0] = async (
       request,
@@ -643,20 +230,19 @@ async function runtime(userId: number, id: string): Promise<Runtime> {
       await muse.close();
       throw error;
     }
-    try {
-      const read = (await muse.connection.command("session/read", {
-        sessionId: session.sessionId,
-        excludeItems: false,
-      })) as unknown as SessionRead;
-      state.history = read.history.items || [];
-      if (read.session.turnId) {
-        state.lastError =
-          "The backend restarted during execution. Send a message to resume this Muse session.";
-      }
-    } catch {
-      state.history = [];
+    if (session.activeTurnId) {
+      state.lastError =
+        "The backend restarted during execution. Send a message to resume this Muse session.";
     }
-    const result: Runtime = { muse, session, state, folder };
+
+    const result: Runtime = {
+      muse,
+      session,
+      state,
+      folder,
+      modelId: metadata.modelId,
+      permissionMode: metadata.permissionMode,
+    };
     runtimes.set(key, result);
     void muse.connection.closed.then(() => {
       runtimes.delete(key);
@@ -680,10 +266,15 @@ export async function setPermissionMode(
   mode: ChatPermissionMode,
 ) {
   const live = await runtime(userId, id);
+  if (live.permissionMode === mode) {
+    return;
+  }
+
   await live.muse.connection.command("session/setApprovalMode", {
     sessionId: live.session.sessionId,
     mode,
   });
+  live.permissionMode = mode;
   const metadata = readConversation(userId, id);
   if (metadata) {
     metadata.permissionMode = mode;
@@ -715,7 +306,7 @@ export async function stopConversation(
   }
   stopRequested.set(`${userId}:${id}`, cancel);
   const live = await runtime(userId, id);
-  const turnId = live.session.fold.activeTurnId;
+  const turnId = live.session.activeTurnId;
   if (turnId) {
     await live.muse.connection.command(
       cancel ? "turn/cancel" : "turn/interrupt",
@@ -821,10 +412,13 @@ export async function runChat(userId: number, input: ChatRequest) {
       );
     }
     await setPermissionMode(userId, id, input.permissionMode);
-    await live.muse.connection.command("session/setModel", {
-      sessionId: live.session.sessionId,
-      model: { modelId: input.modelId },
-    });
+    if (live.modelId !== input.modelId) {
+      await live.muse.connection.command("session/setModel", {
+        sessionId: live.session.sessionId,
+        model: { modelId: input.modelId },
+      });
+      live.modelId = input.modelId;
+    }
     if (stopRequested.has(key)) {
       return;
     }
@@ -914,3 +508,17 @@ export async function releaseConversation(userId: number, id: string) {
   }
   pendingErrors.delete(key);
 }
+
+export const museProvider: ChatRuntimeProvider = {
+  id: "muse",
+  listSessions: listMuseSessions,
+  describe: describeConversation,
+  open: openConversation,
+  runTurn: runChat,
+  setPermissionMode,
+  decideApproval,
+  stop: stopConversation,
+  isBusy,
+  release: releaseConversation,
+  close: closeMuseSessions,
+};

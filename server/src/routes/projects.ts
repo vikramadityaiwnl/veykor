@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import type { CreateProjectInput, ProjectsResponse, UpdateProjectInput } from "@veykor/shared";
 import { requireAuth, type AuthEnv } from "../auth/auth.js";
 import { isHostRequest } from "../auth/host-access.js";
-import { chatProviderFor } from "../chat/chat-runner.js";
+import { chatProviderFor } from "../providers/index.js";
 import { removeStaged } from "../chat/attachments.js";
 import { deleteProjectConversations, listProjectConversations } from "../chat/conversations.js";
 import { createProject, deleteProject, listProjects, updateProject } from "../db/projects.js";

@@ -142,7 +142,7 @@ async function slimSession(
     title: session.title,
     projectId: session.projectId,
     sectionId: session.sectionId,
-    providerId: "muse",
+    providerId: session.providerId || "muse",
     modelId: session.modelId,
     nativeSessionId: session.nativeSessionId || "",
     permissionMode: session.permissionMode || "promptUnmatched",

@@ -153,7 +153,7 @@ test(
       const catalog = await json<SettingsResponse>("settings");
       assert.deepEqual(
         catalog.providers.map((provider) => provider.id),
-        ["muse"],
+        ["muse", "opencode"],
       );
       assert.ok(
         catalog.providers[0].models.some(

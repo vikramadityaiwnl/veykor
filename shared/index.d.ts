@@ -25,6 +25,8 @@ export type {
 } from "./contracts/index.js";
 
 export type {
+  ProviderSessionSummary,
+  ProviderSessionsResponse,
   ProviderCliId,
   ProviderCliStatus,
   CliStatusResponse,

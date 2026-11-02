@@ -12,3 +12,15 @@ export interface ProviderCliStatus {
 export interface CliStatusResponse {
   providers: ProviderCliStatus[];
 }
+
+export interface ProviderSessionSummary {
+  id: string;
+  title: string;
+  workspaceRoot: string;
+  updatedAt: string;
+}
+
+export interface ProviderSessionsResponse {
+  sessions: ProviderSessionSummary[];
+  nextCursor: string;
+}

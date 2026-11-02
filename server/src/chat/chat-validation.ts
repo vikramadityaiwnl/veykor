@@ -1,5 +1,5 @@
 import type { ChatAttachment, ChatRequest } from "@veykor/shared";
-import { isReasoningEffort } from "./reasoning-effort.js";
+import { isReasoningEffort } from "../providers/reasoning-effort.js";
 
 export function validChatAttachments(
   value: unknown,

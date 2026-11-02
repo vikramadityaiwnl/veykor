@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { CreateSidebarSectionInput, SidebarSectionsResponse, UpdateSidebarSectionInput } from "@veykor/shared";
 import { requireAuth, type AuthEnv } from "../auth/auth.js";
-import { chatProviderFor } from "../chat/chat-runner.js";
+import { chatProviderFor } from "../providers/index.js";
 import { removeStaged } from "../chat/attachments.js";
 import { deleteProjectConversations, listProjectConversations } from "../chat/conversations.js";
 import { listProjects } from "../db/projects.js";

@@ -5,10 +5,12 @@ import { streamSSE } from "hono/streaming";
 import { bodyLimit } from "hono/body-limit";
 import { and, eq, gt } from "drizzle-orm";
 import { requireAuth, type AuthEnv } from "../auth/auth.js";
-import { chatProviderFor, validChatRequest, hasNonImageAttachment, permissionModes, registeredProviderIds } from "../chat/chat-runner.js";
+import { chatProviderFor, knownProviderIds, providerRegistration } from "../providers/index.js";
+import { permissionModes } from "../providers/provider.js";
+import { validChatRequest, hasNonImageAttachment } from "../chat/chat-validation.js";
 import { db } from "../db/client.js";
 import { conversations, sessions as authSessions } from "../db/schema.js";
-import { listConversations, metadataSession, readConversation, writeConversation, validConversationLocation } from "../chat/conversations.js";
+import { listConversations, metadataSession, readConversation, writeConversation, validConversationLocation, projectFolder } from "../chat/conversations.js";
 import { attachmentBytes, removeStaged } from "../chat/attachments.js";
 import { getSettings } from "../settings/settings.js";
 
@@ -28,6 +30,33 @@ async function snapshots(userId: number) {
     }),
   );
 }
+
+chatRoute.get("/providers/:providerId/sessions", async (c) => {
+  const provider = chatProviderFor(c.req.param("providerId"));
+  const projectId = c.req.query("projectId");
+
+  if (!provider || !projectId) {
+    return c.json(
+      { error: "A supported provider and project are required" },
+      400,
+    );
+  }
+
+  try {
+    const folder = projectFolder(c.get("user").id, projectId);
+    return c.json(await provider.listSessions(folder, c.req.query("cursor")));
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to list provider sessions",
+      },
+      400,
+    );
+  }
+});
 
 chatRoute.get("/sessions", (c) =>
   c.json({
@@ -110,6 +139,17 @@ chatRoute.put("/sessions", async (c) => {
       chatProviderFor(candidate.providerId)
         ? candidate.providerId
         : undefined;
+    if (
+      existing?.nativeSessionId &&
+      providerId &&
+      existing.providerId !== providerId
+    ) {
+      return c.json(
+        { error: "Start a new chat to use a different provider" },
+        409,
+      );
+    }
+
     updates.push(
       existing
         ? {
@@ -313,7 +353,7 @@ chatRoute.post("/", async (c) => {
   if (hasNonImageAttachment(input)) {
     return c.json({ error: "Only image files can be attached for now." }, 400);
   }
-  if (!validChatRequest(input, registeredProviderIds())) {
+  if (!validChatRequest(input, knownProviderIds())) {
     return c.json(
       {
         error:
@@ -327,9 +367,21 @@ chatRoute.post("/", async (c) => {
   if (!conversation || !validConversationLocation(userId, conversation)) {
     return c.json({ error: "Conversation or project not found" }, 404);
   }
+  if (
+    conversation.nativeSessionId &&
+    conversation.providerId !== input.providerId
+  ) {
+    return c.json(
+      { error: "Start a new chat to use a different provider" },
+      409,
+    );
+  }
+
   const provider = chatProviderFor(input.providerId);
   if (!provider) {
-    return c.json({ error: "Chat provider unavailable" }, 400);
+    const label =
+      providerRegistration(input.providerId)?.meta.label || "This provider";
+    return c.json({ error: `Chat with ${label} is not supported yet.` }, 400);
   }
   if (provider.isBusy(userId, input.conversationId)) {
     return c.json({ error: "A reply is already running" }, 409);
@@ -338,12 +390,25 @@ chatRoute.post("/", async (c) => {
   const catalog = settings.providers.find(
     (entry) => entry.id === input.providerId,
   );
-  if (!catalog?.models.some((model) => model.id === input.modelId)) {
+  if (
+    !catalog?.available ||
+    !catalog.models.some((model) => model.id === input.modelId)
+  ) {
     return c.json({ error: catalog?.error || "Model unavailable" }, 400);
   }
   if (provider.isBusy(userId, input.conversationId)) {
     return c.json({ error: "A reply is already running" }, 409);
   }
-  void provider.runTurn(userId, input);
+  if (
+    !conversation.nativeSessionId &&
+    conversation.providerId !== input.providerId
+  ) {
+    conversation.providerId = input.providerId;
+    writeConversation(userId, conversation);
+  }
+
+  void provider.runTurn(userId, input).catch((error) => {
+    console.error("Chat provider failed before starting a turn", error);
+  });
   return c.json({ accepted: true }, 202);
 });

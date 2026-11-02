@@ -2,6 +2,7 @@ import type { ChatModel, ChatProvider } from "@veykor/shared";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCube } from "@fortawesome/free-solid-svg-icons";
 import { Selector } from "@astryxdesign/core/Selector";
+import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ChatProviderIcon } from "./chat-provider-icon";
 
@@ -11,6 +12,7 @@ interface Props {
   modelId: string;
   preferredModels: Record<string, string>;
   loading: boolean;
+  isProviderLocked?: boolean;
   onSelection: (providerId: string, modelId: string) => void;
   isCompact?: boolean;
 }
@@ -83,6 +85,7 @@ export function ComposerModelSelection(props: Props) {
       <Selector
         startIcon={<ChatProviderIcon providerId={props.providerId} />}
         label="Provider"
+        isDisabled={props.isProviderLocked}
         isLabelHidden={!props.isCompact}
         variant={props.isCompact ? "input" : "ghost"}
         size="sm"
@@ -94,7 +97,9 @@ export function ComposerModelSelection(props: Props) {
           props.isCompact
             ? undefined
             : (option) => (
-                <span className="veykor-collapsed-label">{option.label}</span>
+                <Text type="inherit" className="veykor-collapsed-label">
+                  {option.label}
+                </Text>
               )
         }
         value={props.providerId}
@@ -133,7 +138,9 @@ export function ComposerModelSelection(props: Props) {
           props.isCompact
             ? undefined
             : (option) => (
-                <span className="veykor-collapsed-label">{option.label}</span>
+                <Text type="inherit" className="veykor-collapsed-label">
+                  {option.label}
+                </Text>
               )
         }
         hasSearch

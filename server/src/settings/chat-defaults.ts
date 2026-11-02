@@ -1,5 +1,5 @@
 import type { ChatDefaults, ChatPermissionMode, ChatReasoningEffort, ProviderCliId } from "@veykor/shared";
-import { isReasoningEffort } from "../chat/reasoning-effort.js";
+import { isReasoningEffort } from "../providers/reasoning-effort.js";
 
 const permissionModes: ChatPermissionMode[] = [
   "promptUnmatched",

@@ -1,25 +1,19 @@
-import type { ChatModel, ChatProvider, ChatReasoningEffort } from "@veykor/shared";
+import type { ChatProvider, ChatReasoningEffort } from "@veykor/shared";
 import { tmpdir } from "node:os";
-import { spawnMuse } from "./muse-host.js";
-import { isReasoningEffort, reasoningEffortTiers } from "./reasoning-effort.js";
+import { spawnMuse } from "./connection.js";
+import { createModel } from "../models.js";
+import { isReasoningEffort, reasoningEffortTiers } from "../reasoning-effort.js";
 
-export function model(id: string, name = id): ChatModel {
+export function model(id: string, name = id) {
   return {
-    id,
-    name,
-    description: "",
-    contextWindow: 0,
-    inputPrice: 0,
-    cachedPrice: 0,
-    outputPrice: 0,
-    pricingAvailable: false,
+    ...createModel(id, name),
     reasoningEfforts: reasoningEffortTiers.map((tier) => ({
       tier,
       description: "",
     })),
-    defaultReasoningEffort: "max",
+    defaultReasoningEffort: "max" as const,
     inputModalities: [
-      "text",
+      "text" as const,
       ...(/^(muse-spark-1\.[123]|muse-wonder-1\.0)(-contributor)?$/.test(id)
         ? ["image" as const]
         : []),

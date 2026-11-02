@@ -26,6 +26,8 @@ export type {
 } from "./projects/index.js";
 
 export type {
+  ProviderSessionSummary,
+  ProviderSessionsResponse,
   ProviderCliId,
   ProviderCliStatus,
   CliStatusResponse,

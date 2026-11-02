@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { FoldedItem } from "@muse-code/sdk";
-import { museThoughtText } from "../src/chat/muse-thought-text.js";
+import type { FoldedItem } from "../src/providers/muse/types.js";
+import { museThoughtText } from "../src/providers/muse/thought-text.js";
 
 function item(values: Partial<FoldedItem>): FoldedItem {
   return {

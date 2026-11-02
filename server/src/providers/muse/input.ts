@@ -1,5 +1,5 @@
 import type { ChatAttachment } from "@veykor/shared";
-import { model } from "./model-catalog.js";
+import { model } from "./models.js";
 
 export async function nativeInput(
   attachments: ChatAttachment[],

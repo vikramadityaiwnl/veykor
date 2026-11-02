@@ -14,7 +14,9 @@ export const settingsRoute = new Hono<AuthEnv>();
 
 settingsRoute.use("*", requireAuth);
 
-settingsRoute.get("/", async (c) => c.json(await getSettings(true)));
+settingsRoute.get("/", async (c) =>
+  c.json(await getSettings(c.req.query("refresh") === "true")),
+);
 
 settingsRoute.get("/general", (c) => {
   const user = db

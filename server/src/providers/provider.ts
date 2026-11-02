@@ -1,7 +1,11 @@
-import type { ChatRequest, ChatPermissionMode, ChatSession, ProviderCliId } from "@veykor/shared";
+import type { ChatRequest, ChatPermissionMode, ChatSession, ProviderCliId, ProviderSessionsResponse } from "@veykor/shared";
 
-export interface NativeChatProvider {
+export interface ChatRuntimeProvider {
   id: ProviderCliId;
+  listSessions: (
+    workspaceRoot: string,
+    cursor?: string,
+  ) => Promise<ProviderSessionsResponse>;
   describe: (userId: number, id: string) => Promise<ChatSession | undefined>;
   open: (userId: number, id: string) => Promise<ChatSession | undefined>;
   runTurn: (userId: number, input: ChatRequest) => Promise<void>;
@@ -25,3 +29,10 @@ export interface NativeChatProvider {
   release: (userId: number, conversationId: string) => Promise<void>;
   close: () => Promise<void>;
 }
+
+export const permissionModes: ChatPermissionMode[] = [
+  "promptUnmatched",
+  "onRequest",
+  "denyUnmatched",
+  "allowAll",
+];
