@@ -104,3 +104,14 @@ export type {
   CreateSkillInput,
   UpdateSkillInput,
 } from "./contracts/index.js";
+
+export type {
+  AgentAccessMode,
+  Agent,
+  CreateAgentInput,
+  UpdateAgentInput,
+  AgentsResponse,
+  ProjectAgent,
+  ProjectAgentsResponse,
+  AgentSnapshot,
+} from "./contracts/index.js";

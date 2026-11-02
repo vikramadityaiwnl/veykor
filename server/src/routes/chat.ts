@@ -16,6 +16,8 @@ import { withQueue, hasSubmittedMessages, submitMessage, pauseQueue, editQueuedM
 import { LiveSnapshotTracker } from "../chat/live-cursor.js";
 import { isReasoningEffort } from "../providers/reasoning-effort.js";
 import { getSettings } from "../settings/settings.js";
+import { readAgent } from "../agents/store.js";
+import { agentCapabilityIssues, buildAgentSnapshot } from "../agents/agent-config.js";
 
 const liveSnapshots = new LiveSnapshotTracker();
 
@@ -162,6 +164,52 @@ chatRoute.put("/sessions", async (c) => {
         409,
       );
     }
+    const started = !!(
+      existing &&
+      (existing.nativeSessionId || hasSubmittedMessages(userId, existing.id))
+    );
+    let agentId: string | null | undefined;
+    let agentName = "";
+    let agentProviderId: string | undefined;
+    let agentModelId: string | undefined;
+    let agentEffort: string | undefined;
+    let agentPermission: ConversationMetadata["permissionMode"] | undefined;
+
+    if (candidate.agentId !== undefined) {
+      if (candidate.agentId !== null && typeof candidate.agentId !== "string") {
+        return c.json({ error: "Invalid agent" }, 400);
+      }
+
+      agentId = candidate.projectId ? candidate.agentId : null;
+
+      if (started && (existing?.agentId ?? null) !== agentId) {
+        return c.json(
+          { error: "Start a new chat to use a different agent" },
+          409,
+        );
+      }
+
+      if (agentId) {
+        const agent = readAgent(userId, agentId);
+
+        if (
+          !agent ||
+          !candidate.projectId ||
+          !agent.projectIds.includes(candidate.projectId)
+        ) {
+          return c.json(
+            { error: "Agent is not available for this project" },
+            400,
+          );
+        }
+
+        agentName = agent.name;
+        agentProviderId = agent.providerId;
+        agentModelId = agent.modelId;
+        agentEffort = agent.reasoningEffort;
+        agentPermission = agent.permissionMode;
+      }
+    }
 
     updates.push(
       existing
@@ -169,32 +217,53 @@ chatRoute.put("/sessions", async (c) => {
             ...existing,
             title: candidate.title,
             providerId:
+              agentProviderId ||
               providerId ||
               (chatProviderFor(existing.providerId)
                 ? existing.providerId
                 : "muse"),
             modelId:
-              typeof candidate.modelId === "string" &&
+              agentModelId ||
+              (typeof candidate.modelId === "string" &&
               /^[a-zA-Z0-9][a-zA-Z0-9._:@+/-]{0,199}$/.test(candidate.modelId)
                 ? candidate.modelId
-                : existing.modelId,
-            reasoningEffort: isReasoningEffort(candidate.reasoningEffort)
-              ? candidate.reasoningEffort
-              : existing.reasoningEffort || "",
+                : existing.modelId),
+            reasoningEffort:
+              agentEffort !== undefined
+                ? agentEffort
+                : isReasoningEffort(candidate.reasoningEffort)
+                  ? candidate.reasoningEffort
+                  : existing.reasoningEffort || "",
+            permissionMode: agentPermission || existing.permissionMode,
+            agentId:
+              agentId !== undefined ? agentId : (existing.agentId ?? null),
+            agentName:
+              agentId !== undefined ? agentName : existing.agentName || "",
+            agentSnapshot:
+              agentId !== undefined && agentId !== (existing.agentId ?? null)
+                ? null
+                : (existing.agentSnapshot ?? null),
           }
         : {
             id: candidate.id,
             title: candidate.title,
             projectId: candidate.projectId || null,
             sectionId: candidate.sectionId || null,
-            providerId: providerId || "muse",
+            providerId: agentProviderId || providerId || "muse",
             modelId:
-              typeof candidate.modelId === "string" ? candidate.modelId : "",
-            reasoningEffort: isReasoningEffort(candidate.reasoningEffort)
-              ? candidate.reasoningEffort
-              : "",
+              agentModelId ||
+              (typeof candidate.modelId === "string" ? candidate.modelId : ""),
+            reasoningEffort:
+              agentEffort !== undefined
+                ? agentEffort
+                : isReasoningEffort(candidate.reasoningEffort)
+                  ? candidate.reasoningEffort
+                  : "",
             nativeSessionId: "",
-            permissionMode: "promptUnmatched",
+            permissionMode: agentPermission || "promptUnmatched",
+            agentId: agentId ?? null,
+            agentName,
+            agentSnapshot: null,
             attachments: [],
             turnTimings: {},
           },
@@ -527,6 +596,73 @@ chatRoute.post("/", async (c) => {
   if (latest.providerId !== input.providerId) {
     latest.providerId = input.providerId;
     writeConversation(userId, latest);
+  }
+
+  if (latest.projectId && !latest.agentSnapshot) {
+    const started =
+      !!latest.nativeSessionId || hasSubmittedMessages(userId, latest.id);
+
+    if (!started) {
+      const agent = latest.agentId ? readAgent(userId, latest.agentId) : null;
+
+      if (!agent || !agent.projectIds.includes(latest.projectId)) {
+        return c.json(
+          { error: "Choose an agent for this project chat before sending." },
+          400,
+        );
+      }
+
+      const issues = agentCapabilityIssues(agent);
+
+      if (issues.length > 0) {
+        return c.json({ error: issues[0] }, 400);
+      }
+
+      const agentCatalog = settings.providers.find(
+        (entry) => entry.id === agent.providerId,
+      );
+      const agentModel = agentCatalog?.models.find(
+        (entry) => entry.id === agent.modelId,
+      );
+
+      if (!agentCatalog?.available || !agentModel) {
+        return c.json(
+          { error: agentCatalog?.error || "Agent model unavailable" },
+          400,
+        );
+      }
+
+      if (
+        agent.reasoningEffort &&
+        !agentModel.reasoningEfforts.some(
+          (option) => option.tier === agent.reasoningEffort,
+        )
+      ) {
+        return c.json(
+          {
+            error: "The agent reasoning effort is not supported by its model.",
+          },
+          400,
+        );
+      }
+
+      const snapshot = buildAgentSnapshot(agent, agentModel);
+      latest.agentSnapshot = snapshot;
+      latest.agentName = snapshot.name;
+      latest.providerId = snapshot.providerId;
+      latest.modelId = snapshot.modelId;
+      latest.reasoningEffort = snapshot.reasoningEffort;
+      latest.permissionMode = snapshot.permissionMode;
+      writeConversation(userId, latest);
+    }
+  }
+
+  if (latest.agentSnapshot) {
+    input.providerId = latest.agentSnapshot
+      .providerId as typeof input.providerId;
+    input.modelId = latest.agentSnapshot.modelId;
+    input.reasoningEffort = latest.agentSnapshot.reasoningEffort;
+    input.permissionMode = latest.agentSnapshot.permissionMode;
   }
 
   try {

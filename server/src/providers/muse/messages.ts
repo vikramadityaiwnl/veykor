@@ -7,6 +7,7 @@ import { attachmentAvailable, stageAttachment } from "../../chat/attachments.js"
 import { imageMimeType, isInsideFolder, savedScreenshotPaths, screenshotName } from "../../chat/tool-images.js";
 import { responseSeconds } from "../../chat/chat-response-timing.js";
 import { museThoughtText } from "./thought-text.js";
+import { stripInstructionPrefix } from "../../agents/agent-config.js";
 
 export function emptyUsage(): ChatUsage {
   return { inputTokens: 0, outputTokens: 0, cost: 0, costAvailable: false };
@@ -244,7 +245,7 @@ export async function projectMessages(
         id: item.itemId,
         role: "user",
         submissionId: item.commandId || turnId,
-        text: item.text || "",
+        text: stripInstructionPrefix(item.text || ""),
         usage: emptyUsage(),
         createdAt: createdAt(item),
         tools: [],

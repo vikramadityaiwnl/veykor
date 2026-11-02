@@ -7,7 +7,7 @@ import type { ApprovalDecisionInput, FoldedItem, Session } from "./types.js";
 import { spawnMuse } from "./connection.js";
 import { scanDetectedServers } from "../../mcp/detect.js";
 import { listMcpServers } from "../../mcp/store.js";
-import { mergeSessionMcpSources, toSessionMcpServers } from "../../mcp/session-config.js";
+import { isSessionMcpNameConflict, mergeSessionMcpSources, toSessionMcpServers } from "../../mcp/session-config.js";
 import { metadataSession, projectFolder, readConversation, writeConversation, type StoredAttachment } from "../../chat/conversations.js";
 import { attachmentBytes, stageAttachment } from "../../chat/attachments.js";
 import { dbPath } from "../../db/client.js";
@@ -15,6 +15,7 @@ import { responseSeconds } from "../../chat/chat-response-timing.js";
 import { projectMessages, emptyUsage, createdAt } from "./messages.js";
 import { openNativeSession } from "./resume.js";
 import { nativeInput } from "./input.js";
+import { buildInstructionPrefix, denyChoiceId, isToolAllowed, skillDirName } from "../../agents/agent-config.js";
 
 type Muse = Awaited<ReturnType<typeof spawnMuse>>;
 
@@ -145,6 +146,18 @@ async function runtime(userId: number, id: string): Promise<Runtime> {
     const onApproval: Parameters<Session["onApproval"]>[0] = async (
       request,
     ) => {
+      const snapshot = metadata.agentSnapshot ?? null;
+
+      if (snapshot && !isToolAllowed(snapshot, request.toolName)) {
+        const choiceId = denyChoiceId(request.availableChoices);
+
+        if (choiceId) {
+          return { choiceId };
+        }
+
+        state.lastError = `Tool ${request.toolName} is not allowed for this agent`;
+      }
+
       return new Promise<ApprovalDecisionInput>((resolve) => {
         state.approvals.set(request.approvalId, {
           approval: {
@@ -205,29 +218,92 @@ async function runtime(userId: number, id: string): Promise<Runtime> {
         state.approvals.delete(String(params?.approvalId));
       }
     });
-    const mcpServers = muse.mcpGranted
-      ? toSessionMcpServers(
-          mergeSessionMcpSources(
-            listMcpServers(userId),
-            scanDetectedServers().flatMap((source) =>
-              source.entries.map((entry) => entry.input),
-            ),
+    const snapshot = metadata.agentSnapshot ?? null;
+    let mcpServers;
+
+    if (snapshot?.mcpMode === "restricted") {
+      if (!muse.mcpGranted) {
+        await muse.close();
+        throw new Error(
+          "Muse Code did not grant session MCP, so this agent MCP selection cannot be enforced",
+        );
+      }
+
+      mcpServers =
+        toSessionMcpServers(
+          listMcpServers(userId).filter((server) =>
+            snapshot.mcpServerIds.includes(server.id),
           ),
           folder,
-        )
-      : undefined;
+        ) ?? {};
+    } else if (muse.mcpGranted) {
+      mcpServers = toSessionMcpServers(
+        mergeSessionMcpSources(
+          listMcpServers(userId),
+          scanDetectedServers().flatMap((source) =>
+            source.entries.map((entry) => entry.input),
+          ),
+        ),
+        folder,
+      );
+    }
 
     let session: Session;
     try {
-      session = await openNativeSession(muse, folder, metadata, {
-        onApproval,
-        onApprovalError,
-        mcpServers,
-      });
+      try {
+        session = await openNativeSession(muse, folder, metadata, {
+          onApproval,
+          onApprovalError,
+          mcpServers,
+        });
+      } catch (error) {
+        if (
+          snapshot?.mcpMode === "restricted" ||
+          !isSessionMcpNameConflict(error)
+        ) {
+          throw error;
+        }
+
+        session = await openNativeSession(muse, folder, metadata, {
+          onApproval,
+          onApprovalError,
+          mcpServers: undefined,
+        });
+      }
       session.onApproval(onApproval);
       session.onApprovalError(onApprovalError);
       metadata.nativeSessionId = session.sessionId;
       writeConversation(userId, metadata);
+
+      if (snapshot?.skillsMode === "restricted") {
+        const catalog = await muse.connection.request("skill/list", {
+          sessionId: session.sessionId,
+        });
+        const entries = (catalog.skills || []) as {
+          selector: string;
+          source: string;
+        }[];
+
+        for (const entry of entries) {
+          const selected = snapshot.skillIds.some((id) => {
+            const dir = skillDirName(id);
+            return entry.selector === dir || entry.selector.endsWith(dir);
+          });
+
+          if (!selected) {
+            await muse.connection.command("skill/setActivation", {
+              sessionId: session.sessionId,
+              selector: entry.selector,
+              scope: ["user", "project", "bundled", "plugin"].includes(
+                entry.source,
+              )
+                ? entry.source
+                : "user",
+              activation: "off",
+            });
+          }
+        }
+      }
     } catch (error) {
       await muse.close();
       throw error;
@@ -408,12 +484,15 @@ export async function runChat(userId: number, input: ChatRequest) {
     metadata.recoveryError = "";
     writeConversation(userId, metadata);
     const live = await runtime(userId, id);
+    const snapshot = metadata.agentSnapshot ?? null;
     const parts = await nativeInput(
       [
         ...(message.attachments || []),
         ...(await stagedInputs(pendingAttachments)),
       ],
-      message.text,
+      snapshot
+        ? buildInstructionPrefix(snapshot.instructions) + message.text
+        : message.text,
       input.modelId,
     );
     if (Buffer.byteLength(JSON.stringify(parts)) > 10_000_000) {

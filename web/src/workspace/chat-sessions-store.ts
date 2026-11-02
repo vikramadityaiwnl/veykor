@@ -22,6 +22,8 @@ interface ChatSessionsState {
     modelId: string,
     reasoningEffort?: ChatSession["reasoningEffort"],
     permissionMode?: ChatSession["permissionMode"],
+    agentId?: string | null,
+    agentName?: string,
   ) => void;
   messages: Record<string, SessionMessage[]>;
   activeSessionId: string | null;
@@ -113,6 +115,8 @@ function sessionMetadata(session: SavedChatSession): ChatSession {
     reasoningEffort: session.reasoningEffort,
     nativeSessionId: session.nativeSessionId || "",
     permissionMode: session.permissionMode || "promptUnmatched",
+    agentId: session.agentId ?? null,
+    agentName: session.agentName || "",
     status: session.status || "idle",
     error: session.error || "",
     approvals: session.approvals || [],
@@ -355,6 +359,8 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
     modelId,
     reasoningEffort,
     permissionMode,
+    agentId,
+    agentName,
   ) => {
     set({
       sessions: get().sessions.map((session) =>
@@ -365,6 +371,8 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
               modelId,
               ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
               ...(permissionMode !== undefined ? { permissionMode } : {}),
+              ...(agentId !== undefined ? { agentId } : {}),
+              ...(agentName !== undefined ? { agentName } : {}),
             }
           : session,
       ),

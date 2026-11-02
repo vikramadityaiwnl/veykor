@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import type { ChatAttachment, ChatPermissionMode, ChatReasoningEffort, ChatSession } from "@veykor/shared";
+import type { AgentSnapshot, ChatAttachment, ChatPermissionMode, ChatReasoningEffort, ChatSession } from "@veykor/shared";
 import { db } from "../db/client.js";
 import { conversations, chatHistories, projects, sidebarSections } from "../db/schema.js";
 import { attachmentAvailable, stageAttachment, sweepStaging } from "./attachments.js";
@@ -25,6 +25,9 @@ export interface ConversationMetadata {
   reasoningEffort?: ChatReasoningEffort | "";
   nativeSessionId: string;
   permissionMode: ChatPermissionMode;
+  agentId?: string | null;
+  agentName?: string;
+  agentSnapshot?: AgentSnapshot | null;
   attachments: StoredAttachment[];
   queuePaused?: boolean;
   recoveryError?: string;
@@ -90,6 +93,8 @@ export function metadataSession(metadata: ConversationMetadata): ChatSession {
     reasoningEffort: metadata.reasoningEffort || undefined,
     nativeSessionId: metadata.nativeSessionId,
     permissionMode: metadata.permissionMode,
+    agentId: metadata.agentId ?? null,
+    agentName: metadata.agentName || metadata.agentSnapshot?.name || "",
     status: metadata.recoveryError ? "error" : "idle",
     error: metadata.recoveryError || "",
     approvals: [],
@@ -162,6 +167,9 @@ async function slimSession(
     reasoningEffort: session.reasoningEffort || "",
     nativeSessionId: session.nativeSessionId || "",
     permissionMode: session.permissionMode || "promptUnmatched",
+    agentId: session.agentId ?? null,
+    agentName: session.agentName || "",
+    agentSnapshot: null,
     attachments,
     turnTimings: {},
   };

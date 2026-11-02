@@ -13,6 +13,7 @@ import { resumeChat } from "./resume.js";
 import { modelReference } from "./models.js";
 import { permissionRules } from "./permissions.js";
 import { projectMessages, type OpenCodeMessage } from "./messages.js";
+import { isToolAllowed, skillDirName } from "../../agents/agent-config.js";
 
 interface Runtime {
   session: ChatSession;
@@ -65,6 +66,16 @@ async function runtime(userId: number, id: string): Promise<Runtime> {
     } else {
       metadata.nativeSessionId = await newChat(connection, metadata, folder);
       writeConversation(userId, metadata);
+    }
+
+    const snapshot = metadata.agentSnapshot ?? null;
+
+    if (snapshot?.instructions.trim()) {
+      await connection.request(
+        "PUT",
+        `/api/experimental/session/${encodeURIComponent(metadata.nativeSessionId)}/instructions/entries/veykor-agent`,
+        { value: snapshot.instructions },
+      );
     }
 
     const live: Runtime = {
@@ -128,7 +139,31 @@ async function sync(
       connection.request("GET", path),
       connection.request("GET", "/api/session/active"),
     ]);
-    const approvals: ChatApproval[] = permissions.data.map(
+    const snapshot = metadata.agentSnapshot ?? null;
+    const visiblePermissions = [];
+
+    for (const request of permissions.data as {
+      id: string;
+      action: string;
+      resources: string[];
+    }[]) {
+      if (snapshot && !isToolAllowed(snapshot, request.action)) {
+        try {
+          await connection.request(
+            "POST",
+            `${path}/permission/${encodeURIComponent(request.id)}/reply`,
+            { decision: "reject" },
+          );
+        } catch {
+          continue;
+        }
+        continue;
+      }
+
+      visiblePermissions.push(request);
+    }
+
+    const approvals: ChatApproval[] = visiblePermissions.map(
       (request: { id: string; action: string; resources: string[] }) => ({
         id: request.id,
         toolName: request.action,
@@ -249,6 +284,40 @@ async function setPermissionMode(
   live.syncedAt = 0;
 }
 
+async function resolvePromptSkills(
+  connection: Awaited<ReturnType<typeof openCodeConnection>>,
+  snapshot: { skillsMode: string; skillIds: string[] } | null,
+): Promise<{ id: string }[] | undefined> {
+  if (!snapshot || snapshot.skillsMode !== "restricted") {
+    return undefined;
+  }
+
+  const catalog = await connection.request("GET", "/api/skill");
+  const available = (catalog.data || []) as {
+    id: string;
+    name: string;
+    path: string;
+  }[];
+  const skills: { id: string }[] = [];
+
+  for (const skillId of snapshot.skillIds) {
+    const dir = skillDirName(skillId);
+    const match = available.find(
+      (entry) => entry.name === dir || entry.path.endsWith(`/${dir}`),
+    );
+
+    if (!match) {
+      throw new Error(
+        `Skill ${dir} is not available in OpenCode, so this agent cannot start`,
+      );
+    }
+
+    skills.push({ id: match.id });
+  }
+
+  return skills;
+}
+
 async function runTurn(userId: number, input: ChatRequest) {
   const id = input.conversationId;
   const key = keyFor(userId, id);
@@ -307,10 +376,14 @@ async function runTurn(userId: number, input: ChatRequest) {
       return;
     }
 
+    const snapshot = readConversation(userId, id)?.agentSnapshot ?? null;
+    const skills = await resolvePromptSkills(connection, snapshot);
+
     const accepted = await connection.request("POST", `${path}/prompt`, {
       id: `msg_${input.messageId.replaceAll("-", "")}`,
       text: message.text,
       files,
+      ...(skills ? { skills } : {}),
       metadata: { veykorSubmissionId: input.messageId },
       delivery: "queue",
     });
@@ -392,6 +465,9 @@ async function steer(userId: number, input: ChatRequest) {
   const live = await runtime(userId, input.conversationId);
   const connection = await openCodeConnection();
   const message = input.messages.at(-1)!;
+  const snapshot =
+    readConversation(userId, input.conversationId)?.agentSnapshot ?? null;
+  const skills = await resolvePromptSkills(connection, snapshot);
   const accepted = await connection.request(
     "POST",
     `${sessionPath(live.session.nativeSessionId!)}/prompt`,
@@ -402,6 +478,7 @@ async function steer(userId: number, input: ChatRequest) {
         uri: attachment.dataUrl,
         name: attachment.name,
       })),
+      ...(skills ? { skills } : {}),
       metadata: { veykorSubmissionId: input.messageId },
       delivery: "steer",
     },

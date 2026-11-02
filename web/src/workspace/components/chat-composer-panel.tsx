@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ChatMessageBehavior, QueuedChatMessage, ChatPermissionMode, ChatAttachment, ChatProvider, ChatReasoningEffort, ChatUsage, Project } from "@veykor/shared";
+import type { ChatMessageBehavior, ProjectAgent, QueuedChatMessage, ChatPermissionMode, ChatAttachment, ChatProvider, ChatReasoningEffort, ChatUsage, Project } from "@veykor/shared";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCube, faPaperclip, faArrowUp, faStop } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "@astryxdesign/core/Button";
@@ -14,12 +14,20 @@ import { ComposerProjectContext } from "./composer-project-context";
 import { ComposerTranscribeButton } from "./composer-transcribe-button";
 import { Banner } from "@astryxdesign/core/Banner";
 import { ComposerAttachment } from "./composer-attachment";
+import { AgentSelector } from "../../agents/components/agent-selector";
 import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
 import { getAttachmentKind, isImageFile, openInNewTab, readFileAsDataUrl } from "../chat-attachments";
 import { appendTranscript, useTranscribeRecorder } from "../transcribe-recorder";
 
 interface Props {
+  isProjectChat?: boolean;
+  agents?: ProjectAgent[];
+  agentId?: string;
+  agentName?: string;
+  isAgentLocked?: boolean;
+  agentMissing?: boolean;
+  onAgentChange?: (agentId: string) => void;
   sessionId: string;
   queuedMessages: QueuedChatMessage[];
   queuePaused: boolean;
@@ -90,6 +98,7 @@ export function ChatComposerPanel(props: Props) {
   const contextTokens = props.usage.inputTokens + props.usage.outputTokens;
   const disabled =
     !props.isReady ||
+    !!props.agentMissing ||
     !provider?.available ||
     !model ||
     isReadingFiles ||
@@ -201,6 +210,15 @@ export function ChatComposerPanel(props: Props) {
         />
       )}
 
+      {props.isProjectChat &&
+        !props.isAgentLocked &&
+        (props.agents || []).length === 0 && (
+          <Banner
+            status="info"
+            title="No agents available for this project. Create an agent from Agents and assign it to this project to start chatting."
+          />
+        )}
+
       <input
         ref={fileInput}
         type="file"
@@ -300,34 +318,46 @@ export function ChatComposerPanel(props: Props) {
                 clickAction={() => fileInput.current?.click()}
               />
 
-              <HStack className="hidden! min-w-0 md:flex!">
-                <ComposerModelSelection
-                  providers={props.providers}
-                  providerId={props.providerId}
-                  isProviderLocked={props.isProviderLocked}
-                  modelId={props.modelId}
-                  preferredModels={props.preferredModels}
-                  loading={props.loading}
-                  onSelection={props.onSelection}
+              {props.isProjectChat ? (
+                <AgentSelector
+                  agents={props.agents || []}
+                  value={props.agentId || ""}
+                  isLocked={!!props.isAgentLocked}
+                  lockedName={props.agentName || ""}
+                  onChange={(agentId) => props.onAgentChange?.(agentId)}
                 />
-              </HStack>
+              ) : (
+                <>
+                  <HStack className="hidden! min-w-0 md:flex!">
+                    <ComposerModelSelection
+                      providers={props.providers}
+                      providerId={props.providerId}
+                      isProviderLocked={props.isProviderLocked}
+                      modelId={props.modelId}
+                      preferredModels={props.preferredModels}
+                      loading={props.loading}
+                      onSelection={props.onSelection}
+                    />
+                  </HStack>
 
-              <HStack className="md:hidden!">
-                <Button
-                  label="Choose provider and model"
-                  size="sm"
-                  variant="ghost"
-                  isIconOnly
-                  icon={<FontAwesomeIcon icon={faCube} />}
-                  clickAction={() => setIsModelDialogOpen(true)}
-                />
-              </HStack>
+                  <HStack className="md:hidden!">
+                    <Button
+                      label="Choose provider and model"
+                      size="sm"
+                      variant="ghost"
+                      isIconOnly
+                      icon={<FontAwesomeIcon icon={faCube} />}
+                      clickAction={() => setIsModelDialogOpen(true)}
+                    />
+                  </HStack>
 
-              <ChatEffortSelection
-                model={model}
-                value={props.reasoningEffort}
-                onChange={props.onReasoningEffort}
-              />
+                  <ChatEffortSelection
+                    model={model}
+                    value={props.reasoningEffort}
+                    onChange={props.onReasoningEffort}
+                  />
+                </>
+              )}
 
               <HStack gap={3} vAlign="center" className="ml-auto">
                 {props.hasMessages && model && model.contextWindow > 0 && (

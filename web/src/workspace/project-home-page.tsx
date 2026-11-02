@@ -17,6 +17,7 @@ import { ChatComposerPanel } from "./components/chat-composer-panel";
 import { ConversationMessages } from "./components/conversation-messages";
 import { useProjectsStore } from "./projects-store";
 import { chatGreeting } from "./chat-greeting";
+import { useAgentsStore } from "../agents/agents-store";
 
 const noMessages: SessionMessage[] = [];
 
@@ -58,6 +59,7 @@ export function ProjectHomePage() {
     modelId: string;
     effort: ChatReasoningEffort;
   } | null>(null);
+  const [selectedAgentId, setSelectedAgentId] = useState("");
   const sessions = useChatSessionsStore((state) => state.sessions);
   const status = useChatSessionsStore((state) => state.status);
   const historyError = useChatSessionsStore((state) => state.error);
@@ -100,6 +102,16 @@ export function ProjectHomePage() {
     sections.find((section) => section.kind === "chats" && section.isFixed) ||
     sections.find((section) => section.kind === "chats");
   const isProjectChat = !!session?.projectId || !!draft?.projectId;
+  const activeProjectId = session?.projectId || draft?.projectId || "";
+  const projectAgents = useAgentsStore((state) =>
+    activeProjectId ? state.projectAgents[activeProjectId] : undefined,
+  );
+  const loadForProject = useAgentsStore((state) => state.loadForProject);
+  const agentList = projectAgents || [];
+  const effectiveAgentId = session?.agentId || selectedAgentId;
+  const selectedAgent = agentList.find(
+    (agent) => agent.id === effectiveAgentId,
+  );
   const permissionPreference =
     permissionChoice ||
     (isProjectChat ? "promptUnmatched" : savedPermissionMode);
@@ -109,6 +121,7 @@ export function ProjectHomePage() {
     (!isProjectChat ? defaultProviderPreference : "");
   const isProviderLocked =
     !!session?.nativeSessionId ||
+    (session?.queuedMessages || []).length > 0 ||
     messages.some((message) => message.role === "user");
   const provider = isProviderLocked
     ? providers.find((entry) => entry.id === preferredProviderId)
@@ -135,6 +148,38 @@ export function ProjectHomePage() {
     session?.reasoningEffort || savedEfforts[modelId],
     effortChoice,
   );
+  const agentProvider = selectedAgent
+    ? providers.find((entry) => entry.id === selectedAgent.providerId)
+    : undefined;
+  const agentModel = agentProvider?.models.find(
+    (entry) => entry.id === selectedAgent?.modelId,
+  );
+  const chatProviderId = isProjectChat
+    ? selectedAgent?.providerId || session?.providerId || ""
+    : providerId;
+  const chatModelId = isProjectChat
+    ? selectedAgent?.modelId || session?.modelId || ""
+    : modelId;
+  const chatEffort = isProjectChat
+    ? resolveEffort(
+        agentModel,
+        selectedAgent?.reasoningEffort || session?.reasoningEffort || undefined,
+        effortChoice,
+      )
+    : reasoningEffort;
+  const chatPermissionMode = isProjectChat
+    ? chatProviderId === "opencode" &&
+      (permissionChoice ||
+        session?.permissionMode ||
+        selectedAgent?.permissionMode ||
+        "promptUnmatched") === "onRequest"
+      ? "promptUnmatched"
+      : permissionChoice ||
+        session?.permissionMode ||
+        selectedAgent?.permissionMode ||
+        "promptUnmatched"
+    : permissionMode;
+  const agentMissing = isProjectChat && !effectiveAgentId && !isProviderLocked;
   const lastReply = messages
     .filter((message) => message.role === "assistant")
     .at(-1);
@@ -146,6 +191,7 @@ export function ProjectHomePage() {
   const ready =
     status === "ready" &&
     !missingSession &&
+    !agentMissing &&
     (!!session || !!draft?.projectId || !!defaultSection);
 
   useEffect(() => {
@@ -165,6 +211,12 @@ export function ProjectHomePage() {
       void loadDefaults();
     }
   }, [userId, loadDefaults]);
+
+  useEffect(() => {
+    if (activeProjectId) {
+      void loadForProject(activeProjectId);
+    }
+  }, [activeProjectId, loadForProject]);
 
   function select(providerId: string, modelId: string) {
     if (isProviderLocked && session?.providerId !== providerId) {
@@ -192,6 +244,36 @@ export function ProjectHomePage() {
     }
   }
 
+  function selectAgent(agentId: string) {
+    const agent = agentList.find((entry) => entry.id === agentId);
+
+    if (!agent || isProviderLocked) {
+      return;
+    }
+
+    setSelectedAgentId(agentId);
+    setEffortChoice(null);
+    useChatRuntimeStore.setState({
+      error: "",
+      errorKind: "",
+      errorSessionId: "",
+    });
+
+    if (session) {
+      useChatSessionsStore
+        .getState()
+        .configure(
+          session.id,
+          agent.providerId,
+          agent.modelId,
+          agent.reasoningEffort || undefined,
+          agent.permissionMode,
+          agent.id,
+          agent.name,
+        );
+    }
+  }
+
   async function submit(
     text: string,
     systemPrompt: string,
@@ -213,7 +295,17 @@ export function ProjectHomePage() {
     if (!willWait) {
       store.addMessage(target.id, text, attachments);
     }
-    store.configure(target.id, providerId, modelId, reasoningEffort);
+    store.configure(
+      target.id,
+      chatProviderId,
+      chatModelId,
+      chatEffort,
+      undefined,
+      isProjectChat ? effectiveAgentId || null : undefined,
+      isProjectChat
+        ? selectedAgent?.name || session?.agentName || ""
+        : undefined,
+    );
     const message = willWait
       ? { id: crypto.randomUUID(), text, attachments }
       : useChatSessionsStore.getState().messages[target.id].at(-1)!;
@@ -222,10 +314,10 @@ export function ProjectHomePage() {
       delivery: messageBehavior,
       conversationId: target.id,
       messageId: message.id,
-      permissionMode: session?.permissionMode || permissionMode,
-      reasoningEffort,
-      providerId: providerId as ProviderCliId,
-      modelId,
+      permissionMode: session?.permissionMode || chatPermissionMode,
+      reasoningEffort: chatEffort,
+      providerId: chatProviderId as ProviderCliId,
+      modelId: chatModelId,
       messages: [
         { role: "user", text: message.text, attachments: message.attachments },
       ],
@@ -261,14 +353,27 @@ export function ProjectHomePage() {
       composer={
         <ChatComposerPanel
           key={sessionId || draft?.id || "home"}
-          permissionMode={session?.permissionMode || permissionMode}
+          isProjectChat={isProjectChat}
+          agents={agentList}
+          agentId={effectiveAgentId}
+          agentName={session?.agentName || selectedAgent?.name || ""}
+          isAgentLocked={isProviderLocked}
+          agentMissing={agentMissing}
+          onAgentChange={selectAgent}
+          permissionMode={session?.permissionMode || chatPermissionMode}
           onPermissionMode={(mode) => {
             setPermissionChoice(mode);
 
             if (session) {
               useChatSessionsStore
                 .getState()
-                .configure(session.id, providerId, modelId, undefined, mode);
+                .configure(
+                  session.id,
+                  chatProviderId,
+                  chatModelId,
+                  undefined,
+                  mode,
+                );
               void chatAction(session.id, "mode", { mode }).catch((error) =>
                 useChatRuntimeStore.setState({
                   error: error.message,
@@ -282,14 +387,14 @@ export function ProjectHomePage() {
               void useChatDefaultsStore.getState().savePermission(mode);
             }
           }}
-          reasoningEffort={reasoningEffort}
+          reasoningEffort={chatEffort}
           onReasoningEffort={(effort) => {
-            setEffortChoice({ modelId, effort });
+            setEffortChoice({ modelId: chatModelId, effort });
 
             if (session) {
               useChatSessionsStore
                 .getState()
-                .configure(session.id, providerId, modelId, effort);
+                .configure(session.id, chatProviderId, chatModelId, effort);
               void chatAction(session.id, "settings", {
                 reasoningEffort: effort,
               }).catch((error) =>
@@ -312,8 +417,8 @@ export function ProjectHomePage() {
           )}
           providers={providers}
           isProviderLocked={isProviderLocked}
-          providerId={providerId}
-          modelId={modelId}
+          providerId={chatProviderId}
+          modelId={chatModelId}
           preferredModels={isProjectChat ? noPreferredModels : preferredModels}
           loading={loading}
           isReady={ready}

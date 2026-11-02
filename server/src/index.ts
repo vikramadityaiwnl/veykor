@@ -15,6 +15,7 @@ import { closeChatProviders } from "./providers/index.js";
 import { migrateStoredConversations } from "./chat/conversations.js";
 import { startMessageQueue, stopMessageQueue } from "./chat/message-queue.js";
 import { chatRoute } from "./routes/chat.js";
+import { agentsRoute } from "./routes/agents.js";
 import { handleTranscribeUpgrade, isTranscribeUpgrade } from "./transcribe/live.js";
 
 runMigrations();
@@ -42,6 +43,8 @@ app.route("/api/integrations", integrationsRoute);
 app.route("/api/status", statusRoute);
 
 app.route("/api/chat", chatRoute);
+
+app.route("/api/agents", agentsRoute);
 
 app.get("/api/me", requireAuth, (c) => c.json({ user: c.get("user") }));
 

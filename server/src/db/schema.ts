@@ -85,6 +85,29 @@ export const mcpServers = sqliteTable("mcp_servers", {
   updatedAt: integer("updated_at").notNull().default(0),
 });
 
+export const agents = sqliteTable("agents", {
+  id: text("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  name: text("name").notNull().default(""),
+  description: text("description").notNull().default(""),
+  instructions: text("instructions").notNull().default(""),
+  providerId: text("provider_id").notNull().default("muse"),
+  modelId: text("model_id").notNull().default(""),
+  reasoningEffort: text("reasoning_effort").notNull().default(""),
+  permissionMode: text("permission_mode").notNull().default("promptUnmatched"),
+  projectIds: text("project_ids").notNull().default("[]"),
+  toolsMode: text("tools_mode").notNull().default("unrestricted"),
+  allowedTools: text("allowed_tools").notNull().default("[]"),
+  skillsMode: text("skills_mode").notNull().default("unrestricted"),
+  skillIds: text("skill_ids").notNull().default("[]"),
+  mcpMode: text("mcp_mode").notNull().default("unrestricted"),
+  mcpServerIds: text("mcp_server_ids").notNull().default("[]"),
+  createdAt: integer("created_at").notNull().default(0),
+  updatedAt: integer("updated_at").notNull().default(0),
+});
+
 export const chatInputs = sqliteTable(
   "chat_inputs",
   {

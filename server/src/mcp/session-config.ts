@@ -82,6 +82,12 @@ function sessionArgs(
   return args;
 }
 
+export function isSessionMcpNameConflict(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || "");
+
+  return /session MCP server name conflicts/i.test(message);
+}
+
 export function toSessionMcpServers(
   servers: SessionMcpSource[],
   workspaceRoot = "",

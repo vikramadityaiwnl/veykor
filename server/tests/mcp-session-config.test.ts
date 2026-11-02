@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { CreateMcpServerInput, McpServer } from "@veykor/shared";
-import { mergeSessionMcpSources, toSessionMcpServers } from "../src/mcp/session-config.js";
+import { isSessionMcpNameConflict, mergeSessionMcpSources, toSessionMcpServers } from "../src/mcp/session-config.js";
 
 function server(partial: Partial<McpServer>): McpServer {
   return {
@@ -23,6 +23,18 @@ function server(partial: Partial<McpServer>): McpServer {
     ...partial,
   };
 }
+
+test("chat recognizes Muse session MCP name conflicts", () => {
+  assert.equal(
+    isSessionMcpNameConflict(
+      new Error(
+        "session MCP server name conflicts with a host or plugin server",
+      ),
+    ),
+    true,
+  );
+  assert.equal(isSessionMcpNameConflict(new Error("Model unavailable")), false);
+});
 
 test("chat forwards enabled stdio and http servers as optional session servers", () => {
   const mapped = toSessionMcpServers([

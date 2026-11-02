@@ -130,6 +130,8 @@ export interface ChatSession {
   reasoningEffort?: ChatReasoningEffort;
   nativeSessionId?: string;
   permissionMode?: ChatPermissionMode;
+  agentId?: string | null;
+  agentName?: string;
   status?: "idle" | "running" | "error";
   error?: string;
   approvals?: ChatApproval[];

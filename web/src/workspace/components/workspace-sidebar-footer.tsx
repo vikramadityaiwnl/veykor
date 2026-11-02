@@ -52,7 +52,7 @@ export function WorkspaceSidebarFooter() {
             icon: <FontAwesomeIcon icon={faRobot} />,
             onClick: () => {
               mobile.closeMobileNav();
-              navigate("/agent-presets");
+              navigate("/agents");
             },
           },
           {
