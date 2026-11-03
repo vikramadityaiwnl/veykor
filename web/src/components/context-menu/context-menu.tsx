@@ -15,6 +15,7 @@ export interface ContextMenuItem {
   id: string;
   label: string;
   danger?: boolean;
+  disabled?: boolean;
   children?: Array<ContextMenuChild>;
 }
 
@@ -117,6 +118,12 @@ function ContextMenu(props: Props) {
           return (
             <button
               key={entry.id}
+              disabled={entry.disabled}
+              style={
+                entry.disabled
+                  ? { opacity: 0.4, cursor: "not-allowed" }
+                  : undefined
+              }
               aria-expanded={hasChildren ? flyout?.id === entry.id : undefined}
               className={
                 entry.danger === true

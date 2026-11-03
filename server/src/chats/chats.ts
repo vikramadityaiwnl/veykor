@@ -498,10 +498,14 @@ chatRoute.delete("/:id", requireAuth, async (c) => {
     return c.json({ error: "Chat not found" }, 404);
   }
 
+  if (isMuseTurnRunning(row.museSessionId)) {
+    return c.json({ error: "Stop the running chat before deleting it." }, 409);
+  }
+
   try {
-    await leaveMuseSession(toSummary(row).museSessionId);
-  } catch {
-    // Best effort; the listing is removed either way.
+    await leaveMuseSession(row.museSessionId);
+  } catch (cause) {
+    return museFailure(c, cause);
   }
 
   db.delete(chats)

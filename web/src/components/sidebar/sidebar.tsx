@@ -174,7 +174,14 @@ function Sidebar(props: Props) {
             />
           ),
           id: "delete-chat",
-          label: "Delete",
+          disabled: chats.some(
+            (chat) => chat.id === context.chatId && chat.running,
+          ),
+          label: chats.some(
+            (chat) => chat.id === context.chatId && chat.running,
+          )
+            ? "Stop to delete"
+            : "Delete",
           danger: true,
         },
       ];

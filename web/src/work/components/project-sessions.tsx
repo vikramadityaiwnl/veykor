@@ -139,7 +139,14 @@ function ProjectSessions(props: Props) {
             {
               kind: "item",
               id: "delete",
-              label: "Delete",
+              disabled: chats.some(
+                (chat) => chat.id === menu.chat.id && chat.running,
+              ),
+              label: chats.some(
+                (chat) => chat.id === menu.chat.id && chat.running,
+              )
+                ? "Stop to delete"
+                : "Delete",
               danger: true,
               icon: <TrashIcon className="size-4 text-red-400" />,
             },
