@@ -23,47 +23,41 @@ function AuthForm(props: AuthFormProps) {
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <div className="space-y-1.5 text-left">
-        <label
-          className="block text-sm font-light text-zinc-300"
-          htmlFor="username"
-        >
-          Username
+      <div className="text-left">
+        <label className="sr-only" htmlFor="username">
+          username
         </label>
 
         <input
           autoComplete="username"
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2.5 font-light text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-400"
+          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 font-light text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-400"
           id="username"
           name="username"
           onChange={(event) => setUsername(event.target.value)}
-          placeholder="sam"
+          placeholder="username"
           type="text"
           value={username}
         />
       </div>
 
-      <div className="space-y-1.5 text-left">
-        <label
-          className="block text-sm font-light text-zinc-300"
-          htmlFor="password"
-        >
-          Password
+      <div className="text-left">
+        <label className="sr-only" htmlFor="password">
+          password
         </label>
 
         <input
           autoComplete="current-password"
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2.5 font-light text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-400"
+          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 font-light text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-400"
           id="password"
           name="password"
           onChange={(event) => setPassword(event.target.value)}
-          placeholder="••••••••"
+          placeholder="password"
           type="password"
           value={password}
         />
 
         {props.passwordHint !== "" && (
-          <p className="text-xs font-light text-zinc-500">
+          <p className="pt-1.5 text-xs font-light text-zinc-500">
             {props.passwordHint}
           </p>
         )}

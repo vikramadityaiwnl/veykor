@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { AuthStatus, LoginRequest } from "@veykor/shared";
 import { login, register } from "./auth-client.ts";
 import AuthForm from "./components/auth-form.tsx";
+import BrandPanel from "../components/brand-panel/brand-panel.tsx";
+import Logo from "../components/logo/logo.tsx";
 
 interface Props {
   status: AuthStatus;
@@ -47,63 +49,85 @@ function AuthPage(props: Props) {
   }
 
   return (
-    <main className="grid min-h-screen place-items-center bg-zinc-950 px-4 py-10">
-      <section className="w-full max-w-sm space-y-6 rounded-xl border border-zinc-800 bg-zinc-900 p-8">
-        <div className="space-y-2 text-center">
-          <h1 className="text-2xl font-semibold text-zinc-50">veykor</h1>
+    <main className="grid min-h-screen bg-zinc-950 md:grid-cols-2">
+      <BrandPanel
+        description="veykor is your local workspace for conversations and agentic workflows, fast, private, and always on your network."
+        title="Chat and work, side by side"
+      />
 
-          <p className="text-sm font-light text-zinc-400">
-            {activeMode === "register"
-              ? "Create an account on the host machine"
-              : "Sign in from your local network"}
-          </p>
-        </div>
+      <section className="flex items-center justify-center px-6 py-10">
+        <div className="w-full max-w-sm space-y-6">
+          <div className="flex items-center gap-2.5 md:hidden">
+            <Logo size={28} />
 
-        {canRegister && (
-          <div
-            className="grid grid-cols-2 gap-1 rounded-lg bg-zinc-800 p-1"
-            role="tablist"
-          >
-            <button
-              className={
-                activeMode === "login"
-                  ? "rounded-md bg-zinc-700 px-4 py-1.5 text-sm font-semibold text-zinc-50"
-                  : "rounded-md px-4 py-1.5 text-sm font-light text-zinc-400 hover:text-zinc-200"
-              }
-              onClick={() => switchMode("login")}
-              role="tab"
-              type="button"
-            >
-              Sign in
-            </button>
-
-            <button
-              className={
-                activeMode === "register"
-                  ? "rounded-md bg-zinc-700 px-4 py-1.5 text-sm font-semibold text-zinc-50"
-                  : "rounded-md px-4 py-1.5 text-sm font-light text-zinc-400 hover:text-zinc-200"
-              }
-              onClick={() => switchMode("register")}
-              role="tab"
-              type="button"
-            >
-              Create account
-            </button>
+            <span className="text-lg font-semibold text-zinc-50">veykor</span>
           </div>
-        )}
 
-        <AuthForm
-          error={error}
-          onSubmit={handleSubmit}
-          passwordHint={
-            activeMode === "register" ? "Use at least 8 characters." : ""
-          }
-          pending={pending}
-          pendingLabel={
-            activeMode === "register" ? "Creating account..." : "Signing in..."
-          }
-          submitLabel={activeMode === "register" ? "Create account" : "Sign in"}
-        />
+          {activeMode === "login" && (
+            <div className="space-y-2">
+              <h1 className="text-2xl font-semibold text-zinc-50">
+                Welcome back
+              </h1>
+
+              <p className="text-sm font-light text-zinc-400">
+                Sign in from your local network
+              </p>
+            </div>
+          )}
+
+          {activeMode === "register" && (
+            <div className="space-y-2">
+              <h1 className="text-2xl font-semibold text-zinc-50">
+                Create your account
+              </h1>
+
+              <p className="text-sm font-light text-zinc-400">
+                Set up an account on the host machine
+              </p>
+            </div>
+          )}
+
+          <AuthForm
+            error={error}
+            onSubmit={handleSubmit}
+            passwordHint=""
+            pending={pending}
+            pendingLabel={
+              activeMode === "register"
+                ? "Creating account..."
+                : "Signing in..."
+            }
+            submitLabel={
+              activeMode === "register" ? "Create account" : "Sign in"
+            }
+          />
+
+          {canRegister && activeMode === "login" && (
+            <p className="text-center text-sm font-light text-zinc-400">
+              New to veykor?{" "}
+              <button
+                className="cursor-pointer font-semibold text-zinc-100 hover:underline"
+                onClick={() => switchMode("register")}
+                type="button"
+              >
+                Create an account
+              </button>
+            </p>
+          )}
+
+          {canRegister && activeMode === "register" && (
+            <p className="text-center text-sm font-light text-zinc-400">
+              Already have an account?{" "}
+              <button
+                className="cursor-pointer font-semibold text-zinc-100 hover:underline"
+                onClick={() => switchMode("login")}
+                type="button"
+              >
+                Sign in
+              </button>
+            </p>
+          )}
+        </div>
       </section>
     </main>
   );
