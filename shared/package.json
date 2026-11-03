@@ -4,8 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {
-    "./health": {
-      "types": "./health/health-response.ts"
+    ".": {
+      "types": "./index.ts",
+      "default": "./index.ts"
     }
   },
   "scripts": {

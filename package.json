@@ -7,7 +7,7 @@
     "dev": "concurrently -n web,server -c blue,green \"npm run dev --prefix web\" \"npm run dev --prefix server\"",
     "build": "npm run typecheck --prefix shared && npm run build --prefix web && npm run build --prefix server",
     "install:all": "npm install --prefix shared && npm install --prefix web && npm install --prefix server",
-    "format": "prettier --config .prettier/.prettierrc.json --ignore-path .prettier/.prettierignore --write ."
+    "format": "prettier --config .prettier/.prettierrc.json --ignore-path .prettier/.prettierignore --write . && node scripts/collapse-import-blanks.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

@@ -4,10 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node --env-file=.env --import tsx --watch-path=src src/index.ts",
+    "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "start": "node --env-file=.env dist/index.js"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.tests.json",
+    "start": "node dist/index.js",
+    "test": "npm run typecheck && node --import tsx --test 'tests/**/*.test.ts'"
   },
   "dependencies": {
     "@veykor/shared": "file:../shared",
