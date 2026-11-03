@@ -11,8 +11,9 @@
     "test": "npm run typecheck && node --import tsx --test 'tests/**/*.test.ts'"
   },
   "dependencies": {
-    "@veykor/shared": "file:../shared",
     "@hono/node-server": "^1.19.0",
+    "@muse-code/sdk": "^1.4.14",
+    "@veykor/shared": "file:../shared",
     "better-sqlite3": "^12.8.0",
     "drizzle-orm": "^0.45.1",
     "hono": "^4.12.0"

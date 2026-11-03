@@ -1,6 +1,10 @@
 import { create } from "zustand";
-import { defaultPreferences } from "@veykor/shared";
-import type { SidebarTab, UserPreferences } from "@veykor/shared";
+import { defaultPreferences, recentSectionId } from "@veykor/shared";
+import type {
+  SidebarSection,
+  SidebarTab,
+  UserPreferences,
+} from "@veykor/shared";
 import { defaultChats } from "./chats.ts";
 import { fetchPreferences, savePreferences } from "./preferences-client.ts";
 
@@ -75,9 +79,18 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
     try {
       const stored = await fetchPreferences();
 
+      const sections: Array<SidebarSection> = stored.sections.some(
+        (section) => section.id === recentSectionId,
+      )
+        ? stored.sections
+        : [
+            { id: recentSectionId, title: "Recent", open: true },
+            ...stored.sections,
+          ];
+
       set({
         ...stored,
-        sections: stored.sections.map((section) => ({
+        sections: sections.map((section) => ({
           ...section,
           open: false,
         })),
@@ -87,7 +100,7 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
 
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          usePreferencesStore.setState({ sections: stored.sections });
+          usePreferencesStore.setState({ sections });
         });
       });
     } catch (cause) {
@@ -146,6 +159,10 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
   },
 
   deleteSection: (id) => {
+    if (id === recentSectionId) {
+      return;
+    }
+
     const state = get();
     const fallback = state.sections[0]?.id ?? "";
 

@@ -5,6 +5,7 @@ import type { CurrentUserResponse, HealthResponse } from "@veykor/shared";
 import { authRoute, csrfProtection, requireAuth } from "./auth/auth.js";
 import type { AuthEnv } from "./auth/auth.js";
 import { loadServerConfig } from "./auth/config.js";
+import { chatRoute, modelRoute } from "./chats/chats.js";
 import { db } from "./db/client.js";
 import { preferencesRoute } from "./preferences/preferences.js";
 import { profileRoute } from "./profile/profile.js";
@@ -16,6 +17,8 @@ const app = new Hono<AuthEnv>();
 app.use("/api/*", csrfProtection);
 
 app.route("/api/auth", authRoute);
+app.route("/api/chats", chatRoute);
+app.route("/api/models", modelRoute);
 app.route("/api/preferences", preferencesRoute);
 app.route("/api/profile", profileRoute);
 

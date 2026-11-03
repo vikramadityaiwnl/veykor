@@ -17,10 +17,15 @@ const maxIdLength = 128;
 
 const maxMappings = 500;
 
+export const recentSectionId = "recent";
+
 export function defaultPreferences(): UserPreferences {
   return {
     lastTab: "chat",
-    sections: [{ id: "chats", title: "Chats", open: true }],
+    sections: [
+      { id: recentSectionId, title: "Recent", open: true },
+      { id: "chats", title: "Chats", open: true },
+    ],
     chatSections: {},
     chatTitles: {},
     customChats: [],

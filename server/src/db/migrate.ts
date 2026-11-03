@@ -53,4 +53,20 @@ export function runMigrations(sqlite: Database.Database): void {
       updated_at TEXT NOT NULL DEFAULT ''
     );
   `);
+
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS chats (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL DEFAULT 0 REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL DEFAULT 'Untitled chat',
+      section_id TEXT NOT NULL DEFAULT 'recent',
+      muse_session_id TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT ''
+    );
+  `);
+
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS chats_user_updated_idx ON chats(user_id, updated_at);
+  `);
 }
