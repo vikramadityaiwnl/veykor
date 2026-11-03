@@ -25,6 +25,7 @@ interface Props {
   onRenameProject: (projectId: string) => void;
   onMoveProject: (projectId: string, sectionId: string) => void;
   onDeleteProject: (project: Project) => void;
+  onDeleteProjectChats: (project: Project) => void;
 }
 
 export function WorkspaceProjectsList(props: Props) {
@@ -74,6 +75,15 @@ export function WorkspaceProjectsList(props: Props) {
                 },
               })),
             }),
+      },
+      {
+        label: "Delete all chat",
+        icon: <FontAwesomeIcon icon={faTrash} size="sm" aria-hidden="true" />,
+        variant: "destructive" as const,
+        isDisabled: sessionsFor(project.id).length === 0,
+        onClick: () => {
+          props.onDeleteProjectChats(project);
+        },
       },
       {
         label: "Delete project",

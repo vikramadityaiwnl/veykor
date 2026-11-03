@@ -23,6 +23,7 @@ export type {
   ProjectContext,
   CreateProjectInput,
   UpdateProjectInput,
+  DeleteProjectChatsResponse,
 } from "./projects/index.js";
 
 export type {

@@ -11,6 +11,7 @@ import { useChatSessionsStore, type ChatSession } from "./chat-sessions-store";
 import { useProjectsStore } from "./projects-store";
 import { useSidebarSectionsStore } from "./sidebar-sections-store";
 import { AddProjectDialog } from "./components/add-project-dialog";
+import { DeleteProjectChatsDialog } from "./components/delete-project-chats-dialog";
 import { DeleteProjectDialog } from "./components/delete-project-dialog";
 import { DeleteSectionDialog } from "./components/delete-section-dialog";
 import { RenameProjectDialog } from "./components/rename-project-dialog";
@@ -47,6 +48,8 @@ export function WorkspaceLayout() {
   );
   const [renameProjectId, setRenameProjectId] = useState<string | null>(null);
   const [projectPendingDelete, setProjectPendingDelete] =
+    useState<Project | null>(null);
+  const [projectChatsPendingDelete, setProjectChatsPendingDelete] =
     useState<Project | null>(null);
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([]);
   const [sectionDialog, setSectionDialog] = useState<SectionDialogState | null>(
@@ -240,6 +243,41 @@ export function WorkspaceLayout() {
     return true;
   }
 
+  async function confirmDeleteProjectChats(): Promise<boolean> {
+    if (!projectChatsPendingDelete) {
+      return false;
+    }
+
+    const projectId = projectChatsPendingDelete.id;
+    const doomedIds = new Set(
+      sessions
+        .filter((session) => session.projectId === projectId)
+        .map((session) => session.id),
+    );
+    const runningId = useChatRuntimeStore.getState().runningSessionId;
+
+    if (runningId && doomedIds.has(runningId)) {
+      useChatRuntimeStore.getState().stop();
+    }
+
+    const deleted = await useChatSessionsStore
+      .getState()
+      .deleteProjectSessions(projectId);
+
+    if (!deleted) {
+      return false;
+    }
+
+    if (activeSessionId !== null && doomedIds.has(activeSessionId)) {
+      selectSession(null);
+      navigate("/");
+    }
+
+    await loadChats();
+
+    return true;
+  }
+
   async function confirmDeleteProject(): Promise<boolean> {
     if (!projectPendingDelete) {
       return false;
@@ -352,6 +390,7 @@ export function WorkspaceLayout() {
               onRenameProject={setRenameProjectId}
               onMoveProject={moveProjectToSection}
               onDeleteProject={setProjectPendingDelete}
+              onDeleteProjectChats={setProjectChatsPendingDelete}
               onToggleSection={(section) => {
                 void toggleSection(section);
               }}
@@ -465,6 +504,20 @@ export function WorkspaceLayout() {
           setSectionDialog(null);
         }}
         onSubmit={submitSection}
+      />
+      <DeleteProjectChatsDialog
+        project={projectChatsPendingDelete}
+        chatCount={
+          projectChatsPendingDelete === null
+            ? 0
+            : sessions.filter(
+                (session) => session.projectId === projectChatsPendingDelete.id,
+              ).length
+        }
+        onCancel={() => {
+          setProjectChatsPendingDelete(null);
+        }}
+        onConfirm={confirmDeleteProjectChats}
       />
       <DeleteProjectDialog
         project={projectPendingDelete}

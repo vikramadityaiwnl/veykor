@@ -32,6 +32,7 @@ interface Props {
   onRenameProject: (projectId: string) => void;
   onMoveProject: (projectId: string, sectionId: string) => void;
   onDeleteProject: (project: Project) => void;
+  onDeleteProjectChats: (project: Project) => void;
   onToggleSection: (section: SidebarSection) => void;
   onCreateSection: () => void;
   onEditSection: (section: SidebarSection) => void;
@@ -86,6 +87,7 @@ export function SidebarSections(props: Props) {
         onRenameProject={props.onRenameProject}
         onMoveProject={props.onMoveProject}
         onDeleteProject={props.onDeleteProject}
+        onDeleteProjectChats={props.onDeleteProjectChats}
       />
     );
   }

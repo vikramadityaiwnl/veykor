@@ -16,6 +16,7 @@ interface ChatSessionsState {
   save: () => Promise<void>;
   renameSession: (sessionId: string, title: string) => Promise<boolean>;
   deleteSession: (sessionId: string) => Promise<boolean>;
+  deleteProjectSessions: (projectId: string) => Promise<boolean>;
   configure: (
     sessionId: string,
     providerId: string,
@@ -350,6 +351,67 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
     set({
       activeSessionId:
         get().activeSessionId === sessionId ? null : get().activeSessionId,
+    });
+    return true;
+  },
+  deleteProjectSessions: async (projectId) => {
+    if (get().status !== "ready") {
+      return false;
+    }
+
+    const doomed = get().sessions.filter(
+      (session) => session.projectId === projectId,
+    );
+
+    if (doomed.length === 0) {
+      return true;
+    }
+
+    const doomedIds = new Set(doomed.map((session) => session.id));
+    const originalSessions = get().sessions;
+    const originalMessages = get().messages;
+    const messages = { ...get().messages };
+
+    for (const id of doomedIds) {
+      delete messages[id];
+    }
+
+    set({
+      sessions: get().sessions.filter(
+        (session) => session.projectId !== projectId,
+      ),
+      messages,
+    });
+
+    const userId = useAuthStore.getState().status?.user?.id;
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/chats`,
+      { method: "DELETE", headers: { "X-Veykor-Request": "1" } },
+    );
+    const failed = !response.ok;
+
+    if (failed) {
+      set({
+        error: "Unable to delete conversations. Stop any running turn first.",
+      });
+    }
+
+    if (useAuthStore.getState().status?.user?.id !== userId) {
+      return false;
+    }
+
+    if (failed) {
+      set({
+        sessions: originalSessions,
+        messages: originalMessages,
+      });
+      return false;
+    }
+
+    set({
+      activeSessionId: doomedIds.has(get().activeSessionId ?? "")
+        ? null
+        : get().activeSessionId,
     });
     return true;
   },
