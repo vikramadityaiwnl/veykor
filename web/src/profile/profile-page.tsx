@@ -144,7 +144,7 @@ function ProfilePage(_props: Props) {
 
             <div className="flex items-center gap-2">
               <button
-                className="cursor-pointer rounded-lg bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="cursor-pointer rounded-lg bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-white light:hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={saving || !dirty}
                 onClick={() => void handleSave()}
                 type="button"

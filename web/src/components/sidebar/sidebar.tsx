@@ -416,7 +416,7 @@ function Sidebar(props: Props) {
       <div className="space-y-4 p-4">
         <div className="flex items-center justify-between gap-2 px-1">
           <button
-            className="shrink-0 cursor-pointer text-xl font-semibold text-zinc-50 transition hover:text-white"
+            className="shrink-0 cursor-pointer text-xl font-semibold text-zinc-50 transition hover:text-white light:hover:text-zinc-500"
             onClick={() => goHome(recentSectionId)}
             title="Go home"
             type="button"
@@ -463,7 +463,7 @@ function Sidebar(props: Props) {
                   action={
                     <button
                       aria-label="New chat"
-                      className="pointer-events-none grid size-7 place-items-center rounded-lg text-zinc-500 opacity-0 transition hover:bg-zinc-800 hover:text-zinc-100 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+                      className="pointer-events-none grid size-7 place-items-center rounded-lg text-zinc-500 opacity-0 transition hover:bg-zinc-800 hover:text-zinc-50 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
                       onClick={() => goHome(section.id)}
                       title="New chat"
                       type="button"
@@ -609,7 +609,7 @@ function Sidebar(props: Props) {
               </button>
 
               <button
-                className="cursor-pointer rounded-lg bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-white"
+                className="cursor-pointer rounded-lg bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-white light:hover:bg-zinc-200"
                 type="submit"
               >
                 {dialog.kind === "create-section" ? "Create" : "Save"}

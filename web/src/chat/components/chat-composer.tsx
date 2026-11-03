@@ -5,7 +5,7 @@ import {
   PaperClipIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { StopCircleIcon } from "@heroicons/react/24/solid";
+import { StopIcon } from "@heroicons/react/24/solid";
 import ComposerPanel from "./composer-panel.tsx";
 import EffortPicker from "./effort-picker.tsx";
 import ModelPicker from "./model-picker.tsx";
@@ -161,16 +161,16 @@ function ChatComposer() {
 
             {streaming ? (
               <button
-                className="grid place-items-center rounded-full p-2 text-zinc-100 hover:bg-zinc-800"
+                className="grid place-items-center rounded-full bg-red-600 p-2 text-white transition hover:bg-red-500"
                 onClick={() => cancelTurn()}
                 title="Stop"
                 type="button"
               >
-                <StopCircleIcon className="size-4" />
+                <StopIcon aria-hidden="true" className="size-4" />
               </button>
             ) : (
               <button
-                className="grid place-items-center rounded-full bg-zinc-100 p-2 text-zinc-950 hover:bg-white disabled:opacity-40"
+                className="grid place-items-center rounded-full bg-zinc-100 p-2 text-zinc-950 transition hover:bg-white disabled:opacity-40 light:hover:bg-zinc-200"
                 disabled={!canSend}
                 onClick={handleSend}
                 title="Send"

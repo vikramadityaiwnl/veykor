@@ -84,7 +84,11 @@ function ModelPicker() {
 
                 return (
                   <button
-                    className="flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-zinc-800"
+                    className={
+                      selected
+                        ? "flex w-full items-start gap-3 rounded-xl bg-zinc-800 p-3 text-left hover:bg-zinc-700"
+                        : "flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-zinc-800"
+                    }
                     key={`${model.providerId}:${model.modelId}`}
                     onClick={() => handleSelect(model)}
                     type="button"

@@ -49,6 +49,7 @@ interface ChatState {
   permission: ChatPermission;
   draftSeq: number;
   composerImages: Array<ComposerImage>;
+  sentAttachments: Record<string, Array<string>>;
   catalog: ChatModelCatalog | null;
   catalogLoading: boolean;
   loadChats: () => Promise<void>;
@@ -153,6 +154,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   permission: "read-only",
   draftSeq: 0,
   composerImages: [],
+  sentAttachments: {},
   catalog: null,
   catalogLoading: false,
 
@@ -267,7 +269,6 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     set({ streaming: true, streamingTurnId: "", error: "" });
 
-    revokeImages(images);
     set({ composerImages: [] });
 
     const payload: Array<TurnImageInput> = images.map((image) => ({
@@ -304,6 +305,17 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       }
 
       settings.permission = current.permission;
+
+      if (images.length > 0) {
+        const previews = images.map((image) => image.previewUrl);
+
+        set((stored) => ({
+          sentAttachments: {
+            ...stored.sentAttachments,
+            [chatId]: [...(stored.sentAttachments[chatId] ?? []), ...previews],
+          },
+        }));
+      }
 
       if (
         settings.modelId !== undefined ||

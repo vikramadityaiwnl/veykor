@@ -70,7 +70,7 @@ function AuthForm(props: AuthFormProps) {
       )}
 
       <button
-        className="w-full rounded-lg bg-zinc-100 px-4 py-2.5 font-semibold text-zinc-950 transition duration-200 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+        className="w-full rounded-lg bg-zinc-100 px-4 py-2.5 font-semibold text-zinc-950 transition duration-200 hover:bg-white light:hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
         disabled={props.pending}
         type="submit"
       >

@@ -31,7 +31,7 @@ function SegmentedControl<T extends string>(props: Props<T>) {
         const active = option.value === props.value;
         const toneClass = active
           ? "bg-zinc-700 font-semibold text-zinc-50"
-          : "font-light text-zinc-400 transition hover:text-zinc-200";
+          : "font-light text-zinc-400 transition hover:bg-zinc-700/40 hover:text-zinc-200";
 
         return (
           <button

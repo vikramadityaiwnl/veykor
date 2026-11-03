@@ -71,7 +71,11 @@ function EffortPicker() {
 
           <div className="p-1">
             <button
-              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+              className={
+                reasoningEffort === ""
+                  ? "flex w-full items-center justify-between rounded-lg bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-700"
+                  : "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+              }
               onClick={() => handleSelect("")}
               type="button"
             >
@@ -83,16 +87,22 @@ function EffortPicker() {
             </button>
 
             {options.map((option) => {
+              const selected = reasoningEffort === option;
+
               return (
                 <button
-                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm capitalize text-zinc-200 hover:bg-zinc-800"
+                  className={
+                    selected
+                      ? "flex w-full items-center justify-between rounded-lg bg-zinc-800 px-3 py-2 text-left text-sm capitalize text-zinc-200 hover:bg-zinc-700"
+                      : "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm capitalize text-zinc-200 hover:bg-zinc-800"
+                  }
                   key={option}
                   onClick={() => handleSelect(option)}
                   type="button"
                 >
                   <span>{option}</span>
 
-                  {reasoningEffort === option ? (
+                  {selected ? (
                     <CheckIcon className="size-4 text-zinc-300" />
                   ) : null}
                 </button>

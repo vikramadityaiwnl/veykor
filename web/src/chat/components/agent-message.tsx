@@ -113,7 +113,7 @@ const markdownComponents: Components = {
 
 function AgentMessage(props: Props) {
   return (
-    <div className="w-full min-w-0">
+    <div className="w-full min-w-0 space-y-3">
       <ReactMarkdown
         components={markdownComponents}
         remarkPlugins={[remarkGfm]}

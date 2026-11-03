@@ -76,7 +76,7 @@ function ApprovalCard(props: Props) {
             <button
               className={
                 approve
-                  ? "rounded-full bg-zinc-100 px-4 py-1.5 text-sm font-medium text-zinc-950 hover:bg-white disabled:opacity-40"
+                  ? "rounded-full bg-zinc-100 px-4 py-1.5 text-sm font-medium text-zinc-950 hover:bg-white light:hover:bg-zinc-200 disabled:opacity-40"
                   : "rounded-full border border-zinc-700 px-4 py-1.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
               }
               disabled={deciding}
@@ -105,7 +105,7 @@ function ApprovalCard(props: Props) {
           />
 
           <button
-            className="rounded-full bg-zinc-100 px-4 py-1.5 text-sm font-medium text-zinc-950 hover:bg-white disabled:opacity-40"
+            className="rounded-full bg-zinc-100 px-4 py-1.5 text-sm font-medium text-zinc-950 hover:bg-white light:hover:bg-zinc-200 disabled:opacity-40"
             disabled={deciding}
             onClick={() => handleDecide(feedbackChoice, feedback)}
             type="button"

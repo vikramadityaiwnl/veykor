@@ -11,6 +11,8 @@ function ChatScreen() {
   const items = useChatStore((state) => state.items);
   const historyLoading = useChatStore((state) => state.historyLoading);
   const streaming = useChatStore((state) => state.streaming);
+  const streamingTurnId = useChatStore((state) => state.streamingTurnId);
+  const sentAttachments = useChatStore((state) => state.sentAttachments);
   const error = useChatStore((state) => state.error);
   const clearError = useChatStore((state) => state.clearError);
   const loadCatalog = useChatStore((state) => state.loadCatalog);
@@ -18,6 +20,9 @@ function ChatScreen() {
   useEffect(() => {
     void loadCatalog(activeChatId ?? undefined);
   }, [activeChatId, loadCatalog]);
+
+  const imageUrls =
+    activeChatId === null ? [] : (sentAttachments[activeChatId] ?? []);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -30,7 +35,12 @@ function ChatScreen() {
           <SessionLoader />
         </div>
       ) : (
-        <MessageList items={items} streaming={streaming} />
+        <MessageList
+          imageUrls={imageUrls}
+          items={items}
+          streaming={streaming}
+          streamingTurnId={streamingTurnId}
+        />
       )}
 
       {error !== "" && (

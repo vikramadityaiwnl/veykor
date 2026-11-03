@@ -6,8 +6,34 @@ import ToolCallBlock from "./tool-call-block.tsx";
 import UserMessage from "./user-message.tsx";
 
 interface Props {
-  items: ChatHistoryItem[];
+  imageUrls: Array<string>;
+  items: Array<ChatHistoryItem>;
   streaming: boolean;
+  streamingTurnId: string;
+}
+
+function allocateImages(
+  items: Array<ChatHistoryItem>,
+  imageUrls: Array<string>,
+): Map<string, Array<string>> {
+  const assigned = new Map<string, Array<string>>();
+
+  let cursor = 0;
+
+  for (const item of items) {
+    if (item.kind !== "userMessage" || item.attachments.length === 0) {
+      continue;
+    }
+
+    assigned.set(
+      item.itemId,
+      imageUrls.slice(cursor, cursor + item.attachments.length),
+    );
+
+    cursor += item.attachments.length;
+  }
+
+  return assigned;
 }
 
 function MessageList(props: Props) {
@@ -28,9 +54,29 @@ function MessageList(props: Props) {
     }
   }, [props.items, props.streaming]);
 
+  const hasTurnContent =
+    props.streamingTurnId !== "" &&
+    props.items.some(
+      (item) =>
+        item.turnId === props.streamingTurnId &&
+        (item.kind === "agentMessage" ||
+          item.kind === "reasoning" ||
+          item.kind === "toolCall"),
+    );
+
+  const showPending = props.streaming && !hasTurnContent;
+
+  const imageByItem = allocateImages(props.items, props.imageUrls);
+
   function renderItem(item: ChatHistoryItem) {
     if (item.kind === "userMessage") {
-      return <UserMessage item={item} key={item.itemId} />;
+      return (
+        <UserMessage
+          images={imageByItem.get(item.itemId) ?? []}
+          item={item}
+          key={item.itemId}
+        />
+      );
     }
 
     if (item.kind === "agentMessage") {
@@ -57,15 +103,14 @@ function MessageList(props: Props) {
       <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6">
         {props.items.map((item) => renderItem(item))}
 
-        {props.streaming && (
-          <div aria-hidden="true" className="flex items-center gap-1.5 px-1">
-            <span className="size-1.5 animate-bounce rounded-full bg-zinc-500 motion-reduce:animate-none" />
-
-            <span className="size-1.5 animate-bounce rounded-full bg-zinc-500 motion-reduce:animate-none [animation-delay:150ms]" />
-
-            <span className="size-1.5 animate-bounce rounded-full bg-zinc-500 motion-reduce:animate-none [animation-delay:300ms]" />
-          </div>
-        )}
+        {showPending ? (
+          <p
+            aria-hidden="true"
+            className="animate-shimmer w-fit px-1 text-sm font-light"
+          >
+            Thinking…
+          </p>
+        ) : null}
       </div>
     </div>
   );

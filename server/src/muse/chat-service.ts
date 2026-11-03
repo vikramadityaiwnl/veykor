@@ -359,6 +359,15 @@ export async function decideMuseApproval(input: {
   await connection.command("approval/decide", params);
 }
 
+export async function leaveMuseSession(museSessionId: string): Promise<void> {
+  const connection = await museHost.connection();
+
+  await connection.command("session/leave", {
+    sessionId: museSessionId,
+    stop: true,
+  });
+}
+
 export async function cancelMuseTurn(
   museSessionId: string,
   turnId: string,

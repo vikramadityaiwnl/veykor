@@ -24,6 +24,7 @@ import {
   cancelMuseTurn,
   decideMuseApproval,
   isMuseHostMissing,
+  leaveMuseSession,
   listMuseModels,
   listPendingApprovals,
   museErrorMessage,
@@ -238,11 +239,17 @@ chatRoute.patch("/:id", requireAuth, async (c) => {
   return c.json(toSummary(updated));
 });
 
-chatRoute.delete("/:id", requireAuth, (c) => {
+chatRoute.delete("/:id", requireAuth, async (c) => {
   const row = readChat(c.get("user").id, c.req.param("id"));
 
   if (!row) {
     return c.json({ error: "Chat not found" }, 404);
+  }
+
+  try {
+    await leaveMuseSession(toSummary(row).museSessionId);
+  } catch {
+    // Best effort; the listing is removed either way.
   }
 
   db.delete(chats)
