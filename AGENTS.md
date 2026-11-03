@@ -90,13 +90,9 @@ function App(props: Props) {
 
 ### Shared code
 
-- Group shared files by domain/concern (for example, `auth/` or `visits/`); keep a small concern in one file instead of creating an unnecessary folder.
-- `shared/contracts/` owns cross-layer request payloads and response contracts. Group related contracts by domain; keep each file kebab-case and export the public contract from its domain and category index. Type-only contracts may use `.d.ts` indexes so server builds do not emit files outside `server/src`.
-- `shared/helpers/` owns small, runtime-neutral helpers whose implementation is genuinely shared by web and server. Keep browser-only, Node-only, database, and framework-specific code in its owning app. Re-export shared helpers through the relevant domain and `helpers/index.ts` barrels.
-- `shared/types/` owns shared interfaces, type aliases, and other TypeScript types. Do not maintain duplicate copies of a cross-layer type in `web/` and `server/`; export public types through the relevant domain and `types/index.ts` barrels.
-- Re-export the public type-only category APIs from `shared/index.d.ts`; add a runtime `shared/index.ts` only if shared runtime code is introduced. Web and server code should import shared contracts through the `@veykor/shared` package alias, or use a published category/domain barrel, never a relative path into `shared/` or an implementation file. Renaming or moving an internal file should only require changing its barrel export.
-- Keep route implementations and framework-specific route registration in `web/` or `server/`; shared contracts describe the payloads and responses, not router internals. Update the shared definition first when a cross-layer contract changes.
-- `shared/package.json` owns scripts and development dependencies for the shared package. Update its `package-lock.json` whenever its dependencies change; use `npm install --prefix shared` to refresh it. `npm run typecheck --prefix shared` checks the shared source.
+- Put all code genuinely shared by `web/` and `server/` in `shared/`, grouped by domain or concern (for example, `agents/` or `auth/`).
+- Keep a domain's shared interfaces, contracts, types, and runtime-neutral helpers together in its domain folder. Do not split them into top-level `contracts/`, `helpers/`, or `types/` trees; keep small concerns in one file instead of adding unnecessary nested folders.
+- Keep browser-only, Node-only, database, and framework-specific code in its owning app. Keep route implementations and framework-specific route registration in `web/` or `server/`. Update the shared domain definition first when a cross-layer contract changes.
 
 ### Documentation
 
