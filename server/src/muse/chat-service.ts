@@ -10,6 +10,7 @@ import type {
   ChatSummary,
 } from "@veykor/shared";
 import { databasePath } from "../db/client.js";
+import { readTurnDurations } from "./turn-durations.js";
 import { museHost } from "./muse-host.js";
 import type { MuseNotification } from "./muse-host.js";
 
@@ -20,7 +21,13 @@ export type TurnEvent =
   | { type: "approval"; approval: ChatApprovalRequest }
   | { type: "approval-resolved"; approvalId: string }
   | { type: "todos"; todos: Array<Record<string, unknown>> }
-  | { type: "turn-completed"; turnId: string; terminal: string; error?: string }
+  | {
+      type: "turn-completed";
+      turnId: string;
+      terminal: string;
+      error?: string;
+      durationMs: number;
+    }
   | { type: "error"; message: string };
 
 const effortSettings = new Map<string, string>();
@@ -229,7 +236,21 @@ export async function readMuseChat(
 
   const session = record(resumed["session"]);
   const history = record(resumed["history"]);
-  const items = list(history["items"]).map(toHistoryItem);
+  const snapshot = record(history["snapshot"]);
+  const snapshotState = record(snapshot["state"]);
+  const items = list(history["items"] ?? snapshotState["items"]).map(
+    toHistoryItem,
+  );
+  const turnDurations = await readTurnDurations(async (cursor) =>
+    record(
+      await connection.request("view/page", {
+        sessionId: chat.museSessionId,
+        direction: "forward",
+        limit: 1000,
+        ...(cursor === "" ? {} : { cursor }),
+      }),
+    ),
+  );
 
   const pending = await connection.request("approval/listPending", {
     sessionId: chat.museSessionId,
@@ -241,6 +262,7 @@ export async function readMuseChat(
 
   return {
     items,
+    turnDurations,
     pendingApprovals: approvals,
     modelId: text(session["modelId"]),
     providerId: text(session["providerId"]),
@@ -418,115 +440,120 @@ export async function runMuseTurn(input: {
 
   let turnId = "";
 
-  const completion = new Promise<{ terminal: string; error: string }>(
-    (resolve, reject) => {
-      const unsubscribe = museHost.subscribe(
-        input.museSessionId,
-        (notification: MuseNotification) => {
-          void (async () => {
-            try {
-              if (
-                turnId !== "" &&
-                text(notification.params["turnId"]) !== "" &&
-                text(notification.params["turnId"]) !== turnId &&
-                notification.method !== "approval/requested" &&
-                notification.method !== "approval/resolved" &&
-                notification.method !== "session/todoListChanged"
-              ) {
-                return;
-              }
-
-              if (
-                notification.method === "item/started" ||
-                notification.method === "item/updated" ||
-                notification.method === "item/completed"
-              ) {
-                const payload =
-                  notification.method === "item/completed"
-                    ? notification.params["item"]
-                    : (notification.params["item"] ?? notification.params);
-
-                await input.onEvent({
-                  type: "item",
-                  item: toHistoryItem(payload),
-                });
-                return;
-              }
-
-              if (notification.method === "item/delta") {
-                await input.onEvent({
-                  type: "delta",
-                  itemId: text(notification.params["itemId"]),
-                  field: text(notification.params["field"]),
-                  delta: text(notification.params["delta"]),
-                });
-                return;
-              }
-
-              if (notification.method === "approval/requested") {
-                await input.onEvent({
-                  type: "approval",
-                  approval: toApproval(notification.params),
-                });
-                return;
-              }
-
-              if (notification.method === "approval/resolved") {
-                await input.onEvent({
-                  type: "approval-resolved",
-                  approvalId: text(notification.params["approvalId"]),
-                });
-                return;
-              }
-
-              if (notification.method === "session/todoListChanged") {
-                const todos = list(notification.params["todos"]).map(record);
-
-                await input.onEvent({ type: "todos", todos });
-                return;
-              }
-
-              if (notification.method === "turn/completed") {
-                const finished = text(notification.params["turnId"]);
-
-                if (turnId === "" && finished !== "") {
-                  turnId = finished;
-                }
-
-                if (finished !== "" && finished === turnId) {
-                  unsubscribe();
-
-                  const failure = record(notification.params["error"]);
-                  const detail = text(failure["message"]);
-                  const reason = text(notification.params["reason"]);
-
-                  resolve({
-                    terminal: text(notification.params["terminal"]),
-                    error: detail !== "" ? detail : reason,
-                  });
-                }
-              }
-            } catch (cause) {
-              unsubscribe();
-              reject(cause);
+  const completion = new Promise<{
+    terminal: string;
+    error: string;
+    durationMs: number;
+  }>((resolve, reject) => {
+    const unsubscribe = museHost.subscribe(
+      input.museSessionId,
+      (notification: MuseNotification) => {
+        void (async () => {
+          try {
+            if (
+              turnId !== "" &&
+              text(notification.params["turnId"]) !== "" &&
+              text(notification.params["turnId"]) !== turnId &&
+              notification.method !== "approval/requested" &&
+              notification.method !== "approval/resolved" &&
+              notification.method !== "session/todoListChanged"
+            ) {
+              return;
             }
-          })();
-        },
-      );
 
-      void connection
-        .command("turn/start", params)
-        .then(async (ack) => {
-          turnId = text(ack["turnId"]);
+            if (
+              notification.method === "item/started" ||
+              notification.method === "item/updated" ||
+              notification.method === "item/completed"
+            ) {
+              const payload =
+                notification.method === "item/completed"
+                  ? notification.params["item"]
+                  : (notification.params["item"] ?? notification.params);
 
-          await input.onEvent({ type: "turn-started", turnId });
-        })
-        .catch((cause: unknown) => {
-          unsubscribe();
-          reject(cause);
-        });
-    },
-  );
+              await input.onEvent({
+                type: "item",
+                item: toHistoryItem(payload),
+              });
+              return;
+            }
+
+            if (notification.method === "item/delta") {
+              await input.onEvent({
+                type: "delta",
+                itemId: text(notification.params["itemId"]),
+                field: text(notification.params["field"]),
+                delta: text(notification.params["delta"]),
+              });
+              return;
+            }
+
+            if (notification.method === "approval/requested") {
+              await input.onEvent({
+                type: "approval",
+                approval: toApproval(notification.params),
+              });
+              return;
+            }
+
+            if (notification.method === "approval/resolved") {
+              await input.onEvent({
+                type: "approval-resolved",
+                approvalId: text(notification.params["approvalId"]),
+              });
+              return;
+            }
+
+            if (notification.method === "session/todoListChanged") {
+              const todos = list(notification.params["todos"]).map(record);
+
+              await input.onEvent({ type: "todos", todos });
+              return;
+            }
+
+            if (notification.method === "turn/completed") {
+              const finished = text(notification.params["turnId"]);
+
+              if (turnId === "" && finished !== "") {
+                turnId = finished;
+              }
+
+              if (finished !== "" && finished === turnId) {
+                unsubscribe();
+
+                const failure = record(notification.params["error"]);
+                const detail = text(failure["message"]);
+                const reason = text(notification.params["reason"]);
+                const duration = notification.params["durationMs"];
+
+                resolve({
+                  terminal: text(notification.params["terminal"]),
+                  error: detail !== "" ? detail : reason,
+                  durationMs:
+                    typeof duration === "number" && duration > 0 ? duration : 0,
+                });
+              }
+            }
+          } catch (cause) {
+            unsubscribe();
+            reject(cause);
+          }
+        })();
+      },
+    );
+
+    void connection
+      .command("turn/start", params)
+      .then(async (ack) => {
+        turnId = text(ack["turnId"]);
+
+        await input.onEvent({ type: "turn-started", turnId });
+      })
+      .catch((cause: unknown) => {
+        unsubscribe();
+        reject(cause);
+      });
+  });
 
   const outcome = await completion;
 
@@ -536,12 +563,14 @@ export async function runMuseTurn(input: {
       turnId,
       terminal: outcome.terminal,
       error: outcome.error,
+      durationMs: outcome.durationMs,
     });
   } else {
     await input.onEvent({
       type: "turn-completed",
       turnId,
       terminal: outcome.terminal,
+      durationMs: outcome.durationMs,
     });
   }
 

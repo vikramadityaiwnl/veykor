@@ -53,6 +53,7 @@ export interface ChatApprovalRequest {
 }
 
 export interface ChatDetail {
+  turnDurations: Record<string, number>;
   chat: ChatSummary;
   items: Array<ChatHistoryItem>;
   pendingApprovals: Array<ChatApprovalRequest>;

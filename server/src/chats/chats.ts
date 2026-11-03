@@ -178,6 +178,7 @@ chatRoute.post("/", requireAuth, async (c) => {
   const response: ChatDetail = {
     chat: toSummary(row),
     items: [],
+    turnDurations: {},
     pendingApprovals: [],
     modelId: "",
     providerId: "",

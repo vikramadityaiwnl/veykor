@@ -25,6 +25,7 @@ export type TurnEvent =
       turnId: string;
       terminal: string;
       error?: string;
+      durationMs: number;
     }
   | { type: "error"; message: string };
 
@@ -109,6 +110,12 @@ function readString(record: Record<string, unknown>, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
+function readDuration(record: Record<string, unknown>, key: string): number {
+  const value = record[key];
+
+  return typeof value === "number" && value > 0 ? value : 0;
+}
+
 function toTurnEvent(name: string, data: unknown): TurnEvent | null {
   if (isRecord(data) && typeof data.type === "string") {
     const typed = data as Partial<TurnEvent> & { type: string };
@@ -189,6 +196,7 @@ function toTurnEvent(name: string, data: unknown): TurnEvent | null {
         turnId: readString(data, "turnId"),
         terminal: readString(data, "terminal"),
         error: readString(data, "error"),
+        durationMs: readDuration(data, "durationMs"),
       };
 
     case "error":

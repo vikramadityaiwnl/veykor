@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef } from "react";
+import type { ReactNode } from "react";
 import type { ChatHistoryItem } from "@veykor/shared";
 import AgentMessage from "./agent-message.tsx";
 import ThinkingBlock from "./thinking-block.tsx";
@@ -10,6 +11,14 @@ interface Props {
   items: Array<ChatHistoryItem>;
   streaming: boolean;
   streamingTurnId: string;
+  thinkingSnapshots: Record<string, Array<string>>;
+  turnDurations: Record<string, number>;
+}
+
+interface ThinkingGroup {
+  firstItemId: string;
+  itemIds: Array<string>;
+  summaries: Array<string>;
 }
 
 function allocateImages(
@@ -36,6 +45,50 @@ function allocateImages(
   return assigned;
 }
 
+function collectUserTurns(items: Array<ChatHistoryItem>): Set<string> {
+  const turns = new Set<string>();
+
+  for (const item of items) {
+    if (item.kind === "userMessage" && item.turnId !== null) {
+      turns.add(item.turnId);
+    }
+  }
+
+  return turns;
+}
+
+function collectThinking(
+  items: Array<ChatHistoryItem>,
+): Map<string, ThinkingGroup> {
+  const groups = new Map<string, ThinkingGroup>();
+
+  for (const item of items) {
+    if (item.kind !== "reasoning") {
+      continue;
+    }
+
+    const key = item.turnId ?? item.itemId;
+    const group = groups.get(key);
+
+    if (group === undefined) {
+      groups.set(key, {
+        firstItemId: item.itemId,
+        itemIds: [item.itemId],
+        summaries: [...item.summary],
+      });
+    } else {
+      group.itemIds.push(item.itemId);
+      group.summaries.push(...item.summary);
+    }
+  }
+
+  return groups;
+}
+
+function summarySize(summary: Array<string>): number {
+  return summary.reduce((total, part) => total + part.length, 0);
+}
+
 function MessageList(props: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -54,28 +107,77 @@ function MessageList(props: Props) {
     }
   }, [props.items, props.streaming]);
 
-  const hasTurnContent =
-    props.streamingTurnId !== "" &&
-    props.items.some(
-      (item) =>
-        item.turnId === props.streamingTurnId &&
-        (item.kind === "agentMessage" ||
-          item.kind === "reasoning" ||
-          item.kind === "toolCall"),
+  const imageByItem = allocateImages(props.items, props.imageUrls);
+  const thinkingByTurn = collectThinking(props.items);
+  const userTurns = collectUserTurns(props.items);
+
+  const liveKey =
+    props.streamingTurnId !== "" ? props.streamingTurnId : "pending";
+
+  const liveHasThinking =
+    props.streamingTurnId !== "" && thinkingByTurn.has(props.streamingTurnId);
+
+  const liveAnchored =
+    props.streamingTurnId !== "" && userTurns.has(props.streamingTurnId);
+
+  function pinnedSummaries(group: ThinkingGroup): Array<string> {
+    const pinned = group.itemIds.flatMap(
+      (itemId) => props.thinkingSnapshots[itemId] ?? [],
     );
 
-  const showPending = props.streaming && !hasTurnContent;
+    return summarySize(pinned) > summarySize(group.summaries)
+      ? pinned
+      : group.summaries;
+  }
 
-  const imageByItem = allocateImages(props.items, props.imageUrls);
+  function thinkingBlock(
+    turnKey: string,
+    live: boolean,
+    summaries: Array<string>,
+  ): ReactNode {
+    if (
+      !live &&
+      summaries.length === 0 &&
+      (props.turnDurations[turnKey] ?? 0) <= 0
+    ) {
+      return null;
+    }
+
+    return (
+      <ThinkingBlock
+        durationMs={props.turnDurations[turnKey] ?? 0}
+        key={`thinking-${turnKey}`}
+        running={live}
+        summaries={summaries}
+      />
+    );
+  }
+
+  function thinkingAfterUser(turnId: string | null): ReactNode {
+    if (turnId === null) {
+      return null;
+    }
+
+    const live = props.streaming && turnId === props.streamingTurnId;
+    const group = thinkingByTurn.get(turnId);
+
+    if (group === undefined) {
+      return thinkingBlock(turnId, live, []);
+    }
+
+    return thinkingBlock(turnId, live, pinnedSummaries(group));
+  }
 
   function renderItem(item: ChatHistoryItem) {
     if (item.kind === "userMessage") {
       return (
-        <UserMessage
-          images={imageByItem.get(item.itemId) ?? []}
-          item={item}
-          key={item.itemId}
-        />
+        <Fragment key={item.itemId}>
+          <UserMessage
+            images={imageByItem.get(item.itemId) ?? []}
+            item={item}
+          />
+          {thinkingAfterUser(item.turnId)}
+        </Fragment>
       );
     }
 
@@ -84,11 +186,23 @@ function MessageList(props: Props) {
     }
 
     if (item.kind === "reasoning") {
-      if (item.summary.length === 0 && item.status === "completed") {
+      if (item.turnId !== null && userTurns.has(item.turnId)) {
         return null;
       }
 
-      return <ThinkingBlock item={item} key={item.itemId} />;
+      const key = item.turnId ?? item.itemId;
+      const group = thinkingByTurn.get(key);
+
+      if (group === undefined || group.firstItemId !== item.itemId) {
+        return null;
+      }
+
+      const running =
+        props.streaming &&
+        item.turnId !== null &&
+        item.turnId === props.streamingTurnId;
+
+      return thinkingBlock(key, running, pinnedSummaries(group));
     }
 
     if (item.kind === "toolCall") {
@@ -103,14 +217,9 @@ function MessageList(props: Props) {
       <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6">
         {props.items.map((item) => renderItem(item))}
 
-        {showPending ? (
-          <p
-            aria-hidden="true"
-            className="animate-shimmer w-fit px-1 text-sm font-light"
-          >
-            Thinking…
-          </p>
-        ) : null}
+        {props.streaming && !liveAnchored && !liveHasThinking
+          ? thinkingBlock(liveKey, true, [])
+          : null}
       </div>
     </div>
   );

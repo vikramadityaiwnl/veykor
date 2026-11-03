@@ -73,7 +73,7 @@ function ComposerPanel() {
     pendingApprovals.length > 0 ? pendingApprovals[clamped] : null;
 
   return (
-    <div className="rounded-2xl rounded-b-none border border-b-0 border-zinc-700 bg-zinc-900/70">
+    <div className="rounded-3xl rounded-b-none border border-b-0 border-zinc-700 bg-zinc-900/70">
       <div className="flex items-center gap-2 px-4 py-2.5">
         {pendingApprovals.length > 0 ? (
           <>

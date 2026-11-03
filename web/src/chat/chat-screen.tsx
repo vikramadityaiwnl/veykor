@@ -14,6 +14,8 @@ function ChatScreen() {
   const streaming = useChatStore((state) => state.streaming);
   const streamingTurnId = useChatStore((state) => state.streamingTurnId);
   const sentAttachments = useChatStore((state) => state.sentAttachments);
+  const thinkingSnapshots = useChatStore((state) => state.thinkingSnapshots);
+  const turnDurations = useChatStore((state) => state.turnDurations);
   const error = useChatStore((state) => state.error);
   const clearError = useChatStore((state) => state.clearError);
   const loadCatalog = useChatStore((state) => state.loadCatalog);
@@ -51,6 +53,8 @@ function ChatScreen() {
           items={items}
           streaming={streaming}
           streamingTurnId={streamingTurnId}
+          thinkingSnapshots={thinkingSnapshots}
+          turnDurations={turnDurations}
         />
       )}
 

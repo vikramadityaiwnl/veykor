@@ -1,23 +1,18 @@
 import { useEffect, useState } from "react";
-import { ChevronDownIcon, LightBulbIcon } from "@heroicons/react/24/outline";
-import type { ChatHistoryItem } from "@veykor/shared";
+import Divider from "../../components/divider/divider.tsx";
 
 interface Props {
-  item: ChatHistoryItem;
+  durationMs: number;
+  running: boolean;
+  summaries: Array<string>;
 }
 
 function ThinkingBlock(props: Props) {
-  const [open, setOpen] = useState(() => props.item.status === "inProgress");
+  const [open, setOpen] = useState(() => props.running);
   const [elapsed, setElapsed] = useState(0);
 
-  const running = props.item.status === "inProgress";
-
-  function handleToggle() {
-    setOpen((current) => !current);
-  }
-
   useEffect(() => {
-    if (!running) {
+    if (!props.running) {
       return;
     }
 
@@ -30,49 +25,50 @@ function ThinkingBlock(props: Props) {
     return () => {
       window.clearInterval(timer);
     };
-  }, [running, props.item.itemId]);
+  }, [props.running]);
 
-  const chevronClassName = open
-    ? "size-3 rotate-180 transition-transform motion-reduce:transition-none"
-    : "size-3 transition-transform motion-reduce:transition-none";
+  const nativeSeconds =
+    props.durationMs > 0 ? Math.round(props.durationMs / 1000) : 0;
 
-  const title = running
-    ? "Thinking…"
-    : elapsed > 0
-      ? `Thought for ${elapsed}s`
+  const spent = nativeSeconds > 0 ? nativeSeconds : elapsed;
+
+  const title = props.running
+    ? `Thinking for ${elapsed} ${elapsed === 1 ? "second" : "seconds"}`
+    : spent > 0
+      ? `Thought for ${spent} ${spent === 1 ? "second" : "seconds"}`
       : "Thought";
 
   return (
     <div className="w-full min-w-0">
       <button
         aria-expanded={open}
-        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-light text-zinc-500 hover:text-zinc-300"
-        onClick={handleToggle}
+        className="rounded-lg py-1.5 text-left text-sm font-light text-zinc-500 hover:text-zinc-300"
+        onClick={() => setOpen((current) => !current)}
         type="button"
       >
-        <LightBulbIcon aria-hidden="true" className="size-3 shrink-0" />
-
-        {running ? (
+        {props.running ? (
           <span className="animate-shimmer">{title}</span>
         ) : (
           <span>{title}</span>
         )}
-
-        <ChevronDownIcon aria-hidden="true" className={chevronClassName} />
       </button>
 
-      {open && props.item.summary.length > 0 ? (
-        <div className="space-y-1.5 px-2 pb-2 pt-1">
-          {props.item.summary.map((paragraph, index) => (
+      {open && props.summaries.length > 0 ? (
+        <div className="space-y-1.5 pb-2 pt-1">
+          {props.summaries.map((paragraph, index) => (
             <p
               className="text-xs font-light text-zinc-500"
-              key={`${props.item.itemId}-${index}`}
+              key={`${index}-${paragraph.length}`}
             >
               {paragraph}
             </p>
           ))}
         </div>
       ) : null}
+
+      <div className="pt-1">
+        <Divider />
+      </div>
     </div>
   );
 }

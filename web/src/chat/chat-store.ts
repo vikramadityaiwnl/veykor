@@ -44,6 +44,8 @@ interface ChatState {
   streamingTurnId: string;
   error: string;
   pendingApprovals: Array<ChatApprovalRequest>;
+  turnDurations: Record<string, number>;
+  thinkingSnapshots: Record<string, Array<string>>;
   todos: Array<Record<string, unknown>>;
   modelId: string;
   providerId: string;
@@ -81,6 +83,25 @@ let chatsLoading = false;
 
 let openingChatId: string | null = null;
 
+const approvalGraceMs = 600;
+
+const approvalTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function clearApprovalTimer(approvalId: string): void {
+  const timer = approvalTimers.get(approvalId);
+
+  if (timer !== undefined) {
+    window.clearTimeout(timer);
+    approvalTimers.delete(approvalId);
+  }
+}
+
+function clearApprovalTimers(): void {
+  for (const approvalId of approvalTimers.keys()) {
+    clearApprovalTimer(approvalId);
+  }
+}
+
 const maxComposerImages = 4;
 
 const maxImageBytes = 6 * 1024 * 1024;
@@ -99,7 +120,22 @@ function upsertItem(
     return [...items, next];
   }
 
-  return items.map((item, position) => (position === index ? next : item));
+  return items.map((item, position) => {
+    if (position !== index) {
+      return item;
+    }
+
+    return {
+      ...next,
+      text: next.text !== "" ? next.text : item.text,
+      summary: next.summary.length > 0 ? next.summary : item.summary,
+      visibleOutput:
+        next.visibleOutput !== "" ? next.visibleOutput : item.visibleOutput,
+      args: next.args !== "" ? next.args : item.args,
+      displayLabel:
+        next.displayLabel !== "" ? next.displayLabel : item.displayLabel,
+    };
+  });
 }
 
 function applyDelta(
@@ -118,19 +154,26 @@ function applyDelta(
   if (field.startsWith("summary.")) {
     const index = Number(field.slice("summary.".length));
 
-    if (!Number.isInteger(index) || index < 0 || index >= item.summary.length) {
+    if (!Number.isInteger(index) || index < 0) {
       return item;
     }
 
-    return {
-      ...item,
-      summary: item.summary.map((entry, position) =>
-        position === index ? entry + delta : entry,
-      ),
-    };
+    const summary = [...item.summary];
+
+    while (summary.length <= index) {
+      summary.push("");
+    }
+
+    summary[index] += delta;
+
+    return { ...item, summary };
   }
 
   return item;
+}
+
+function summarySize(summary: Array<string>): number {
+  return summary.reduce((total, part) => total + part.length, 0);
 }
 
 function revokeImages(images: Array<ComposerImage>): void {
@@ -150,6 +193,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   streamingTurnId: "",
   error: "",
   pendingApprovals: [],
+  turnDurations: {},
+  thinkingSnapshots: {},
   todos: [],
   modelId: "",
   providerId: "",
@@ -183,6 +228,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     const state = get();
 
     revokeImages(state.composerImages);
+    clearApprovalTimers();
 
     set({
       activeChatId: null,
@@ -229,6 +275,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
 
     openingChatId = id;
+    clearApprovalTimers();
 
     set({
       activeChatId: id,
@@ -248,6 +295,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
       const patch: Partial<ChatState> = {
         items: detail.items,
+        turnDurations: detail.turnDurations,
         pendingApprovals: detail.pendingApprovals,
         permission: detail.permission,
         historyLoading: false,
@@ -292,6 +340,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       return;
     }
 
+    const startedAt = Date.now();
+
     set({ streaming: true, streamingTurnId: "", error: "" });
 
     set({ composerImages: [] });
@@ -313,6 +363,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           activeChatId: chatId,
           chats: [detail.chat, ...current.chats],
           items: detail.items,
+          turnDurations: detail.turnDurations,
           pendingApprovals: detail.pendingApprovals,
         }));
       }
@@ -361,37 +412,98 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             break;
 
           case "item":
-            set((currentItems) => ({
-              items: upsertItem(currentItems.items, event.item),
-            }));
+            set((currentItems) => {
+              const items = upsertItem(currentItems.items, event.item);
+
+              if (event.item.kind !== "reasoning") {
+                return { items };
+              }
+
+              const kept =
+                currentItems.thinkingSnapshots[event.item.itemId] ?? [];
+              const incoming = event.item.summary;
+
+              return {
+                items,
+                thinkingSnapshots:
+                  summarySize(incoming) > summarySize(kept)
+                    ? {
+                        ...currentItems.thinkingSnapshots,
+                        [event.item.itemId]: [...incoming],
+                      }
+                    : currentItems.thinkingSnapshots,
+              };
+            });
             break;
 
           case "delta":
-            set((currentItems) => ({
-              items: currentItems.items.map((item) =>
+            set((currentItems) => {
+              const items = currentItems.items.map((item) =>
                 item.itemId === event.itemId
                   ? applyDelta(item, event.field, event.delta)
                   : item,
-              ),
-            }));
+              );
+
+              const updated = items.find(
+                (item) => item.itemId === event.itemId,
+              );
+
+              if (updated === undefined || updated.kind !== "reasoning") {
+                return { items };
+              }
+
+              const kept = currentItems.thinkingSnapshots[updated.itemId] ?? [];
+
+              return {
+                items,
+                thinkingSnapshots:
+                  summarySize(updated.summary) > summarySize(kept)
+                    ? {
+                        ...currentItems.thinkingSnapshots,
+                        [updated.itemId]: [...updated.summary],
+                      }
+                    : currentItems.thinkingSnapshots,
+              };
+            });
             break;
 
-          case "approval":
-            set((currentApprovals) =>
-              currentApprovals.pendingApprovals.some(
-                (approval) => approval.approvalId === event.approval.approvalId,
+          case "approval": {
+            const approval = event.approval;
+
+            if (
+              approvalTimers.has(approval.approvalId) ||
+              get().pendingApprovals.some(
+                (entry) => entry.approvalId === approval.approvalId,
               )
-                ? currentApprovals
-                : {
-                    pendingApprovals: [
-                      ...currentApprovals.pendingApprovals,
-                      event.approval,
-                    ],
-                  },
+            ) {
+              break;
+            }
+
+            approvalTimers.set(
+              approval.approvalId,
+              window.setTimeout(() => {
+                approvalTimers.delete(approval.approvalId);
+
+                set((currentApprovals) =>
+                  currentApprovals.pendingApprovals.some(
+                    (entry) => entry.approvalId === approval.approvalId,
+                  )
+                    ? currentApprovals
+                    : {
+                        pendingApprovals: [
+                          ...currentApprovals.pendingApprovals,
+                          approval,
+                        ],
+                      },
+                );
+              }, approvalGraceMs),
             );
             break;
+          }
 
           case "approval-resolved":
+            clearApprovalTimer(event.approvalId);
+
             set((currentApprovals) => ({
               pendingApprovals: currentApprovals.pendingApprovals.filter(
                 (approval) => approval.approvalId !== event.approvalId,
@@ -404,7 +516,17 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             break;
 
           case "turn-completed":
-            set({ streaming: false, streamingTurnId: "" });
+            set((current) => ({
+              streaming: false,
+              streamingTurnId: "",
+              turnDurations: {
+                ...current.turnDurations,
+                [event.turnId]:
+                  event.durationMs > 0
+                    ? event.durationMs
+                    : Math.max(1, Date.now() - startedAt),
+              },
+            }));
             void get().loadChats();
             break;
 
@@ -454,6 +576,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     try {
       await decideApprovalRequest(state.activeChatId, req);
+
+      clearApprovalTimer(approvalId);
 
       set((current) => ({
         pendingApprovals: current.pendingApprovals.filter(
