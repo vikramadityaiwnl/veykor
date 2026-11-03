@@ -24,6 +24,14 @@ import {
   updateSettings,
 } from "./chat-client.ts";
 import type { TurnImageInput } from "./chat-client.ts";
+import {
+  appendChatAttachmentIds,
+  blobFromBase64,
+  deleteChatAttachments,
+  readAttachment,
+  readChatAttachmentIds,
+  saveAttachment,
+} from "./attachment-store.ts";
 
 export interface ComposerImage {
   id: string;
@@ -31,6 +39,11 @@ export interface ComposerImage {
   mediaType: string;
   base64Data: string;
   previewUrl: string;
+}
+
+export interface SentAttachment {
+  id: string;
+  url: string;
 }
 
 interface ChatState {
@@ -53,13 +66,14 @@ interface ChatState {
   permission: ChatPermission;
   draftSeq: number;
   composerImages: Array<ComposerImage>;
-  sentAttachments: Record<string, Array<string>>;
+  sentAttachments: Record<string, Array<SentAttachment>>;
   catalog: ChatModelCatalog | null;
   catalogLoading: boolean;
   loadChats: () => Promise<void>;
   startDraft: (sectionId: string) => void;
   syncDraftPreferences: () => void;
   openChat: (id: string) => Promise<void>;
+  hydrateAttachments: (chatId: string) => Promise<void>;
   send: (text: string) => Promise<void>;
   cancelTurn: () => Promise<void>;
   decideApproval: (
@@ -312,6 +326,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       }
 
       set(patch);
+
+      void get().hydrateAttachments(id);
     } catch (cause) {
       if (get().activeChatId === id) {
         set({
@@ -324,6 +340,53 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         openingChatId = null;
       }
     }
+  },
+
+  hydrateAttachments: async (chatId) => {
+    let ids: Array<string>;
+
+    try {
+      ids = await readChatAttachmentIds(chatId);
+    } catch {
+      return;
+    }
+
+    if (ids.length === 0) {
+      return;
+    }
+
+    const kept = new Map(
+      (get().sentAttachments[chatId] ?? []).map((entry) => [
+        entry.id,
+        entry.url,
+      ]),
+    );
+
+    const resolved: Array<SentAttachment> = [];
+
+    for (const id of ids) {
+      const existing = kept.get(id);
+
+      if (existing !== undefined && existing !== "") {
+        resolved.push({ id, url: existing });
+        continue;
+      }
+
+      try {
+        const record = await readAttachment(id);
+
+        resolved.push({
+          id,
+          url: record === null ? "" : URL.createObjectURL(record.blob),
+        });
+      } catch {
+        resolved.push({ id, url: "" });
+      }
+    }
+
+    set((stored) => ({
+      sentAttachments: { ...stored.sentAttachments, [chatId]: resolved },
+    }));
   },
 
   send: async (text) => {
@@ -383,12 +446,33 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       settings.permission = current.permission;
 
       if (images.length > 0) {
-        const previews = images.map((image) => image.previewUrl);
+        const entries: Array<SentAttachment> = images.map((image) => ({
+          id: image.id,
+          url: image.previewUrl,
+        }));
+
+        try {
+          for (const image of images) {
+            await saveAttachment({
+              blob: blobFromBase64(image.base64Data, image.mediaType),
+              id: image.id,
+              mediaType: image.mediaType,
+              name: image.name,
+            });
+          }
+
+          await appendChatAttachmentIds(
+            chatId,
+            images.map((image) => image.id),
+          );
+        } catch {
+          // Best effort; the turn still goes ahead with live previews.
+        }
 
         set((stored) => ({
           sentAttachments: {
             ...stored.sentAttachments,
-            [chatId]: [...(stored.sentAttachments[chatId] ?? []), ...previews],
+            [chatId]: [...(stored.sentAttachments[chatId] ?? []), ...entries],
           },
         }));
       }
@@ -793,6 +877,22 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       await deleteChatRequest(id);
 
       const state = get();
+
+      for (const entry of state.sentAttachments[id] ?? []) {
+        if (entry.url !== "") {
+          URL.revokeObjectURL(entry.url);
+        }
+      }
+
+      set((stored) => {
+        const sentAttachments = { ...stored.sentAttachments };
+
+        delete sentAttachments[id];
+
+        return { sentAttachments };
+      });
+
+      void deleteChatAttachments(id).catch(() => {});
 
       if (state.activeChatId === id) {
         revokeImages(state.composerImages);

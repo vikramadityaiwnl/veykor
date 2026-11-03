@@ -1,13 +1,14 @@
 import { Fragment, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import type { ChatHistoryItem } from "@veykor/shared";
+import type { SentAttachment } from "../chat-store.ts";
 import AgentMessage from "./agent-message.tsx";
 import ThinkingBlock from "./thinking-block.tsx";
 import ToolCallBlock from "./tool-call-block.tsx";
 import UserMessage from "./user-message.tsx";
 
 interface Props {
-  imageUrls: Array<string>;
+  imageUrls: Array<SentAttachment>;
   items: Array<ChatHistoryItem>;
   streaming: boolean;
   streamingTurnId: string;
@@ -23,9 +24,9 @@ interface ThinkingGroup {
 
 function allocateImages(
   items: Array<ChatHistoryItem>,
-  imageUrls: Array<string>,
-): Map<string, Array<string>> {
-  const assigned = new Map<string, Array<string>>();
+  imageUrls: Array<SentAttachment>,
+): Map<string, Array<SentAttachment>> {
+  const assigned = new Map<string, Array<SentAttachment>>();
 
   let cursor = 0;
 

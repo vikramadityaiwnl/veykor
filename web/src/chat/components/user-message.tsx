@@ -1,8 +1,10 @@
 import { useState } from "react";
 import type { ChatHistoryItem } from "@veykor/shared";
+import MissingAttachment from "../../components/missing-attachment/missing-attachment.tsx";
+import type { SentAttachment } from "../chat-store.ts";
 
 interface Props {
-  images: Array<string>;
+  images: Array<SentAttachment>;
   item: ChatHistoryItem;
 }
 
@@ -11,12 +13,12 @@ function cleanText(text: string): string {
 }
 
 function UserMessage(props: Props) {
-  const [failed, setFailed] = useState<ReadonlySet<number>>(new Set());
+  const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
 
   const text = cleanText(props.item.text);
 
-  function handleError(index: number) {
-    setFailed((current) => new Set(current).add(index));
+  function handleError(id: string) {
+    setFailed((current) => new Set(current).add(id));
   }
 
   return (
@@ -24,21 +26,23 @@ function UserMessage(props: Props) {
       <div className="max-w-[75%] space-y-2">
         {props.images.length > 0 ? (
           <div className="flex flex-wrap justify-end gap-2">
-            {props.images.map((source, index) =>
-              failed.has(index) ? (
-                <p
-                  className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-6 text-xs font-light text-zinc-500"
-                  key={`${props.item.itemId}-image-${index}`}
-                >
-                  Cannot load the image.
-                </p>
+            {props.images.map((image) =>
+              image.url === "" || failed.has(image.id) ? (
+                <MissingAttachment
+                  key={`${props.item.itemId}-image-${image.id}`}
+                  label={
+                    image.url === ""
+                      ? "Image not found"
+                      : "Cannot load the image."
+                  }
+                />
               ) : (
                 <img
                   alt="Attached image"
                   className="max-h-48 rounded-xl border border-zinc-800 object-cover"
-                  key={`${props.item.itemId}-image-${index}`}
-                  onError={() => handleError(index)}
-                  src={source}
+                  key={`${props.item.itemId}-image-${image.id}`}
+                  onError={() => handleError(image.id)}
+                  src={image.url}
                 />
               ),
             )}

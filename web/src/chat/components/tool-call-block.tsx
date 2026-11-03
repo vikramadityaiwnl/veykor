@@ -35,8 +35,8 @@ function ToolCallBlock(props: Props) {
     : "flex w-full items-center gap-2.5 rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-3 py-2 text-left";
 
   const chevronClassName = open
-    ? "size-4 shrink-0 rotate-180 text-zinc-500 transition-transform motion-reduce:transition-none"
-    : "size-4 shrink-0 text-zinc-500 transition-transform motion-reduce:transition-none";
+    ? "size-4 shrink-0 rotate-180 text-zinc-500 transition-transform duration-300 ease-in-out motion-reduce:transition-none"
+    : "size-4 shrink-0 text-zinc-500 transition-transform duration-300 ease-in-out motion-reduce:transition-none";
 
   return (
     <div className="w-full min-w-0">
@@ -60,21 +60,29 @@ function ToolCallBlock(props: Props) {
         <ChevronDownIcon aria-hidden="true" className={chevronClassName} />
       </button>
 
-      {open && (
-        <div className="space-y-2 rounded-b-xl border border-t-0 border-zinc-800/80 bg-zinc-900/40 px-3 py-2">
-          {props.item.args !== "" && (
-            <pre className="max-h-40 overflow-auto rounded-lg bg-zinc-950 p-2 font-mono text-xs font-light whitespace-pre-wrap break-words text-zinc-500">
-              {props.item.args}
-            </pre>
-          )}
+      <div
+        className={
+          open
+            ? "grid grid-rows-[1fr] opacity-100 transition-all duration-300 ease-in-out motion-reduce:transition-none"
+            : "grid grid-rows-[0fr] opacity-0 transition-all duration-300 ease-in-out motion-reduce:transition-none"
+        }
+      >
+        <div className="overflow-hidden">
+          <div className="space-y-2 rounded-b-xl border border-t-0 border-zinc-800/80 bg-zinc-900/40 px-3 py-2">
+            {props.item.args !== "" && (
+              <pre className="max-h-40 overflow-auto rounded-lg bg-zinc-950 p-2 font-mono text-xs font-light whitespace-pre-wrap break-words text-zinc-500">
+                {props.item.args}
+              </pre>
+            )}
 
-          {props.item.visibleOutput !== "" && (
-            <pre className="max-h-40 overflow-auto rounded-lg bg-zinc-950 p-2 font-mono text-xs font-light whitespace-pre-wrap break-words text-zinc-400">
-              {props.item.visibleOutput}
-            </pre>
-          )}
+            {props.item.visibleOutput !== "" && (
+              <pre className="max-h-40 overflow-auto rounded-lg bg-zinc-950 p-2 font-mono text-xs font-light whitespace-pre-wrap break-words text-zinc-400">
+                {props.item.visibleOutput}
+              </pre>
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

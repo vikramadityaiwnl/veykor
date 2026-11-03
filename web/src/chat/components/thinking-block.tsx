@@ -53,16 +53,26 @@ function ThinkingBlock(props: Props) {
         )}
       </button>
 
-      {open && props.summaries.length > 0 ? (
-        <div className="space-y-1.5 pb-2 pt-1">
-          {props.summaries.map((paragraph, index) => (
-            <p
-              className="text-xs font-light text-zinc-500"
-              key={`${index}-${paragraph.length}`}
-            >
-              {paragraph}
-            </p>
-          ))}
+      {props.summaries.length > 0 ? (
+        <div
+          className={
+            open
+              ? "grid grid-rows-[1fr] opacity-100 transition-all duration-300 ease-in-out motion-reduce:transition-none"
+              : "grid grid-rows-[0fr] opacity-0 transition-all duration-300 ease-in-out motion-reduce:transition-none"
+          }
+        >
+          <div className="overflow-hidden">
+            <div className="space-y-1.5 pb-2 pt-1">
+              {props.summaries.map((paragraph, index) => (
+                <p
+                  className="text-xs font-light text-zinc-500"
+                  key={`${index}-${paragraph.length}`}
+                >
+                  {paragraph}
+                </p>
+              ))}
+            </div>
+          </div>
         </div>
       ) : null}
 
