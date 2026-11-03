@@ -1,1 +1,0 @@
-ALTER TABLE `users` ADD `transcription_api_key` text DEFAULT '' NOT NULL;

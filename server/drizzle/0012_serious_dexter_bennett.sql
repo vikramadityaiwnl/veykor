@@ -1,1 +1,0 @@
-ALTER TABLE `users` ADD `transcription_defaults` text DEFAULT '{}' NOT NULL;
