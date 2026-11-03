@@ -38,6 +38,7 @@ export const chats = sqliteTable("chats", {
   projectId: text("project_id").notNull().default(""),
   agentSnapshot: text("agent_snapshot").notNull().default("{}"),
   agentContext: text("agent_context").notNull().default(""),
+  mcpSnapshot: text("mcp_snapshot").notNull().default("[]"),
   museSessionId: text("muse_session_id").notNull().default(""),
   createdAt: text("created_at").notNull().default(""),
   updatedAt: text("updated_at").notNull().default(""),
@@ -50,6 +51,21 @@ export const agents = sqliteTable("agents", {
     .default(0)
     .references(() => users.id, { onDelete: "cascade" }),
   data: text("data").notNull().default("{}"),
+});
+
+export const mcpServers = sqliteTable("mcp_servers", {
+  id: text("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .default(0)
+    .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull().default(""),
+  transport: text("transport").notNull().default("stdio"),
+  config: text("config").notNull().default("{}"),
+  enabled: integer("enabled").notNull().default(1),
+  mode: text("mode").notNull().default("required"),
+  createdAt: text("created_at").notNull().default(""),
+  updatedAt: text("updated_at").notNull().default(""),
 });
 
 export const projects = sqliteTable("projects", {

@@ -6,6 +6,7 @@ import AuthPage from "./auth/auth-page.tsx";
 import ChatRoute from "./chat/chat-route.tsx";
 import WorkPage from "./work/work-page.tsx";
 import AgentsPage from "./agents/agents-page.tsx";
+import IntegrationsPage from "./integrations/integrations-page.tsx";
 import ProfilePage from "./profile/profile-page.tsx";
 import SettingsPage from "./settings/settings-page.tsx";
 import WorkspaceLayout from "./workspace/workspace-layout.tsx";
@@ -90,6 +91,7 @@ function App() {
               element={<ChatRoute />}
             />
             <Route path="agents" element={<AgentsPage />} />
+            <Route path="integrations" element={<IntegrationsPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate replace to="/" />} />

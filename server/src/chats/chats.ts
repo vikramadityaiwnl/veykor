@@ -6,6 +6,7 @@ import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { and, desc, eq } from "drizzle-orm";
+import type { SessionMcpServerConfig } from "@muse-code/sdk/dist/src/msp.js";
 import { defaultChatTitle } from "@veykor/shared";
 import type {
   ChatDetail,
@@ -24,6 +25,11 @@ import type { AuthEnv } from "../auth/auth.js";
 import { db } from "../db/client.js";
 import { chats } from "../db/schema.js";
 import {
+  McpRestoreError,
+  buildSessionMcp,
+  restoreSessionMcp,
+} from "../integrations/integrations.js";
+import {
   applyChatSettings,
   cancelMuseTurn,
   decideMuseApproval,
@@ -38,6 +44,7 @@ import {
   startMuseSession,
   steerMuseTurn,
 } from "../muse/chat-service.js";
+import type { TurnEvent } from "../muse/chat-service.js";
 import { readAgent, readProject } from "../work/work.js";
 import type { AgentDefinition } from "@veykor/shared";
 
@@ -177,11 +184,57 @@ function readTurnImages(
 }
 
 function museFailure(c: Context, cause: unknown) {
+  if (cause instanceof McpRestoreError) {
+    return c.json({ error: cause.message }, 502);
+  }
+
   if (isMuseHostMissing(cause)) {
     return c.json({ error: "Muse is not installed on the server." }, 503);
   }
 
   return c.json({ error: museErrorMessage(cause) }, 502);
+}
+
+function withMcpTurnHint(event: TurnEvent): TurnEvent {
+  if (event.type !== "turn-completed" || event.error === undefined) {
+    return event;
+  }
+
+  if (!event.error.toLowerCase().includes("mcp")) {
+    return event;
+  }
+
+  return {
+    ...event,
+    error:
+      `${event.error} Check Integrations: a required MCP server may be ` +
+      "unavailable. Disable it or set it to optional, then try again.",
+  };
+}
+
+function mcpStartupHint(
+  c: Context,
+  cause: unknown,
+  serverCount: number,
+): Response | null {
+  if (serverCount === 0 || isMuseHostMissing(cause)) {
+    return null;
+  }
+
+  const message = museErrorMessage(cause);
+
+  if (!message.toLowerCase().includes("mcp")) {
+    return null;
+  }
+
+  return c.json(
+    {
+      error:
+        `${message} Check Integrations: a required MCP server may be ` +
+        "unavailable. Disable it or set it to optional, then try again.",
+    },
+    502,
+  );
 }
 
 export const chatRoute = new Hono<AuthEnv>();
@@ -248,8 +301,13 @@ chatRoute.post("/", requireAuth, async (c) => {
 
   let museSessionId: string;
 
+  const sessionMcp = buildSessionMcp(userId);
+  const mcpServerCount = Object.keys(sessionMcp.runtime).length;
+
   try {
-    const started = await startMuseSession(userId, project?.folder);
+    const started = await startMuseSession(userId, project?.folder, {
+      mcpServers: sessionMcp.runtime,
+    });
 
     museSessionId = started.sessionId;
 
@@ -263,7 +321,7 @@ chatRoute.post("/", requireAuth, async (c) => {
       });
     }
   } catch (cause) {
-    return museFailure(c, cause);
+    return mcpStartupHint(c, cause, mcpServerCount) ?? museFailure(c, cause);
   }
 
   const id = randomUUID();
@@ -278,6 +336,7 @@ chatRoute.post("/", requireAuth, async (c) => {
       projectId,
       agentSnapshot: JSON.stringify(agent ?? {}),
       agentContext: agent && project ? compileAgentContext(agent, project) : "",
+      mcpSnapshot: JSON.stringify(sessionMcp.snapshot),
       museSessionId,
       createdAt: stamp,
       updatedAt: stamp,
@@ -315,7 +374,8 @@ chatRoute.get("/:id", requireAuth, async (c) => {
   }
 
   try {
-    const detail = await readMuseChat(toSummary(row));
+    const mcpServers = restoreSessionMcp(row.userId, row.mcpSnapshot ?? "[]");
+    const detail = await readMuseChat(toSummary(row), { mcpServers });
 
     const response: ChatDetail = {
       chat: toSummary(row),
@@ -333,6 +393,14 @@ chatRoute.get("/:id/events", requireAuth, async (c) => {
 
   if (!row) {
     return c.json({ error: "Chat not found" }, 404);
+  }
+
+  let mcpServers: Record<string, SessionMcpServerConfig>;
+
+  try {
+    mcpServers = restoreSessionMcp(row.userId, row.mcpSnapshot ?? "[]");
+  } catch (cause) {
+    return museFailure(c, cause);
   }
 
   c.header("X-Accel-Buffering", "no");
@@ -366,7 +434,7 @@ chatRoute.get("/:id/events", requireAuth, async (c) => {
 
           const detail: ChatDetail = {
             chat: toSummary(current),
-            ...(await readMuseChat(toSummary(current))),
+            ...(await readMuseChat(toSummary(current), { mcpServers })),
           };
           const snapshot = JSON.stringify(detail);
 
@@ -484,9 +552,11 @@ chatRoute.post("/:id/turns", requireAuth, async (c) => {
         onEvent: async (event) => {
           if (!stream.aborted) {
             try {
+              const outgoing = withMcpTurnHint(event);
+
               await stream.writeSSE({
-                event: event.type,
-                data: JSON.stringify(event),
+                event: outgoing.type,
+                data: JSON.stringify(outgoing),
               });
             } catch {
               return;
@@ -634,9 +704,14 @@ chatRoute.put("/:id/settings", requireAuth, async (c) => {
   }
 
   if (row.projectId !== "") {
-    const detail = await readMuseChat(toSummary(row));
+    try {
+      const mcpServers = restoreSessionMcp(row.userId, row.mcpSnapshot ?? "[]");
+      const detail = await readMuseChat(toSummary(row), { mcpServers });
 
-    return c.json({ chat: toSummary(row), ...detail });
+      return c.json({ chat: toSummary(row), ...detail });
+    } catch (cause) {
+      return museFailure(c, cause);
+    }
   }
 
   const body = (await readJson(c)) as Partial<UpdateChatSettingsRequest>;
@@ -661,7 +736,8 @@ chatRoute.put("/:id/settings", requireAuth, async (c) => {
       permission,
     });
 
-    const detail = await readMuseChat(toSummary(row));
+    const mcpServers = restoreSessionMcp(row.userId, row.mcpSnapshot ?? "[]");
+    const detail = await readMuseChat(toSummary(row), { mcpServers });
 
     const response: ChatDetail = {
       chat: toSummary(row),

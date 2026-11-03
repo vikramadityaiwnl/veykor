@@ -4,6 +4,7 @@ import {
   ChevronUpDownIcon,
   Cog6ToothIcon,
   CpuChipIcon,
+  PuzzlePieceIcon,
   UserIcon,
 } from "@heroicons/react/24/solid";
 import { useNavigate } from "react-router";
@@ -55,6 +56,18 @@ function ProfileCard(props: Props) {
               />
             ),
             onSelect: () => navigate("/agents"),
+          },
+          {
+            kind: "item",
+            id: "integrations",
+            label: "Integrations",
+            icon: (
+              <PuzzlePieceIcon
+                aria-hidden="true"
+                className="size-4 text-zinc-400"
+              />
+            ),
+            onSelect: () => navigate("/integrations"),
           },
           {
             kind: "item",

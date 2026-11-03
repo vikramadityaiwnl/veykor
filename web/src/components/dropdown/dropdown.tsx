@@ -32,6 +32,21 @@ function Dropdown(props: Props) {
     triggerRef.current?.focus();
   }
 
+  function widen(rect: DOMRect): DOMRect {
+    return new DOMRect(
+      rect.left,
+      rect.top,
+      Math.max(rect.width, 240),
+      rect.height,
+    );
+  }
+
+  function anchor(): DOMRect | null {
+    const rect = triggerRef.current?.getBoundingClientRect();
+
+    return rect ? widen(rect) : null;
+  }
+
   useEffect(() => {
     if (anchorRect === null) {
       return;
@@ -88,17 +103,11 @@ function Dropdown(props: Props) {
           props.triggerClassName ??
           "flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-zinc-900"
         }
-        onClick={() =>
-          setAnchorRect(
-            anchorRect === null
-              ? (triggerRef.current?.getBoundingClientRect() ?? null)
-              : null,
-          )
-        }
+        onClick={() => setAnchorRect(anchorRect === null ? anchor() : null)}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
-            setAnchorRect(triggerRef.current?.getBoundingClientRect() ?? null);
+            setAnchorRect(anchor());
           }
         }}
       >

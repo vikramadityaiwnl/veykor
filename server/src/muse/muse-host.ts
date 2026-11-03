@@ -20,6 +20,7 @@ function museBinary(): string {
 
 class MuseHost {
   private ready: Promise<Connection> | null = null;
+  private granted: Array<string> = [];
   private subscribers = new Map<string, Set<Subscriber>>();
 
   private notify(notification: MuseNotification): void {
@@ -54,7 +55,10 @@ class MuseHost {
     try {
       const msp = await handshake.initialize({
         clientInfo: { name: "veykor_server", version: "0.0.0" },
+        capabilities: { requestedCapabilities: ["sessionMcp"] },
       });
+
+      this.granted = [...msp.initializeResult.grantedCapabilities];
 
       connection = msp.connection;
     } catch (cause) {
@@ -92,6 +96,7 @@ class MuseHost {
 
     void connection.closed.then(() => {
       this.ready = null;
+      this.granted = [];
     });
 
     return connection;
@@ -103,6 +108,12 @@ class MuseHost {
     }
 
     return this.ready;
+  }
+
+  async supportsSessionMcp(): Promise<boolean> {
+    await this.connection();
+
+    return this.granted.includes("sessionMcp");
   }
 
   subscribe(sessionId: string, listener: Subscriber): () => void {

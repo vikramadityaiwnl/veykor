@@ -1,6 +1,7 @@
 import { userMessageText } from "./user-message-text.js";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import type { SessionMcpServerConfig } from "@muse-code/sdk/dist/src/msp.js";
 import type {
   ChatApprovalRequest,
   ChatDetail,
@@ -194,12 +195,24 @@ function toModelOption(value: unknown): ChatModelOption {
 export async function startMuseSession(
   userId: number,
   workspaceRoot = workspaceFor(userId),
+  options: { mcpServers?: Record<string, SessionMcpServerConfig> } = {},
 ): Promise<{ sessionId: string }> {
   const connection = await museHost.connection();
 
-  const result = await connection.command("session/start", {
-    workspaceRoot,
-  });
+  const mcpServers = options.mcpServers ?? {};
+  const params: Record<string, unknown> = { workspaceRoot };
+
+  if (Object.keys(mcpServers).length > 0) {
+    if (!(await museHost.supportsSessionMcp())) {
+      throw new Error(
+        "This Muse version does not support session MCP servers.",
+      );
+    }
+
+    params["config"] = { mcpServers };
+  }
+
+  const result = await connection.command("session/start", params);
 
   const session = record(result["session"]);
 
@@ -225,13 +238,21 @@ export function isMuseTurnRunning(museSessionId: string): boolean {
 
 export async function readMuseChat(
   chat: ChatSummary,
+  options: { mcpServers?: Record<string, SessionMcpServerConfig> } = {},
 ): Promise<Omit<ChatDetail, "chat">> {
   const connection = await museHost.connection();
 
-  const resumed = await connection.command("session/resume", {
+  const mcpServers = options.mcpServers ?? {};
+  const params: Record<string, unknown> = {
     sessionId: chat.museSessionId,
     excludeItems: false,
-  });
+  };
+
+  if (Object.keys(mcpServers).length > 0) {
+    params["config"] = { mcpServers };
+  }
+
+  const resumed = await connection.command("session/resume", params);
 
   const session = record(resumed["session"]);
   const history = record(resumed["history"]);
