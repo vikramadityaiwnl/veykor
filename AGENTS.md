@@ -2,41 +2,6 @@
 
 Project-specific guidance for AI coding agents.
 
-<!-- ASTRYX:START -->
-
-Astryx v0.7.4 · 173 components
-CLI: for frontend work, run every command as `npm run astryx --prefix web -- <cmd>` (shown below as `astryx ...`).
-
-SETUP (once, in app entry e.g. main.tsx) — without these, components render unstyled:
-import "@astryxdesign/core/reset.css";
-import "@astryxdesign/core/astryx.css";
-
-WORKFLOW — start every page from a template, never from scratch:
-
-1. `astryx build "<idea>"` — names the template to scaffold from and the parts it lacks.
-2. `astryx template <name> <path>` — scaffold it; keep its frame, gap and padding; replace the content.
-3. `astryx template <Block>` for parts it lacks; `astryx component <Name>` to read props before using one.
-   Changing an existing page? Keep it: skip step 2 and add blocks/components inside its sections.
-
-RULES:
-
-- No <div> — components handle all layout and spacing.
-- Read `astryx docs layout` before changing a template's frame.
-- Dense data = rows (Table, List/Item), not Card-wrapped lists. Badge = counts only.
-- Style with component props first, then tokens (var(--color-_|--spacing-_|--radius-\*)). No raw hex/px. Tailwind is compiled through the Vite plugin; use inline className utilities for custom styling. Do not use xstyle directly. Some templates use StyleX and need a compiler plugin; see `astryx docs styling-overview`.
-- Palettes and custom colors go through the theme, never :root overrides. Run `astryx theme add <slug>` to import; `theme eject <slug>` only forks source. See `astryx docs theme`.
-- SELF-CHECK: re-read the file; replace any raw <div>/<span>, @apply, or hardcoded #hex/px with the component or a token.
-
-`astryx help` lists every command. Key ones beyond the workflow:
-search "<query>" find any component / hook / doc / template
-discover <words> integrations you could add
-docs <topic> getting-started, principles, tokens, theme … (`astryx docs` lists all)
-docs cli commands and API reference
-docs authoring build an integration package, and every field it holds
-upgrade --from <old version> --apply run after a dependency bump
-
-<!-- ASTRYX:END -->
-
 ## Project conventions
 
 ### Naming
@@ -48,8 +13,8 @@ upgrade --from <old version> --apply run after a dependency bump
 
 - Do not add explanatory code comments. Use clear names, structure, and whitespace instead. Preserve machine-readable directives required by tooling.
 - Write code for a person who enjoys reading it. Match the surrounding formatting and preserve intentional whitespace when editing existing code.
-- Development and build commands automatically format tracked changes and new supported files with `scripts/format-changed.mjs`. Use `npm run format` and `npm run format:check` for explicit formatting and verification. Keep import declarations on one line; the local Prettier plugin enforces this. Keep consecutive imports together with no blank lines between them; the blank line goes after the whole import block, not inside it.
-- Use Prettier for consistent two-space indentation, double quotes, semicolons, trailing commas, and multiline wrapping. Run `npm run format` after changes and `npm run format:check` to verify formatting.
+- Use `npm run format` to check and format files. Prettier settings and ignore rules live in `.prettier/` and are loaded by this command. Keep import declarations on one line; the configured Prettier plugin enforces this. Keep consecutive imports together with no blank lines between them; the blank line goes after the whole import block, not inside it.
+- Use Prettier for consistent two-space indentation, double quotes, semicolons, trailing commas, and multiline wrapping. Run `npm run format` after changes.
 - Leave a blank line after imports, between top-level declarations, and between distinct logical steps inside a function. Separate state declarations, derived values, handlers, effects, and the JSX return into readable groups.
 - Expand functions, conditional branches, async handlers, and substantial JSX into multiple lines. Use braces for control-flow branches; do not compress a component or several statements onto one line.
 - Keep JSX props on separate lines when the element has several props. Separate major JSX sections with blank lines so the page structure is easy to scan.
@@ -60,8 +25,6 @@ upgrade --from <old version> --apply run after a dependency bump
 - Give a component its own `Props` interface and accept one explicitly typed `props` object. If a module holds multiple components, use a distinct `<ComponentName>Props` interface for each. Read values as `props.x` and `props.y`; do not destructure the props parameter.
 
 ```tsx
-import { Text } from "@astryxdesign/core/Text";
-
 interface Props {
   x: string;
   y: number;
@@ -69,9 +32,9 @@ interface Props {
 
 function App(props: Props) {
   return (
-    <Text>
+    <p>
       {props.x} {props.y}
-    </Text>
+    </p>
   );
 }
 ```
@@ -90,13 +53,9 @@ function App(props: Props) {
 
 ### Shared code
 
-- Group shared files by domain/concern (for example, `auth/` or `visits/`); keep a small concern in one file instead of creating an unnecessary folder.
-- `shared/contracts/` owns cross-layer request payloads and response contracts. Group related contracts by domain; keep each file kebab-case and export the public contract from its domain and category index. Type-only contracts may use `.d.ts` indexes so server builds do not emit files outside `server/src`.
-- `shared/helpers/` owns small, runtime-neutral helpers whose implementation is genuinely shared by web and server. Keep browser-only, Node-only, database, and framework-specific code in its owning app. Re-export shared helpers through the relevant domain and `helpers/index.ts` barrels.
-- `shared/types/` owns shared interfaces, type aliases, and other TypeScript types. Do not maintain duplicate copies of a cross-layer type in `web/` and `server/`; export public types through the relevant domain and `types/index.ts` barrels.
-- Re-export the public type-only category APIs from `shared/index.d.ts`; add a runtime `shared/index.ts` only if shared runtime code is introduced. Web and server code should import shared contracts through the `@veykor/shared` package alias, or use a published category/domain barrel, never a relative path into `shared/` or an implementation file. Renaming or moving an internal file should only require changing its barrel export.
-- Keep route implementations and framework-specific route registration in `web/` or `server/`; shared contracts describe the payloads and responses, not router internals. Update the shared definition first when a cross-layer contract changes.
-- `shared/package.json` owns scripts and development dependencies for the shared package. Update its `package-lock.json` whenever its dependencies change; use `npm install --prefix shared` to refresh it. `npm run typecheck --prefix shared` checks the shared source.
+- Put all code genuinely shared by `web/` and `server/` in `shared/`, grouped by domain or concern (for example, `agents/` or `auth/`).
+- Keep a domain's shared interfaces, contracts, types, and runtime-neutral helpers together in its domain folder. Do not split them into top-level `contracts/`, `helpers/`, or `types/` trees; keep small concerns in one file instead of adding unnecessary nested folders.
+- Keep browser-only, Node-only, database, and framework-specific code in its owning app. Keep route implementations and framework-specific route registration in `web/` or `server/`. Update the shared domain definition first when a cross-layer contract changes.
 
 ### Documentation
 

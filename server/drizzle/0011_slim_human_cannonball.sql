@@ -1,1 +1,0 @@
-ALTER TABLE `users` ADD `chat_defaults` text DEFAULT '{}' NOT NULL;

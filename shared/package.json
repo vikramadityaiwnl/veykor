@@ -3,16 +3,15 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "types": "./index.d.ts",
   "exports": {
-    ".": {
-      "types": "./index.d.ts"
+    "./health": {
+      "types": "./health/health-response.ts"
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json"
   },
   "devDependencies": {
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.0"
   }
 }
