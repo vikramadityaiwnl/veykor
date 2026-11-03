@@ -1,5 +1,17 @@
-import { authPaths, loginValidationError, registerValidationError, veykorRequestHeaderName, veykorRequestHeaderValue } from "@veykor/shared";
-import type { AuthStatus, LoginRequest, LoginResponse, RegisterRequest, RegisterResponse } from "@veykor/shared";
+import {
+  authPaths,
+  loginValidationError,
+  registerValidationError,
+  veykorRequestHeaderName,
+  veykorRequestHeaderValue,
+} from "@veykor/shared";
+import type {
+  AuthStatus,
+  LoginRequest,
+  LoginResponse,
+  RegisterRequest,
+  RegisterResponse,
+} from "@veykor/shared";
 
 async function readError(response: Response): Promise<string> {
   const fallback = "Request failed";

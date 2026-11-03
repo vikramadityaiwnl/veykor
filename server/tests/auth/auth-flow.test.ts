@@ -6,7 +6,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { authPaths, veykorRequestHeaderName, veykorRequestHeaderValue } from "@veykor/shared";
+import {
+  authPaths,
+  veykorRequestHeaderName,
+  veykorRequestHeaderValue,
+} from "@veykor/shared";
 import type { AuthStatus } from "@veykor/shared";
 
 const serverDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..");

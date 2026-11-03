@@ -17,9 +17,14 @@ Install every workspace:
 npm run install:all
 ```
 
-The server reads its configuration from environment variables. Both are
-required, and the server stops with a clear error when one is missing or
-invalid. There is no backend `.env` file; export the variables in your shell:
+The server reads its configuration from environment variables, loading
+`server/.env` when it exists. Every variable is required, and the server
+stops with a clear error when one is missing or invalid. Copy the example
+file and adjust the values:
+
+```sh
+cp server/.env.example server/.env
+```
 
 | Variable       | Example            | Description                   |
 | -------------- | ------------------ | ----------------------------- |
@@ -29,7 +34,7 @@ invalid. There is no backend `.env` file; export the variables in your shell:
 Start the API from `server/`:
 
 ```sh
-PORT=3001 DATABASE_URL=./data/veykor.db npm run dev
+npm run dev
 ```
 
 Start the web app from `web/` in another terminal:

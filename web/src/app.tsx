@@ -3,6 +3,7 @@ import type { AuthStatus } from "@veykor/shared";
 import { fetchStatus } from "./auth/auth-client.ts";
 import AuthPage from "./auth/auth-page.tsx";
 import HomePage from "./home/home-page.tsx";
+import UnavailablePage from "./unavailable/unavailable-page.tsx";
 
 function currentPath(): string {
   return window.location.pathname;
@@ -42,38 +43,24 @@ function App() {
   }, [refresh]);
 
   useEffect(() => {
-    if (!status) {
+    if (!status && loadError === "") {
       return;
     }
 
-    const desired = status.authenticated ? "/" : "/auth";
+    const desired = !status
+      ? "/unavailable"
+      : status.authenticated
+        ? "/"
+        : "/auth";
 
     if (pathname !== desired) {
       window.history.pushState(null, "", desired);
       setPathname(desired);
     }
-  }, [status, pathname]);
+  }, [status, loadError, pathname]);
 
   if (loadError !== "" && !status) {
-    return (
-      <main className="grid min-h-screen place-items-center bg-zinc-950 px-4">
-        <section className="w-full max-w-sm space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-center">
-          <h1 className="text-xl font-semibold text-zinc-50">veykor</h1>
-
-          <p className="text-sm font-light text-rose-400" role="alert">
-            {loadError}
-          </p>
-
-          <button
-            className="w-full rounded-lg bg-zinc-100 px-4 py-2.5 font-semibold text-zinc-950 transition duration-200 hover:bg-white"
-            onClick={() => void refresh()}
-            type="button"
-          >
-            Retry
-          </button>
-        </section>
-      </main>
-    );
+    return <UnavailablePage error={loadError} onRetry={() => void refresh()} />;
   }
 
   if (!status) {

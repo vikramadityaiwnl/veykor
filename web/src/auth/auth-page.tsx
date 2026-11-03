@@ -104,12 +104,6 @@ function AuthPage(props: Props) {
           }
           submitLabel={activeMode === "register" ? "Create account" : "Sign in"}
         />
-
-        {!canRegister && (
-          <p className="text-center text-xs font-light text-zinc-500">
-            New accounts can only be created on the host machine.
-          </p>
-        )}
       </section>
     </main>
   );

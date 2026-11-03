@@ -13,7 +13,7 @@ Project-specific guidance for AI coding agents.
 
 - Do not add explanatory code comments. Use clear names, structure, and whitespace instead. Preserve machine-readable directives required by tooling.
 - Write code for a person who enjoys reading it. Match the surrounding formatting and preserve intentional whitespace when editing existing code.
-- Use `npm run format` to check and format files. Prettier settings and ignore rules live in `.prettier/` and are loaded by this command. Keep import declarations on one line; the configured Prettier plugin enforces this. Keep consecutive imports together with no blank lines between them; the blank line goes after the whole import block, not inside it.
+- Use `npm run format` to check and format files. Prettier settings and ignore rules live in `.prettier/` and are loaded by this command. Let Prettier wrap import declarations across lines. Keep consecutive imports together with no blank lines between them; the blank line goes after the whole import block, not inside it. The format command removes stray blank lines inside import blocks automatically.
 - Use Prettier for consistent two-space indentation, double quotes, semicolons, trailing commas, and multiline wrapping. Run `npm run format` after changes.
 - Leave a blank line after imports, between top-level declarations, and between distinct logical steps inside a function. Separate state declarations, derived values, handlers, effects, and the JSX return into readable groups.
 - Expand functions, conditional branches, async handlers, and substantial JSX into multiple lines. Use braces for control-flow branches; do not compress a component or several statements onto one line.

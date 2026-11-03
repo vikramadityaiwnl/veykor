@@ -1,4 +1,9 @@
-import type { AuthStatus, AuthUser, LoginRequest, RegisterRequest } from "./auth-contracts.js";
+import type {
+  AuthStatus,
+  AuthUser,
+  LoginRequest,
+  RegisterRequest,
+} from "./auth-contracts.js";
 
 export function defaultAuthUser(): AuthUser {
   return {
