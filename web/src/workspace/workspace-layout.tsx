@@ -1,15 +1,11 @@
 import { useState } from "react";
+import { Outlet } from "react-router";
 import type { AuthUser } from "@veykor/shared";
 import { logout } from "../auth/auth-client.ts";
-import AgentsPage from "../agents/agents-page.tsx";
 import Sidebar from "../components/sidebar/sidebar.tsx";
-import ProfilePage from "../profile/profile-page.tsx";
-import SettingsPage from "../settings/settings-page.tsx";
-import ChatScreen from "../chat/chat-screen.tsx";
 
 interface Props {
   onSignedOut: () => void;
-  pathname: string;
   user: AuthUser;
 }
 
@@ -45,13 +41,7 @@ function WorkspaceLayout(props: Props) {
       />
 
       <main className="relative flex min-w-0 flex-1 flex-col">
-        {props.pathname === "/agents" && <AgentsPage />}
-
-        {props.pathname === "/profile" && <ProfilePage />}
-
-        {props.pathname === "/settings" && <SettingsPage />}
-
-        {props.pathname === "/" && <ChatScreen />}
+        <Outlet />
 
         {error !== "" && (
           <p

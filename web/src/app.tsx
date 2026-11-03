@@ -1,26 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import type { AuthStatus } from "@veykor/shared";
 import { fetchStatus } from "./auth/auth-client.ts";
 import AuthPage from "./auth/auth-page.tsx";
-import HomePage from "./home/home-page.tsx";
+import ChatRoute from "./chat/chat-route.tsx";
+import AgentsPage from "./agents/agents-page.tsx";
+import ProfilePage from "./profile/profile-page.tsx";
+import SettingsPage from "./settings/settings-page.tsx";
+import WorkspaceLayout from "./workspace/workspace-layout.tsx";
 import UnavailablePage from "./unavailable/unavailable-page.tsx";
-
-const workspacePaths = ["/", "/agents", "/profile", "/settings"];
-
-function currentPath(): string {
-  return window.location.pathname;
-}
 
 function App() {
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [loadError, setLoadError] = useState("");
-  const [pathname, setPathname] = useState(currentPath);
 
   const refresh = useCallback(async () => {
-    setLoadError("");
-
     try {
-      setStatus(await fetchStatus());
+      const nextStatus = await fetchStatus();
+
+      setLoadError("");
+      setStatus(nextStatus);
     } catch (cause) {
       if (cause instanceof Error) {
         setLoadError(cause.message);
@@ -31,37 +30,29 @@ function App() {
   }, []);
 
   useEffect(() => {
-    function handleLocationChange() {
-      setPathname(currentPath());
-    }
+    let disposed = false;
 
-    window.addEventListener("popstate", handleLocationChange);
-
-    void refresh();
+    void fetchStatus().then(
+      (nextStatus) => {
+        if (!disposed) {
+          setStatus(nextStatus);
+        }
+      },
+      (cause: unknown) => {
+        if (!disposed) {
+          setLoadError(
+            cause instanceof Error
+              ? cause.message
+              : "Unable to reach the veykor server.",
+          );
+        }
+      },
+    );
 
     return () => {
-      window.removeEventListener("popstate", handleLocationChange);
+      disposed = true;
     };
-  }, [refresh]);
-
-  useEffect(() => {
-    if (!status && loadError === "") {
-      return;
-    }
-
-    const desired = !status
-      ? "/unavailable"
-      : status.authenticated
-        ? workspacePaths.includes(pathname)
-          ? pathname
-          : "/"
-        : "/auth";
-
-    if (pathname !== desired) {
-      window.history.pushState(null, "", desired);
-      setPathname(desired);
-    }
-  }, [status, loadError, pathname]);
+  }, []);
 
   if (loadError !== "" && !status) {
     return <UnavailablePage error={loadError} onRetry={() => void refresh()} />;
@@ -79,11 +70,25 @@ function App() {
 
   if (status.authenticated) {
     return (
-      <HomePage
-        onSignedOut={() => void refresh()}
-        pathname={pathname}
-        user={status.user}
-      />
+      <BrowserRouter>
+        <Routes>
+          <Route
+            element={
+              <WorkspaceLayout
+                onSignedOut={() => void refresh()}
+                user={status.user}
+              />
+            }
+          >
+            <Route index element={<ChatRoute />} />
+            <Route path="chat/:chatId" element={<ChatRoute />} />
+            <Route path="agents" element={<AgentsPage />} />
+            <Route path="profile" element={<ProfilePage />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="*" element={<Navigate replace to="/" />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
     );
   }
 

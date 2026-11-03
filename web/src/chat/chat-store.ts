@@ -50,6 +50,8 @@ interface ChatState {
   chats: Array<ChatSummary>;
   chatsLoaded: boolean;
   activeChatId: string | null;
+  pendingRoutePush: string | null;
+  clearRoutePush: () => void;
   pendingSectionId: string;
   items: Array<ChatHistoryItem>;
   historyLoading: boolean;
@@ -200,6 +202,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   chats: [],
   chatsLoaded: false,
   activeChatId: null,
+  pendingRoutePush: null,
   pendingSectionId: "recent",
   items: [],
   historyLoading: false,
@@ -238,6 +241,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
   },
 
+  clearRoutePush: () => {
+    set({ pendingRoutePush: null });
+  },
+
   startDraft: (sectionId) => {
     const state = get();
 
@@ -246,6 +253,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     set({
       activeChatId: null,
+      pendingRoutePush: null,
       pendingSectionId: sectionId,
       draftSeq: state.draftSeq + 1,
       items: [],
@@ -282,9 +290,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   openChat: async (id) => {
-    const state = get();
-
-    if (state.historyLoading || openingChatId === id) {
+    if (openingChatId === id && get().activeChatId === id) {
       return;
     }
 
@@ -293,6 +299,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     set({
       activeChatId: id,
+      pendingRoutePush: null,
+      streaming: false,
+      streamingTurnId: "",
       historyLoading: true,
       items: [],
       pendingApprovals: [],
@@ -414,9 +423,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       base64Data: image.base64Data,
     }));
 
-    try {
-      let chatId = get().activeChatId;
+    let chatId = get().activeChatId;
 
+    try {
       if (chatId === null) {
         const detail = await createChat(get().pendingSectionId);
 
@@ -424,6 +433,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
         set((current) => ({
           activeChatId: chatId,
+          pendingRoutePush: chatId,
           chats: [detail.chat, ...current.chats],
           items: detail.items,
           turnDurations: detail.turnDurations,
@@ -469,10 +479,15 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           // Best effort; the turn still goes ahead with live previews.
         }
 
+        const attachmentChatId = chatId;
+
         set((stored) => ({
           sentAttachments: {
             ...stored.sentAttachments,
-            [chatId]: [...(stored.sentAttachments[chatId] ?? []), ...entries],
+            [attachmentChatId]: [
+              ...(stored.sentAttachments[attachmentChatId] ?? []),
+              ...entries,
+            ],
           },
         }));
       }
@@ -490,6 +505,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       }
 
       await streamTurn(chatId, trimmed, payload, (event) => {
+        if (get().activeChatId !== chatId) {
+          return;
+        }
+
         switch (event.type) {
           case "turn-started":
             set({ streamingTurnId: event.turnId });
@@ -619,13 +638,17 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         }
       });
 
-      set({ streaming: false, streamingTurnId: "" });
+      if (get().activeChatId === chatId) {
+        set({ streaming: false, streamingTurnId: "" });
+      }
     } catch (cause) {
-      set({
-        streaming: false,
-        streamingTurnId: "",
-        error: errorMessage(cause, "Unable to send message."),
-      });
+      if (get().activeChatId === chatId) {
+        set({
+          streaming: false,
+          streamingTurnId: "",
+          error: errorMessage(cause, "Unable to send message."),
+        });
+      }
     }
   },
 
@@ -900,6 +923,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         set({
           chats: state.chats.filter((chat) => chat.id !== id),
           activeChatId: null,
+          pendingRoutePush: null,
           items: [],
           historyLoading: false,
           streaming: false,

@@ -28,7 +28,7 @@ import SegmentedControl from "../../components/segmented-control/segmented-contr
 import { useChatStore } from "../../chat/chat-store.ts";
 import { usePreferencesStore } from "../../workspace/preferences-store.ts";
 import { useProfileStore } from "../../profile/profile-store.ts";
-import { navigate } from "../../router/navigation.ts";
+import { useNavigate } from "react-router";
 
 interface Props {
   onSignOut: () => void;
@@ -51,6 +51,7 @@ type AlertState =
   | { kind: "delete-section"; sectionId: string };
 
 function Sidebar(props: Props) {
+  const navigate = useNavigate();
   const lastTab = usePreferencesStore((state) => state.lastTab);
   const sections = usePreferencesStore((state) => state.sections);
   const load = usePreferencesStore((state) => state.load);
@@ -64,7 +65,6 @@ function Sidebar(props: Props) {
   const activeChatId = useChatStore((state) => state.activeChatId);
   const loadChats = useChatStore((state) => state.loadChats);
   const startDraft = useChatStore((state) => state.startDraft);
-  const openChat = useChatStore((state) => state.openChat);
   const moveChat = useChatStore((state) => state.moveChat);
   const renameChat = useChatStore((state) => state.renameChat);
   const removeChat = useChatStore((state) => state.deleteChat);
@@ -116,8 +116,7 @@ function Sidebar(props: Props) {
   }
 
   function handleOpenChat(chatId: string): void {
-    void openChat(chatId);
-    navigate("/");
+    navigate(`/chat/${encodeURIComponent(chatId)}`);
   }
 
   const alertChatTitle =
@@ -339,6 +338,11 @@ function Sidebar(props: Props) {
 
   function handleConfirmAlert() {
     if (alert?.kind === "delete-chat") {
+      if (alert.chatId === activeChatId) {
+        startDraft(useChatStore.getState().pendingSectionId);
+        navigate("/", { replace: true });
+      }
+
       void removeChat(alert.chatId);
     }
 
