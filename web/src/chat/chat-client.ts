@@ -252,12 +252,16 @@ export async function fetchChats(): Promise<Array<ChatSummary>> {
   return fetchJson<Array<ChatSummary>>(chatPaths.chats);
 }
 
-export async function createChat(sectionId: string): Promise<ChatDetail> {
+export async function createChat(
+  sectionId: string,
+  projectId = "",
+  agentId = "",
+): Promise<ChatDetail> {
   return requestJson<ChatDetail>(
     chatPaths.chats,
     {
       method: "POST",
-      body: JSON.stringify({ sectionId }),
+      body: JSON.stringify({ sectionId, projectId, agentId }),
     },
     true,
   );

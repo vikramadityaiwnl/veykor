@@ -1,3 +1,5 @@
+import { useWorkStore } from "../work/work-store.ts";
+import ProjectGreeting from "../work/components/project-greeting.tsx";
 import { useEffect } from "react";
 import { usePreferencesStore } from "../workspace/preferences-store.ts";
 import { useChatStore } from "./chat-store.ts";
@@ -8,6 +10,7 @@ import MessageList from "./components/message-list.tsx";
 import SessionLoader from "./components/session-loader.tsx";
 
 function ChatScreen() {
+  const projectId = useWorkStore((state) => state.projectId);
   const activeChatId = useChatStore((state) => state.activeChatId);
   const draftSeq = useChatStore((state) => state.draftSeq);
   const items = useChatStore((state) => state.items);
@@ -52,7 +55,7 @@ function ChatScreen() {
     <div className="flex h-full min-h-0 flex-col">
       {!activeChatId ? (
         <div className="grid flex-1 place-items-center px-6">
-          <GreetingHeader key={draftSeq} />
+          {projectId ? <ProjectGreeting /> : <GreetingHeader key={draftSeq} />}
         </div>
       ) : historyLoading ? (
         <div className="grid flex-1 place-items-center px-6">
@@ -87,7 +90,7 @@ function ChatScreen() {
         </div>
       )}
 
-      <ChatComposer />
+      <ChatComposer key={projectId} />
     </div>
   );
 }

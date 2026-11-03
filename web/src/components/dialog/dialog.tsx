@@ -6,6 +6,7 @@ interface Props {
   description?: string;
   onClose: () => void;
   title: string;
+  size?: "default" | "wide";
 }
 
 function Dialog(props: Props) {
@@ -39,7 +40,9 @@ function Dialog(props: Props) {
         type="button"
       />
 
-      <div className="relative w-full max-w-sm space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+      <div
+        className={`relative w-full space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 ${props.size === "wide" ? "max-w-2xl p-6" : "max-w-sm p-4"}`}
+      >
         <div className="space-y-1.5">
           <h2 className="text-lg font-semibold text-zinc-50">{props.title}</h2>
 

@@ -145,8 +145,11 @@ test("preferences default, update, and survive restart", async () => {
 
     const updated: UserPreferences = {
       lastTab: "work",
+      workSections: [
+        { id: "default-projects", title: "Default projects", open: true },
+      ],
       sections: [
-        { id: "chats", title: "Chats", open: false },
+        { id: "recent", title: "Recent", open: true },
         { id: "ideas", title: "Ideas", open: true },
       ],
       chatSections: { "getting-started": "ideas" },
@@ -184,10 +187,11 @@ test("preferences default, update, and survive restart", async () => {
       body: {
         lastTab: "evil",
         sections: [
+          { id: "chats", title: "Chats", open: false },
           { id: "", title: "", open: "yes" },
           { id: "ok", open: true },
         ],
-        chatSections: { "": "ok", valid: "" },
+        chatSections: { "": "ok", valid: "", legacy: "chats" },
         chatTitles: { valid: "  Spaced out  ", "": "x", bad: 42 },
         customChats: [
           { id: "kept", title: "  Kept chat  " },
@@ -202,8 +206,14 @@ test("preferences default, update, and survive restart", async () => {
     assert.equal(sanitized.status, 200);
     assert.deepEqual(sanitized.body, {
       lastTab: "chat",
-      sections: [{ id: "ok", title: "Untitled section", open: true }],
-      chatSections: {},
+      sections: [
+        { id: "recent", title: "Recent", open: true },
+        { id: "ok", title: "Untitled section", open: true },
+      ],
+      workSections: [
+        { id: "default-projects", title: "Default projects", open: true },
+      ],
+      chatSections: { legacy: "recent" },
       chatTitles: { valid: "Spaced out" },
       customChats: [{ id: "kept", title: "Kept chat" }],
       removedChatIds: ["gone"],

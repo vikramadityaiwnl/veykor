@@ -23,6 +23,7 @@ export interface PreferredModel {
 export interface UserPreferences {
   lastTab: SidebarTab;
   sections: Array<SidebarSection>;
+  workSections: Array<SidebarSection>;
   chatSections: Record<string, string>;
   chatTitles: Record<string, string>;
   customChats: Array<CustomChat>;

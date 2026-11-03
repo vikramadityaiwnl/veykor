@@ -201,11 +201,12 @@ function toModelOption(value: unknown): ChatModelOption {
 
 export async function startMuseSession(
   userId: number,
+  workspaceRoot = workspaceFor(userId),
 ): Promise<{ sessionId: string }> {
   const connection = await museHost.connection();
 
   const result = await connection.command("session/start", {
-    workspaceRoot: workspaceFor(userId),
+    workspaceRoot,
   });
 
   const session = record(result["session"]);

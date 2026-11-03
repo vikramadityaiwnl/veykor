@@ -3,16 +3,12 @@ import Avatar from "../components/avatar/avatar.tsx";
 import Divider from "../components/divider/divider.tsx";
 import { useProfileStore } from "./profile-store.ts";
 
-interface Props {
-  [key: string]: never;
-}
-
 interface Draft {
   username: string;
   status: string;
 }
 
-function ProfilePage(_props: Props) {
+function ProfilePage() {
   const username = useProfileStore((state) => state.username);
   const tag = useProfileStore((state) => state.tag);
   const status = useProfileStore((state) => state.status);
@@ -50,12 +46,10 @@ function ProfilePage(_props: Props) {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    if (loaded && !hydrated) {
-      setDraft({ username, status });
-      setHydrated(true);
-    }
-  }, [loaded, hydrated, username, status]);
+  if (loaded && !hydrated) {
+    setDraft({ username, status });
+    setHydrated(true);
+  }
 
   if (!hydrated) {
     return (
@@ -80,8 +74,8 @@ function ProfilePage(_props: Props) {
 
         <Divider />
 
-        <div className="flex flex-col gap-8 lg:flex-row lg:gap-12">
-          <div className="lg:w-72 lg:shrink-0">
+        <div className="grid grid-cols-2 items-start gap-10 2xl:grid-cols-3">
+          <div className="min-w-0">
             <div className="flex items-center gap-4">
               <Avatar name={draft.username} size={80} />
 
@@ -90,7 +84,7 @@ function ProfilePage(_props: Props) {
                   {draft.username}
                 </p>
 
-                <p className="truncate text-xs font-light text-zinc-500">
+                <p className="truncate text-sm font-light text-zinc-500">
                   {draft.status === "" ? tag : draft.status}
                 </p>
               </div>

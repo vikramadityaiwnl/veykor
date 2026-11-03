@@ -1,3 +1,4 @@
+import { useWorkStore } from "../work/work-store.ts";
 import { create } from "zustand";
 import { defaultChatTitle, preferredEffortKey } from "@veykor/shared";
 import type {
@@ -876,7 +877,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     try {
       if (chatId === null) {
-        const detail = await createChat(get().pendingSectionId);
+        const work = useWorkStore.getState();
+        const detail = await createChat(
+          get().pendingSectionId,
+          work.projectId,
+          work.agentId,
+        );
 
         chatId = detail.chat.id;
 

@@ -13,7 +13,7 @@ interface Props {
 
 function CollapsibleSection(props: Props) {
   return (
-    <section>
+    <section className="group/section">
       <div className="relative flex items-center">
         <button
           aria-expanded={props.open}

@@ -36,6 +36,8 @@ import {
   startMuseSession,
   steerMuseTurn,
 } from "../muse/chat-service.js";
+import { readAgent, readProject } from "../work/work.js";
+import type { AgentDefinition } from "@veykor/shared";
 
 type ChatRow = typeof chats.$inferSelect;
 
@@ -55,6 +57,14 @@ const imageTypes = new Set([
   "image/webp",
   "image/gif",
 ]);
+
+function agentTurnText(row: ChatRow, text: string): string {
+  const agent = JSON.parse(row.agentSnapshot) as Partial<AgentDefinition>;
+
+  return agent.instructions
+    ? `<agent-instructions name=${JSON.stringify(agent.name)}>\n${agent.instructions}\n</agent-instructions>\n\n${text}`
+    : text;
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -84,6 +94,11 @@ function toSummary(row: ChatRow): ChatSummary {
     title: row.title ?? defaultChatTitle(),
     sectionId: row.sectionId ?? "recent",
     museSessionId,
+    projectId: row.projectId,
+    agentId:
+      (JSON.parse(row.agentSnapshot) as Partial<AgentDefinition>).id ?? "",
+    agentName:
+      (JSON.parse(row.agentSnapshot) as Partial<AgentDefinition>).name ?? "",
     running: isMuseTurnRunning(museSessionId),
     createdAt: row.createdAt ?? "",
     updatedAt: row.updatedAt ?? "",
@@ -196,12 +211,47 @@ chatRoute.post("/", requireAuth, async (c) => {
   const sectionId = cleanSection(body.sectionId) || "recent";
   const title = cleanTitle(body.title) || defaultChatTitle();
 
+  const userId = c.get("user").id;
+  const projectId = typeof body.projectId === "string" ? body.projectId : "";
+  const project = projectId ? readProject(userId, projectId) : undefined;
+
+  if (projectId && !project) {
+    return c.json({ error: "Project not found." }, 404);
+  }
+
+  const agentId = typeof body.agentId === "string" ? body.agentId : "";
+  const agent = agentId ? readAgent(userId, agentId) : undefined;
+
+  if (
+    project &&
+    (!agent || !(JSON.parse(project.agentIds) as string[]).includes(agentId))
+  ) {
+    return c.json({ error: "Choose an agent assigned to this project." }, 400);
+  }
+
+  if (!project && agentId) {
+    return c.json(
+      { error: "Agents are only available in project sessions." },
+      400,
+    );
+  }
+
   let museSessionId: string;
 
   try {
-    const started = await startMuseSession(c.get("user").id);
+    const started = await startMuseSession(userId, project?.folder);
 
     museSessionId = started.sessionId;
+
+    if (agent) {
+      await applyChatSettings({
+        museSessionId,
+        modelId: agent.modelId || undefined,
+        providerId: agent.providerId || undefined,
+        reasoningEffort: agent.reasoningEffort || undefined,
+        permission: agent.permission,
+      });
+    }
   } catch (cause) {
     return museFailure(c, cause);
   }
@@ -215,6 +265,8 @@ chatRoute.post("/", requireAuth, async (c) => {
       userId: c.get("user").id,
       title,
       sectionId,
+      projectId,
+      agentSnapshot: JSON.stringify(agent ?? {}),
       museSessionId,
       createdAt: stamp,
       updatedAt: stamp,
@@ -235,10 +287,10 @@ chatRoute.post("/", requireAuth, async (c) => {
     items: [],
     turnDurations: {},
     pendingApprovals: [],
-    modelId: "",
-    providerId: "",
-    reasoningEffort: "",
-    permission: "read-only",
+    modelId: agent?.modelId ?? "",
+    providerId: agent?.providerId ?? "",
+    reasoningEffort: agent?.reasoningEffort ?? "",
+    permission: agent?.permission ?? "read-only",
   };
 
   return c.json(response, 201);
@@ -414,7 +466,7 @@ chatRoute.post("/:id/turns", requireAuth, async (c) => {
 
       await runMuseTurn({
         museSessionId: summary.museSessionId,
-        text,
+        text: agentTurnText(row, text),
         images,
         onEvent: async (event) => {
           if (!stream.aborted) {
@@ -566,6 +618,12 @@ chatRoute.put("/:id/settings", requireAuth, async (c) => {
 
   if (!row) {
     return c.json({ error: "Chat not found" }, 404);
+  }
+
+  if (row.projectId !== "") {
+    const detail = await readMuseChat(toSummary(row));
+
+    return c.json({ chat: toSummary(row), ...detail });
   }
 
   const body = (await readJson(c)) as Partial<UpdateChatSettingsRequest>;

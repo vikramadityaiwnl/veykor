@@ -15,6 +15,7 @@ import {
   isTranscriptionUpgradePath,
   transcriptionMaxPayloadBytes,
 } from "./transcription/transcription-upgrade.js";
+import { agentRoute, projectRoute } from "./work/work.js";
 
 const config = loadServerConfig();
 
@@ -24,6 +25,8 @@ app.use("/api/*", csrfProtection);
 
 app.route("/api/auth", authRoute);
 app.route("/api/chats", chatRoute);
+app.route("/api/agents", agentRoute);
+app.route("/api/projects", projectRoute);
 app.route("/api/models", modelRoute);
 app.route("/api/preferences", preferencesRoute);
 app.route("/api/profile", profileRoute);

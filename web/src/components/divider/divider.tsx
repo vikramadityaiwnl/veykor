@@ -1,8 +1,19 @@
 interface Props {
   text?: string;
+  orientation?: "horizontal" | "vertical";
 }
 
 function Divider(props: Props) {
+  if (props.orientation === "vertical") {
+    return (
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        className="h-5 w-px shrink-0 bg-zinc-800"
+      />
+    );
+  }
+
   if (props.text === undefined || props.text === "") {
     return <div aria-hidden="true" className="h-px bg-zinc-800" />;
   }

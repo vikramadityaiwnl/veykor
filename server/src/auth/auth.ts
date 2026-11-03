@@ -8,6 +8,7 @@ import { and, eq, gt, lte } from "drizzle-orm";
 import {
   changePasswordValidationError,
   defaultAuthStatus,
+  defaultPreferences,
   loginValidationError,
   registerValidationError,
   veykorRequestHeaderName,
@@ -23,7 +24,7 @@ import type {
   RegisterRequest,
 } from "@veykor/shared";
 import { db } from "../db/client.js";
-import { sessions, users } from "../db/schema.js";
+import { preferences, sessions, users } from "../db/schema.js";
 import { isHostRequest } from "./host-access.js";
 import { hashPassword, verifyPassword } from "./password.js";
 
@@ -326,16 +327,30 @@ authRoute.post("/register", async (c) => {
 
   const passwordHash = await hashPassword(input.password);
 
-  const row = db
-    .insert(users)
-    .values({
-      username: input.username,
-      passwordHash,
-      createdAt: new Date().toISOString(),
-    })
-    .onConflictDoNothing()
-    .returning()
-    .get();
+  const row = db.transaction((tx) => {
+    const created = tx
+      .insert(users)
+      .values({
+        username: input.username,
+        passwordHash,
+        createdAt: new Date().toISOString(),
+      })
+      .onConflictDoNothing()
+      .returning()
+      .get();
+
+    if (created) {
+      tx.insert(preferences)
+        .values({
+          userId: created.id,
+          data: JSON.stringify(defaultPreferences()),
+          updatedAt: new Date().toISOString(),
+        })
+        .run();
+    }
+
+    return created;
+  });
 
   if (!row) {
     return c.json({ error: "Username is already taken" }, 409);
