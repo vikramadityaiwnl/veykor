@@ -35,7 +35,30 @@ export const chats = sqliteTable("chats", {
     .references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull().default("Untitled chat"),
   sectionId: text("section_id").notNull().default("recent"),
+  projectId: text("project_id").notNull().default(""),
+  agentSnapshot: text("agent_snapshot").notNull().default("{}"),
   museSessionId: text("muse_session_id").notNull().default(""),
   createdAt: text("created_at").notNull().default(""),
   updatedAt: text("updated_at").notNull().default(""),
+});
+
+export const agents = sqliteTable("agents", {
+  id: text("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .default(0)
+    .references(() => users.id, { onDelete: "cascade" }),
+  data: text("data").notNull().default("{}"),
+});
+
+export const projects = sqliteTable("projects", {
+  id: text("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .default(0)
+    .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull().default(""),
+  folder: text("folder").notNull().default(""),
+  sectionId: text("section_id").notNull().default("default-projects"),
+  agentIds: text("agent_ids").notNull().default("[]"),
 });

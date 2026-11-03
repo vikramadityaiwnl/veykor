@@ -115,13 +115,18 @@ export function toHistoryItem(value: unknown): ChatHistoryItem {
   }));
 
   const turnId = item["turnId"];
+  const kind = text(item["kind"]);
+  const presentation = text(item["displayText"]);
 
   return {
     itemId: text(item["itemId"]),
-    kind: text(item["kind"]),
+    kind,
     status: text(item["status"]),
     turnId: typeof turnId === "string" ? turnId : null,
-    text: text(item["text"]),
+    text:
+      kind === "userMessage" && presentation !== ""
+        ? presentation
+        : text(item["text"]),
     summary,
     tool: text(item["tool"]),
     displayLabel: displayLabel(item["displayLabel"]),
@@ -201,11 +206,12 @@ function toModelOption(value: unknown): ChatModelOption {
 
 export async function startMuseSession(
   userId: number,
+  workspaceRoot = workspaceFor(userId),
 ): Promise<{ sessionId: string }> {
   const connection = await museHost.connection();
 
   const result = await connection.command("session/start", {
-    workspaceRoot: workspaceFor(userId),
+    workspaceRoot,
   });
 
   const session = record(result["session"]);
@@ -225,6 +231,10 @@ export async function startMuseSession(
 }
 
 const activeTurns = new Map<string, { turnId: string; startedAt: number }>();
+
+export function isMuseTurnRunning(museSessionId: string): boolean {
+  return activeTurns.has(museSessionId);
+}
 
 export async function readMuseChat(
   chat: ChatSummary,
@@ -456,6 +466,7 @@ export async function runMuseTurn(input: {
   museSessionId: string;
   text: string;
   images: Array<{ mediaType: string; base64Data: string }>;
+  displayText?: string;
   reasoningEffort?: string;
   onEvent: (event: TurnEvent) => void | Promise<void>;
 }): Promise<string> {
@@ -483,6 +494,10 @@ export async function runMuseTurn(input: {
     sessionId: input.museSessionId,
     input: parts,
   };
+
+  if (input.displayText !== undefined && input.displayText !== "") {
+    params["displayText"] = input.displayText;
+  }
 
   if (input.reasoningEffort !== undefined && input.reasoningEffort !== "") {
     params["reasoningEffort"] = input.reasoningEffort;

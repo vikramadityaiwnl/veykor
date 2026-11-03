@@ -1,3 +1,6 @@
+import { useWorkStore } from "../../work/work-store.ts";
+import AgentPicker from "../../work/components/agent-picker.tsx";
+import ProjectComposerContext from "../../work/components/project-composer-context.tsx";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUpIcon,
@@ -8,6 +11,7 @@ import {
 import { StopIcon } from "@heroicons/react/24/solid";
 import { usePreferencesStore } from "../../workspace/preferences-store.ts";
 import Dialog from "../../components/dialog/dialog.tsx";
+import LoadingSpinner from "../../components/loading-spinner/loading-spinner.tsx";
 import ComposerPanel from "./composer-panel.tsx";
 import EffortPicker from "./effort-picker.tsx";
 import ModelPicker from "./model-picker.tsx";
@@ -22,7 +26,22 @@ import type { ActiveTranscription } from "../transcription-client.ts";
 
 type VoicePhase = "idle" | "connecting" | "listening" | "stopping";
 
-function ChatComposer() {
+interface Props {
+  workMode?: boolean;
+}
+
+function ChatComposer(props: Props) {
+  const projectId = useWorkStore((state) => state.projectId);
+  const agentId = useWorkStore((state) => state.agentId);
+  const workLoaded = useWorkStore((state) => state.loaded);
+  const projects = useWorkStore((state) => state.projects);
+  const projectMissing =
+    projectId !== "" &&
+    workLoaded &&
+    projects.every((project) => project.id !== projectId);
+  const activeChatId = useChatStore((state) => state.activeChatId);
+  const agentMode = props.workMode === true || projectId !== "";
+  const projectRequired = (agentMode && projectId === "") || projectMissing;
   const send = useChatStore((s) => s.send);
   const cancelTurn = useChatStore((s) => s.cancelTurn);
   const streaming = useChatStore((s) => s.streaming);
@@ -52,7 +71,10 @@ function ChatComposer() {
     pendingApprovals.length > 0 ||
     todos.length > 0 ||
     queuedMessages.length > 0;
-  const canSend = draft.trim() !== "" || composerImages.length > 0;
+  const canSend =
+    (draft.trim() !== "" || composerImages.length > 0) &&
+    !projectRequired &&
+    (!agentMode || !!agentId || activeChatId !== null);
   const showStop = streaming && !canSend;
   const sendTitle = streaming
     ? interruptionBehavior === "steer"
@@ -156,6 +178,10 @@ function ChatComposer() {
   }, []);
 
   async function startVoice() {
+    if (projectRequired) {
+      return;
+    }
+
     const run = voiceRunRef.current + 1;
 
     voiceRunRef.current = run;
@@ -258,7 +284,11 @@ function ChatComposer() {
       }
     }
 
-    if (text.trim() === "" && composerImages.length === 0) {
+    if (
+      projectRequired ||
+      (text.trim() === "" && composerImages.length === 0) ||
+      (agentMode && !agentId && activeChatId === null)
+    ) {
       return;
     }
 
@@ -274,7 +304,7 @@ function ChatComposer() {
   }
 
   function handleFiles(files: FileList | null) {
-    if (files === null || files.length === 0) {
+    if (projectRequired || files === null || files.length === 0) {
       return;
     }
 
@@ -297,14 +327,18 @@ function ChatComposer() {
 
       <div
         className={
-          panelOpen
-            ? "rounded-3xl rounded-t-none border border-t-0 border-zinc-700 bg-zinc-900 shadow-xl"
-            : "rounded-3xl border border-zinc-700 bg-zinc-900 shadow-xl"
+          agentMode
+            ? panelOpen
+              ? "rounded-t-none border border-t-0 border-zinc-700 bg-zinc-900 shadow-xl"
+              : "rounded-t-3xl border border-zinc-700 bg-zinc-900 shadow-xl"
+            : panelOpen
+              ? "rounded-3xl rounded-t-none border border-t-0 border-zinc-700 bg-zinc-900 shadow-xl"
+              : "rounded-3xl border border-zinc-700 bg-zinc-900 shadow-xl"
         }
       >
         <textarea
           className="max-h-50 w-full resize-none bg-transparent px-4 pt-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
-          disabled={voiceActive}
+          disabled={voiceActive || projectRequired}
           onChange={(event) => {
             setDraft(event.target.value);
             autoresize();
@@ -349,15 +383,17 @@ function ChatComposer() {
         <div className="flex items-center justify-between px-3 pb-3 pt-2">
           <div className="flex items-center gap-1">
             <button
-              className="rounded-full p-2 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+              className="rounded-full p-2 text-zinc-400 enabled:hover:bg-zinc-800 enabled:hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
               onClick={() => fileRef.current?.click()}
               title="Attach images"
+              disabled={projectRequired}
               type="button"
             >
               <PaperClipIcon className="size-4" />
             </button>
 
             <input
+              disabled={projectRequired}
               accept="image/*"
               className="hidden"
               multiple
@@ -366,20 +402,26 @@ function ChatComposer() {
               type="file"
             />
 
-            <ModelPicker />
-
-            <EffortPicker />
+            {agentMode ? (
+              <AgentPicker />
+            ) : (
+              <>
+                <ModelPicker />
+                <EffortPicker />
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-1">
-            <PermissionPicker />
+            {!agentMode && <PermissionPicker />}
 
             <button
               className={
                 voicePhase === "listening"
                   ? "rounded-full p-2 text-red-400 hover:bg-zinc-800 hover:text-red-300"
-                  : "rounded-full p-2 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                  : "rounded-full p-2 text-zinc-400 enabled:hover:bg-zinc-800 enabled:hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
               }
+              disabled={projectRequired}
               onClick={() => {
                 if (voiceActive) {
                   void stopVoice();
@@ -395,29 +437,7 @@ function ChatComposer() {
               {voicePhase === "listening" ? (
                 <StopIcon aria-hidden="true" className="size-4" />
               ) : voiceActive ? (
-                <svg
-                  aria-hidden="true"
-                  className="size-4 animate-spin motion-reduce:animate-none"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-
-                  <path
-                    className="opacity-90"
-                    d="M12 2a10 10 0 0 1 10 10"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeWidth="4"
-                  />
-                </svg>
+                <LoadingSpinner />
               ) : (
                 <MicrophoneIcon className="size-4" />
               )}
@@ -446,6 +466,8 @@ function ChatComposer() {
           </div>
         </div>
       </div>
+
+      {agentMode && <ProjectComposerContext />}
 
       {micBlocked && (
         <Dialog

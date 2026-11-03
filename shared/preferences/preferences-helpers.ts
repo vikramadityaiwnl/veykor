@@ -22,13 +22,17 @@ const maxMappings = 500;
 
 export const recentSectionId = "recent";
 
+export const defaultProjectSectionId = "default-projects";
+
 export function defaultPreferences(): UserPreferences {
   return {
     lastTab: "chat",
-    sections: [
-      { id: recentSectionId, title: "Recent", open: true },
-      { id: "chats", title: "Chats", open: true },
+    sections: [{ id: recentSectionId, title: "Recent", open: true }],
+    workSections: [
+      { id: defaultProjectSectionId, title: "Default projects", open: true },
     ],
+    projectAgents: {},
+    projectExpanded: {},
     chatSections: {},
     chatTitles: {},
     customChats: [],
@@ -166,6 +170,9 @@ export function sanitizePreferences(input: unknown): UserPreferences {
   const record = input as {
     lastTab?: unknown;
     sections?: unknown;
+    workSections?: unknown;
+    projectAgents?: unknown;
+    projectExpanded?: unknown;
     chatSections?: unknown;
     chatTitles?: unknown;
     customChats?: unknown;
@@ -186,9 +193,75 @@ export function sanitizePreferences(input: unknown): UserPreferences {
 
       if (
         section !== undefined &&
+        section.id !== "chats" &&
         !sections.some((existing) => existing.id === section.id)
       ) {
         sections.push(section);
+      }
+    }
+  }
+
+  if (!sections.some((section) => section.id === recentSectionId)) {
+    sections.unshift({ id: recentSectionId, title: "Recent", open: true });
+  }
+
+  const workSections: Array<SidebarSection> = [];
+
+  if (Array.isArray(record.workSections)) {
+    for (const entry of record.workSections.slice(0, maxSections)) {
+      const section = sanitizeSection(entry);
+
+      if (
+        section &&
+        section.id !== recentSectionId &&
+        section.id !== "chats" &&
+        !workSections.some((existing) => existing.id === section.id)
+      ) {
+        workSections.push(section);
+      }
+    }
+  }
+
+  if (!workSections.some((section) => section.id === defaultProjectSectionId)) {
+    workSections.unshift({
+      id: defaultProjectSectionId,
+      title: "Default projects",
+      open: true,
+    });
+  }
+
+  const projectAgents: Record<string, string> = {};
+  const projectExpanded: Record<string, boolean> = {};
+
+  if (
+    typeof record.projectAgents === "object" &&
+    record.projectAgents !== null
+  ) {
+    for (const [id, agent] of Object.entries(record.projectAgents).slice(
+      0,
+      maxMappings,
+    )) {
+      const projectId = sanitizeId(id);
+      const agentId = sanitizeId(agent);
+
+      if (projectId && agentId) {
+        projectAgents[projectId] = agentId;
+      }
+    }
+  }
+
+  if (
+    typeof record.projectExpanded === "object" &&
+    record.projectExpanded !== null
+  ) {
+    for (const [id, expanded] of Object.entries(record.projectExpanded).slice(
+      0,
+      maxMappings,
+    )) {
+      const projectId = sanitizeId(id);
+
+      if (projectId && typeof expanded === "boolean") {
+        projectExpanded[projectId] = expanded;
       }
     }
   }
@@ -203,7 +276,8 @@ export function sanitizePreferences(input: unknown): UserPreferences {
       const cleanSection = sanitizeId(sectionId);
 
       if (cleanChat !== "" && cleanSection !== "") {
-        chatSections[cleanChat] = cleanSection;
+        chatSections[cleanChat] =
+          cleanSection === "chats" ? recentSectionId : cleanSection;
       }
     }
   }
@@ -276,6 +350,9 @@ export function sanitizePreferences(input: unknown): UserPreferences {
   return {
     lastTab,
     sections,
+    workSections,
+    projectAgents,
+    projectExpanded,
     chatSections,
     chatTitles,
     customChats,

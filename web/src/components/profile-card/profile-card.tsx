@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type { MouseEvent } from "react";
 import {
   ArrowRightStartOnRectangleIcon,
   ChevronUpDownIcon,
@@ -8,10 +7,9 @@ import {
   UserIcon,
 } from "@heroicons/react/24/solid";
 import { useNavigate } from "react-router";
-import { semanticColors } from "../../theme/semantic-colors.ts";
 import AlertDialog from "../alert-dialog/alert-dialog.tsx";
 import Avatar from "../avatar/avatar.tsx";
-import Popover from "../popover/popover.tsx";
+import Dropdown from "../dropdown/dropdown.tsx";
 
 interface Props {
   description: string;
@@ -22,109 +20,80 @@ interface Props {
 
 function ProfileCard(props: Props) {
   const navigate = useNavigate();
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
-  function handleToggle(event: MouseEvent<HTMLButtonElement>) {
-    if (anchorRect !== null) {
-      setAnchorRect(null);
-      return;
-    }
-
-    setAnchorRect(event.currentTarget.getBoundingClientRect());
-  }
-
-  function handleAskSignOut() {
-    setAnchorRect(null);
-    setConfirmingSignOut(true);
-  }
-
-  function handleNavigate(path: string) {
-    setAnchorRect(null);
-    navigate(path);
-  }
-
   return (
-    <div>
-      <button
-        aria-expanded={anchorRect !== null}
-        aria-haspopup="menu"
-        className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-zinc-900"
-        onClick={handleToggle}
-        type="button"
-      >
-        <Avatar name={props.name} size={32} />
-
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-zinc-50">
-            {props.name}
-          </p>
-
-          <p className="truncate text-xs font-light text-zinc-500">
-            {props.description}
-          </p>
-        </div>
-
-        <ChevronUpDownIcon
-          aria-hidden="true"
-          className="size-4 shrink-0 text-zinc-500"
-        />
-      </button>
-
-      {anchorRect !== null && (
-        <Popover anchorRect={anchorRect} onClose={() => setAnchorRect(null)}>
-          <button
-            className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs font-light text-zinc-200 transition hover:bg-zinc-800"
-            onClick={() => handleNavigate("/agents")}
-            role="menuitem"
-            type="button"
-          >
-            <CpuChipIcon aria-hidden="true" className="size-4 text-zinc-400" />
-            Agents
-          </button>
-
-          <button
-            className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs font-light text-zinc-200 transition hover:bg-zinc-800"
-            onClick={() => handleNavigate("/profile")}
-            role="menuitem"
-            type="button"
-          >
-            <UserIcon aria-hidden="true" className="size-4 text-zinc-400" />
-            Profile
-          </button>
-
-          <button
-            className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs font-light text-zinc-200 transition hover:bg-zinc-800"
-            onClick={() => handleNavigate("/settings")}
-            role="menuitem"
-            type="button"
-          >
-            <Cog6ToothIcon
+    <>
+      <Dropdown
+        label="Profile menu"
+        trigger={
+          <>
+            <Avatar name={props.name} size={36} />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold text-zinc-50">
+                {props.name}
+              </span>
+              <span className="block truncate text-sm font-light text-zinc-500">
+                {props.description}
+              </span>
+            </span>
+            <ChevronUpDownIcon
               aria-hidden="true"
-              className="size-4 text-zinc-400"
+              className="size-4 shrink-0 text-zinc-500"
             />
-            Settings
-          </button>
-
-          <div aria-hidden="true" className="mx-2 my-1 h-px bg-zinc-800" />
-
-          <button
-            className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs font-light transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 ${semanticColors.delete.text}`}
-            disabled={props.signingOut}
-            onClick={handleAskSignOut}
-            role="menuitem"
-            type="button"
-          >
-            <ArrowRightStartOnRectangleIcon
-              aria-hidden="true"
-              className="size-4"
-            />
-
-            {props.signingOut ? "Signing out..." : "Sign out"}
-          </button>
-        </Popover>
-      )}
-
+          </>
+        }
+        items={[
+          {
+            kind: "item",
+            id: "agents",
+            label: "Agents",
+            icon: (
+              <CpuChipIcon
+                aria-hidden="true"
+                className="size-4 text-zinc-400"
+              />
+            ),
+            onSelect: () => navigate("/agents"),
+          },
+          {
+            kind: "item",
+            id: "profile",
+            label: "Profile",
+            icon: (
+              <UserIcon aria-hidden="true" className="size-4 text-zinc-400" />
+            ),
+            onSelect: () => navigate("/profile"),
+          },
+          {
+            kind: "item",
+            id: "settings",
+            label: "Settings",
+            icon: (
+              <Cog6ToothIcon
+                aria-hidden="true"
+                className="size-4 text-zinc-400"
+              />
+            ),
+            onSelect: () => navigate("/settings"),
+          },
+          { kind: "divider", id: "sign-out-divider" },
+          {
+            kind: "item",
+            id: "sign-out",
+            label: props.signingOut ? "Signing out…" : "Sign out",
+            icon: (
+              <ArrowRightStartOnRectangleIcon
+                aria-hidden="true"
+                className="size-4"
+              />
+            ),
+            danger: true,
+            disabled: props.signingOut,
+            onSelect: () => setConfirmingSignOut(true),
+          },
+        ]}
+      />
       {confirmingSignOut && (
         <AlertDialog
           confirmLabel="Sign out"
@@ -135,7 +104,7 @@ function ProfileCard(props: Props) {
           title="Sign out"
         />
       )}
-    </div>
+    </>
   );
 }
 

@@ -13,8 +13,8 @@ interface Props {
 
 function CollapsibleSection(props: Props) {
   return (
-    <section>
-      <div className="relative flex items-center">
+    <section className="group/section">
+      <div className="group/header relative flex items-center">
         <button
           aria-expanded={props.open}
           className={
@@ -26,6 +26,8 @@ function CollapsibleSection(props: Props) {
           onContextMenu={props.onTitleContextMenu}
           type="button"
         >
+          <span className="truncate">{props.title}</span>
+
           <ChevronDownIcon
             aria-hidden="true"
             className={
@@ -34,8 +36,6 @@ function CollapsibleSection(props: Props) {
                 : "size-4 shrink-0 -rotate-90 transition-transform duration-300"
             }
           />
-
-          <span className="truncate">{props.title}</span>
         </button>
 
         <div className="absolute right-0">{props.action}</div>

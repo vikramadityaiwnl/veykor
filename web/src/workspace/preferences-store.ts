@@ -1,5 +1,9 @@
 import { create } from "zustand";
-import { defaultPreferences, recentSectionId } from "@veykor/shared";
+import {
+  defaultPreferences,
+  recentSectionId,
+  defaultProjectSectionId,
+} from "@veykor/shared";
 import type {
   ChatPermission,
   InterruptionBehavior,
@@ -16,6 +20,8 @@ interface PreferencesState extends UserPreferences {
   loading: boolean;
   error: string;
   load: () => Promise<void>;
+  setProjectAgent: (projectId: string, agentId: string) => void;
+  setProjectExpanded: (projectId: string, expanded: boolean) => void;
   setLastTab: (tab: SidebarTab) => void;
   setSectionOpen: (id: string, open: boolean) => void;
   collapseAll: () => void;
@@ -36,10 +42,7 @@ interface PreferencesState extends UserPreferences {
   setInterruptionBehavior: (behavior: InterruptionBehavior) => void;
 }
 
-const initialSections = defaultPreferences().sections.map((section) => ({
-  ...section,
-  open: false,
-}));
+const initialSections = defaultPreferences().sections;
 
 let saveQueue: Promise<void> = Promise.resolve();
 
@@ -49,6 +52,9 @@ function persist(): void {
   const snapshot: UserPreferences = {
     lastTab: state.lastTab,
     sections: state.sections,
+    workSections: state.workSections,
+    projectAgents: state.projectAgents,
+    projectExpanded: state.projectExpanded,
     chatSections: state.chatSections,
     chatTitles: state.chatTitles,
     customChats: state.customChats,
@@ -105,18 +111,9 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
 
       set({
         ...stored,
-        sections: sections.map((section) => ({
-          ...section,
-          open: false,
-        })),
+        sections,
         loaded: true,
         loading: false,
-      });
-
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          usePreferencesStore.setState({ sections });
-        });
       });
     } catch (cause) {
       set({
@@ -129,14 +126,30 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
     }
   },
 
+  setProjectAgent: (projectId, agentId) => {
+    set((state) => ({
+      projectAgents: { ...state.projectAgents, [projectId]: agentId },
+    }));
+    persist();
+  },
+
+  setProjectExpanded: (projectId, expanded) => {
+    set((state) => ({
+      projectExpanded: { ...state.projectExpanded, [projectId]: expanded },
+    }));
+    persist();
+  },
+
   setLastTab: (tab) => {
     set({ lastTab: tab, error: "" });
     persist();
   },
 
   setSectionOpen: (id, open) => {
+    const key = get().lastTab === "work" ? "workSections" : "sections";
+
     set((state) => ({
-      sections: state.sections.map((section) =>
+      [key]: state[key].map((section) =>
         section.id === id ? { ...section, open } : section,
       ),
       error: "",
@@ -145,27 +158,30 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
   },
 
   collapseAll: () => {
+    const key = get().lastTab === "work" ? "workSections" : "sections";
+
     set((state) => ({
-      sections: state.sections.map((section) => ({ ...section, open: false })),
+      [key]: state[key].map((section) => ({ ...section, open: false })),
       error: "",
     }));
     persist();
   },
 
   addSection: (title) => {
+    const key = get().lastTab === "work" ? "workSections" : "sections";
+
     set((state) => ({
-      sections: [
-        ...state.sections,
-        { id: crypto.randomUUID(), title, open: true },
-      ],
+      [key]: [...state[key], { id: crypto.randomUUID(), title, open: true }],
       error: "",
     }));
     persist();
   },
 
   renameSection: (id, title) => {
+    const key = get().lastTab === "work" ? "workSections" : "sections";
+
     set((state) => ({
-      sections: state.sections.map((section) =>
+      [key]: state[key].map((section) =>
         section.id === id ? { ...section, title } : section,
       ),
       error: "",
@@ -174,7 +190,16 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
   },
 
   deleteSection: (id) => {
-    if (id === recentSectionId) {
+    if (id === recentSectionId || id === defaultProjectSectionId) {
+      return;
+    }
+
+    if (get().lastTab === "work") {
+      set((state) => ({
+        workSections: state.workSections.filter((section) => section.id !== id),
+        error: "",
+      }));
+      persist();
       return;
     }
 

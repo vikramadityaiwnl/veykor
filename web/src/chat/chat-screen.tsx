@@ -1,3 +1,6 @@
+import { useWorkStore } from "../work/work-store.ts";
+import ProjectGreeting from "../work/components/project-greeting.tsx";
+import ProjectNotFound from "../work/components/project-not-found.tsx";
 import { useEffect } from "react";
 import { usePreferencesStore } from "../workspace/preferences-store.ts";
 import { useChatStore } from "./chat-store.ts";
@@ -8,6 +11,13 @@ import MessageList from "./components/message-list.tsx";
 import SessionLoader from "./components/session-loader.tsx";
 
 function ChatScreen() {
+  const projectId = useWorkStore((state) => state.projectId);
+  const workLoaded = useWorkStore((state) => state.loaded);
+  const projects = useWorkStore((state) => state.projects);
+  const projectMissing =
+    projectId !== "" &&
+    workLoaded &&
+    projects.every((project) => project.id !== projectId);
   const activeChatId = useChatStore((state) => state.activeChatId);
   const draftSeq = useChatStore((state) => state.draftSeq);
   const items = useChatStore((state) => state.items);
@@ -40,6 +50,14 @@ function ChatScreen() {
   const imageUrls =
     activeChatId === null ? [] : (sentAttachments[activeChatId] ?? []);
 
+  if (projectMissing) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <ProjectNotFound />
+      </div>
+    );
+  }
+
   if (chatNotFound && activeChatId !== null) {
     return (
       <div className="flex h-full min-h-0 flex-col">
@@ -50,9 +68,9 @@ function ChatScreen() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {!activeChatId ? (
+      {!activeChatId && !streaming && items.length === 0 ? (
         <div className="grid flex-1 place-items-center px-6">
-          <GreetingHeader key={draftSeq} />
+          {projectId ? <ProjectGreeting /> : <GreetingHeader key={draftSeq} />}
         </div>
       ) : historyLoading ? (
         <div className="grid flex-1 place-items-center px-6">
@@ -87,7 +105,7 @@ function ChatScreen() {
         </div>
       )}
 
-      <ChatComposer />
+      <ChatComposer key={projectId} />
     </div>
   );
 }

@@ -6,7 +6,11 @@ export interface ChatSummary {
   id: string;
   title: string;
   sectionId: string;
+  projectId: string;
+  agentId: string;
+  agentName: string;
   museSessionId: string;
+  running: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -92,6 +96,8 @@ export interface ChatModelCatalog {
 }
 
 export interface CreateChatRequest {
+  projectId?: string;
+  agentId?: string;
   sectionId?: string;
   title?: string;
 }

@@ -4,6 +4,7 @@ import type { AuthStatus } from "@veykor/shared";
 import { fetchStatus } from "./auth/auth-client.ts";
 import AuthPage from "./auth/auth-page.tsx";
 import ChatRoute from "./chat/chat-route.tsx";
+import WorkPage from "./work/work-page.tsx";
 import AgentsPage from "./agents/agents-page.tsx";
 import ProfilePage from "./profile/profile-page.tsx";
 import SettingsPage from "./settings/settings-page.tsx";
@@ -82,6 +83,12 @@ function App() {
           >
             <Route index element={<ChatRoute />} />
             <Route path="chat/:chatId" element={<ChatRoute />} />
+            <Route path="work" element={<WorkPage />} />
+            <Route path="work/:projectId" element={<ChatRoute />} />
+            <Route
+              path="work/:projectId/chat/:chatId"
+              element={<ChatRoute />}
+            />
             <Route path="agents" element={<AgentsPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="settings" element={<SettingsPage />} />
