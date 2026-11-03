@@ -39,7 +39,6 @@ function ChatRoute() {
         } else {
           const target = state.pendingRoutePush;
 
-          state.clearRoutePush();
           navigate(
             `${projectId ? `/work/${encodeURIComponent(projectId)}` : ""}/chat/${encodeURIComponent(target)}`,
             {
@@ -50,6 +49,8 @@ function ChatRoute() {
       } else if (state.activeChatId !== null) {
         state.startDraft(state.pendingSectionId);
       }
+    } else if (state.pendingRoutePush === chatId) {
+      state.clearRoutePush();
     } else if (state.activeChatId !== chatId) {
       void state.openChat(chatId, projectId ?? "");
     } else {

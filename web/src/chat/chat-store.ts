@@ -275,7 +275,12 @@ function moveToSectionTop(
 function markFinished(
   finishedChatIds: Array<string>,
   chatId: string,
+  activeChatId: string | null,
 ): Array<string> {
+  if (chatId === activeChatId) {
+    return finishedChatIds.filter((id) => id !== chatId);
+  }
+
   if (finishedChatIds.includes(chatId)) {
     return finishedChatIds;
   }
@@ -502,7 +507,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             kept.push({ ...updated, running: existing.running });
           } else {
             if (existing.running && !updated.running) {
-              finishedChatIds = markFinished(finishedChatIds, existing.id);
+              finishedChatIds = markFinished(
+                finishedChatIds,
+                existing.id,
+                current.activeChatId,
+              );
               justFinished.push(existing.id);
             }
 
@@ -627,7 +636,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           ? moveToSectionTop(chats, detail.chat.id, false)
           : chats,
         finishedChatIds: finished
-          ? markFinished(state.finishedChatIds, detail.chat.id)
+          ? markFinished(
+              state.finishedChatIds,
+              detail.chat.id,
+              state.activeChatId,
+            )
           : state.finishedChatIds,
       };
     });
@@ -900,19 +913,38 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     const startedAt = Date.now();
 
-    set({
-      streaming: true,
-      streamingTurnId: "",
-      streamingStartedAt: startedAt,
-      error: "",
-    });
-
-    set({ composerImages: [] });
-
     const payload: Array<TurnImageInput> = images.map((image) => ({
       mediaType: image.mediaType,
       base64Data: image.base64Data,
     }));
+    optimisticItemId = `local-${crypto.randomUUID()}`;
+
+    const optimisticItem: ChatHistoryItem = {
+      itemId: optimisticItemId,
+      kind: "userMessage",
+      status: "completed",
+      turnId: null,
+      text: trimmed,
+      summary: [],
+      tool: "",
+      displayLabel: "",
+      visibleOutput: "",
+      args: "",
+      recordedAt: new Date().toISOString(),
+      attachments: payload.map((image) => ({
+        mediaType: image.mediaType,
+      })),
+    };
+
+    set({
+      streaming: true,
+      streamingTurnId: "",
+      streamingStartedAt: startedAt,
+      items: [...state.items, optimisticItem],
+      error: "",
+    });
+
+    set({ composerImages: [] });
 
     let chatId = get().activeChatId;
     let failed = false;
@@ -926,12 +958,13 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         );
 
         chatId = detail.chat.id;
+        localTurns.add(chatId);
 
         set((current) => ({
           activeChatId: chatId,
           pendingRoutePush: chatId,
           chats: [detail.chat, ...current.chats],
-          items: detail.items,
+          items: current.items,
           turnDurations: detail.turnDurations,
           pendingApprovals: detail.pendingApprovals,
         }));
@@ -972,37 +1005,13 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       await persistSentImages(chatId, images);
 
       if (
-        settings.modelId !== undefined ||
-        settings.reasoningEffort !== undefined ||
-        settings.permission !== undefined
+        work.projectId === "" &&
+        (settings.modelId !== undefined ||
+          settings.reasoningEffort !== undefined ||
+          settings.permission !== undefined)
       ) {
         await updateSettings(chatId, settings);
       }
-
-      optimisticItemId = `local-${crypto.randomUUID()}`;
-
-      const optimisticItem: ChatHistoryItem = {
-        itemId: optimisticItemId,
-        kind: "userMessage",
-        status: "completed",
-        turnId: null,
-        text: trimmed,
-        summary: [],
-        tool: "",
-        displayLabel: "",
-        visibleOutput: "",
-        args: "",
-        recordedAt: new Date().toISOString(),
-        attachments: payload.map((image) => ({
-          mediaType: image.mediaType,
-        })),
-      };
-
-      set((current) =>
-        current.activeChatId === chatId
-          ? { items: [...current.items, optimisticItem] }
-          : current,
-      );
 
       await streamTurn(chatId, trimmed, payload, (event) => {
         if (get().activeChatId !== chatId) {
@@ -1146,6 +1155,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
               finishedChatIds: markFinished(
                 current.finishedChatIds,
                 turnChatId,
+                current.activeChatId,
               ),
             }));
             void get().loadChats();

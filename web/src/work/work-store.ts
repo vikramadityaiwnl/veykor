@@ -1,3 +1,4 @@
+import { usePreferencesStore } from "../workspace/preferences-store.ts";
 import { create } from "zustand";
 import type { AgentDefinition, WorkProject } from "@veykor/shared";
 import { workRequest } from "./work-client.ts";
@@ -14,7 +15,7 @@ interface WorkState {
   selectAgent: (id: string) => void;
 }
 
-export const useWorkStore = create<WorkState>((set) => ({
+export const useWorkStore = create<WorkState>((set, get) => ({
   agents: [],
   projects: [],
   loaded: false,
@@ -27,7 +28,24 @@ export const useWorkStore = create<WorkState>((set) => ({
         workRequest<AgentDefinition[]>("agents"),
         workRequest<WorkProject[]>("projects"),
       ]);
-      set({ agents, projects, loaded: true, error: "" });
+      const current = get();
+      const assigned =
+        projects.find((project) => project.id === current.projectId)
+          ?.agentIds ?? [];
+      const remembered =
+        usePreferencesStore.getState().projectAgents[current.projectId] ?? "";
+
+      set({
+        agents,
+        projects,
+        loaded: true,
+        error: "",
+        agentId: assigned.includes(current.agentId)
+          ? current.agentId
+          : assigned.includes(remembered)
+            ? remembered
+            : "",
+      });
     } catch (cause) {
       set({
         loaded: true,
@@ -35,6 +53,23 @@ export const useWorkStore = create<WorkState>((set) => ({
       });
     }
   },
-  selectProject: (projectId) => set({ projectId, agentId: "" }),
-  selectAgent: (agentId) => set({ agentId }),
+  selectProject: (projectId) => {
+    const remembered =
+      usePreferencesStore.getState().projectAgents[projectId] ?? "";
+    const assigned =
+      get().projects.find((project) => project.id === projectId)?.agentIds ??
+      [];
+
+    set({
+      projectId,
+      agentId: assigned.includes(remembered) ? remembered : "",
+    });
+  },
+  selectAgent: (agentId) => {
+    set({ agentId });
+
+    if (get().projectId) {
+      usePreferencesStore.getState().setProjectAgent(get().projectId, agentId);
+    }
+  },
 }));

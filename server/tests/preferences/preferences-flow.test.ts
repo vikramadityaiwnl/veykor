@@ -145,6 +145,8 @@ test("preferences default, update, and survive restart", async () => {
 
     const updated: UserPreferences = {
       lastTab: "work",
+      projectAgents: { "project-1": "agent-1" },
+      projectExpanded: { "project-1": false },
       workSections: [
         { id: "default-projects", title: "Default projects", open: true },
       ],
@@ -206,6 +208,8 @@ test("preferences default, update, and survive restart", async () => {
     assert.equal(sanitized.status, 200);
     assert.deepEqual(sanitized.body, {
       lastTab: "chat",
+      projectAgents: {},
+      projectExpanded: {},
       sections: [
         { id: "recent", title: "Recent", open: true },
         { id: "ok", title: "Untitled section", open: true },

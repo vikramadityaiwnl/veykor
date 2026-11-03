@@ -29,9 +29,10 @@ interface Props {
 function WorkSidebar(props: Props) {
   const { projects, load, error } = useWorkStore();
   const activeProjectId = useWorkStore((state) => state.projectId);
-  const [collapsedProjects, setCollapsedProjects] = useState<
-    Record<string, boolean>
-  >({});
+  const projectExpanded = usePreferencesStore((state) => state.projectExpanded);
+  const setProjectExpanded = usePreferencesStore(
+    (state) => state.setProjectExpanded,
+  );
   const sections = usePreferencesStore((state) => state.workSections);
   const setSectionOpen = usePreferencesStore((state) => state.setSectionOpen);
   const chats = useChatStore((state) => state.chats);
@@ -57,7 +58,7 @@ function WorkSidebar(props: Props) {
   }, [load]);
 
   function openProject(id: string) {
-    setCollapsedProjects((current) => ({ ...current, [id]: false }));
+    setProjectExpanded(id, true);
     useChatStore.getState().startDraft("recent");
     useWorkStore.getState().selectProject(id);
     navigate(`/work/${encodeURIComponent(id)}`);
@@ -119,7 +120,8 @@ function WorkSidebar(props: Props) {
               <div className="space-y-2">
                 {visible.map((project) => {
                   const expanded =
-                    !collapsedProjects[project.id] || props.query.trim() !== "";
+                    (projectExpanded[project.id] ?? true) ||
+                    props.query.trim() !== "";
 
                   return (
                     <div
@@ -140,10 +142,7 @@ function WorkSidebar(props: Props) {
                           aria-expanded={expanded}
                           onClick={() => {
                             if (activeProjectId === project.id) {
-                              setCollapsedProjects((current) => ({
-                                ...current,
-                                [project.id]: !current[project.id],
-                              }));
+                              setProjectExpanded(project.id, !expanded);
                             } else {
                               openProject(project.id);
                             }

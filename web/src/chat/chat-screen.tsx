@@ -68,7 +68,7 @@ function ChatScreen() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {!activeChatId ? (
+      {!activeChatId && !streaming && items.length === 0 ? (
         <div className="grid flex-1 place-items-center px-6">
           {projectId ? <ProjectGreeting /> : <GreetingHeader key={draftSeq} />}
         </div>

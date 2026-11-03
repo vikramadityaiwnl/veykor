@@ -24,6 +24,8 @@ export interface UserPreferences {
   lastTab: SidebarTab;
   sections: Array<SidebarSection>;
   workSections: Array<SidebarSection>;
+  projectAgents: Record<string, string>;
+  projectExpanded: Record<string, boolean>;
   chatSections: Record<string, string>;
   chatTitles: Record<string, string>;
   customChats: Array<CustomChat>;

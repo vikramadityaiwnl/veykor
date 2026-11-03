@@ -20,6 +20,8 @@ interface PreferencesState extends UserPreferences {
   loading: boolean;
   error: string;
   load: () => Promise<void>;
+  setProjectAgent: (projectId: string, agentId: string) => void;
+  setProjectExpanded: (projectId: string, expanded: boolean) => void;
   setLastTab: (tab: SidebarTab) => void;
   setSectionOpen: (id: string, open: boolean) => void;
   collapseAll: () => void;
@@ -51,6 +53,8 @@ function persist(): void {
     lastTab: state.lastTab,
     sections: state.sections,
     workSections: state.workSections,
+    projectAgents: state.projectAgents,
+    projectExpanded: state.projectExpanded,
     chatSections: state.chatSections,
     chatTitles: state.chatTitles,
     customChats: state.customChats,
@@ -120,6 +124,20 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
             : "Unable to load preferences.",
       });
     }
+  },
+
+  setProjectAgent: (projectId, agentId) => {
+    set((state) => ({
+      projectAgents: { ...state.projectAgents, [projectId]: agentId },
+    }));
+    persist();
+  },
+
+  setProjectExpanded: (projectId, expanded) => {
+    set((state) => ({
+      projectExpanded: { ...state.projectExpanded, [projectId]: expanded },
+    }));
+    persist();
   },
 
   setLastTab: (tab) => {

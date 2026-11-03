@@ -1,8 +1,12 @@
-function LoadingSpinner() {
+interface Props {
+  size?: "sm" | "md";
+}
+
+function LoadingSpinner(props: Props) {
   return (
     <svg
       aria-hidden="true"
-      className="size-4 animate-spin motion-reduce:animate-none"
+      className={`${props.size === "sm" ? "size-3" : "size-4"} animate-spin motion-reduce:animate-none`}
       fill="none"
       viewBox="0 0 24 24"
     >

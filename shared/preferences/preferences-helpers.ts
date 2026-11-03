@@ -31,6 +31,8 @@ export function defaultPreferences(): UserPreferences {
     workSections: [
       { id: defaultProjectSectionId, title: "Default projects", open: true },
     ],
+    projectAgents: {},
+    projectExpanded: {},
     chatSections: {},
     chatTitles: {},
     customChats: [],
@@ -169,6 +171,8 @@ export function sanitizePreferences(input: unknown): UserPreferences {
     lastTab?: unknown;
     sections?: unknown;
     workSections?: unknown;
+    projectAgents?: unknown;
+    projectExpanded?: unknown;
     chatSections?: unknown;
     chatTitles?: unknown;
     customChats?: unknown;
@@ -224,6 +228,42 @@ export function sanitizePreferences(input: unknown): UserPreferences {
       title: "Default projects",
       open: true,
     });
+  }
+
+  const projectAgents: Record<string, string> = {};
+  const projectExpanded: Record<string, boolean> = {};
+
+  if (
+    typeof record.projectAgents === "object" &&
+    record.projectAgents !== null
+  ) {
+    for (const [id, agent] of Object.entries(record.projectAgents).slice(
+      0,
+      maxMappings,
+    )) {
+      const projectId = sanitizeId(id);
+      const agentId = sanitizeId(agent);
+
+      if (projectId && agentId) {
+        projectAgents[projectId] = agentId;
+      }
+    }
+  }
+
+  if (
+    typeof record.projectExpanded === "object" &&
+    record.projectExpanded !== null
+  ) {
+    for (const [id, expanded] of Object.entries(record.projectExpanded).slice(
+      0,
+      maxMappings,
+    )) {
+      const projectId = sanitizeId(id);
+
+      if (projectId && typeof expanded === "boolean") {
+        projectExpanded[projectId] = expanded;
+      }
+    }
   }
 
   const chatSections: Record<string, string> = {};
@@ -311,6 +351,8 @@ export function sanitizePreferences(input: unknown): UserPreferences {
     lastTab,
     sections,
     workSections,
+    projectAgents,
+    projectExpanded,
     chatSections,
     chatTitles,
     customChats,

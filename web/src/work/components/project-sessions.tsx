@@ -22,6 +22,7 @@ function ProjectSessions(props: Props) {
   const removeChat = useChatStore((state) => state.deleteChat);
   const navigate = useNavigate();
 
+  const [showAll, setShowAll] = useState(false);
   const [menu, setMenu] = useState<{
     x: number;
     y: number;
@@ -36,6 +37,9 @@ function ProjectSessions(props: Props) {
       chat.projectId === props.projectId &&
       chat.title.toLowerCase().includes(props.query.toLowerCase()),
   );
+
+  const searching = props.query.trim() !== "";
+  const shown = showAll || searching ? sessions : sessions.slice(0, 5);
 
   function handleSessionMenu(
     event: MouseEvent<HTMLButtonElement>,
@@ -77,8 +81,8 @@ function ProjectSessions(props: Props) {
   }
 
   return (
-    <div className="ml-7 space-y-1 border-l border-zinc-800 pl-3">
-      {sessions.map((chat) => {
+    <div className="ml-5 space-y-1">
+      {shown.map((chat) => {
         const active = chat.id === activeChatId;
         const finished = !chat.running && finishedChatIds.includes(chat.id);
 
@@ -95,7 +99,7 @@ function ProjectSessions(props: Props) {
 
             {chat.running && (
               <span className="shrink-0">
-                <LoadingSpinner />
+                <LoadingSpinner size="sm" />
               </span>
             )}
 
@@ -108,6 +112,16 @@ function ProjectSessions(props: Props) {
           </button>
         );
       })}
+
+      {!searching && sessions.length > 5 && (
+        <button
+          type="button"
+          className="px-2 py-1.5 text-xs font-light text-zinc-500 hover:text-zinc-200"
+          onClick={() => setShowAll(!showAll)}
+        >
+          {showAll ? "Show less" : `Show more (${sessions.length - 5})`}
+        </button>
+      )}
 
       {menu && (
         <ContextMenu
