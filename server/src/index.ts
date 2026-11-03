@@ -1,10 +1,19 @@
 import { serve } from "@hono/node-server";
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
-import type { HealthResponse } from "@veykor/shared/health";
+import type { CurrentUserResponse, HealthResponse } from "@veykor/shared";
+import { authRoute, csrfProtection, requireAuth } from "./auth/auth.js";
+import type { AuthEnv } from "./auth/auth.js";
+import { loadServerConfig } from "./auth/config.js";
 import { db } from "./db/client.js";
 
-const app = new Hono();
+const config = loadServerConfig();
+
+const app = new Hono<AuthEnv>();
+
+app.use("/api/*", csrfProtection);
+
+app.route("/api/auth", authRoute);
 
 app.get("/api/health", async (context) => {
   await db.all(sql`select 1`);
@@ -18,7 +27,36 @@ app.get("/api/health", async (context) => {
   return context.json(response);
 });
 
-serve({
-  fetch: app.fetch,
-  port: Number(process.env.PORT ?? 3001),
+app.get("/api/me", requireAuth, (context) => {
+  const response: CurrentUserResponse = {
+    user: context.get("user"),
+    expiresAt: context.get("expiresAt"),
+  };
+
+  return context.json(response);
+});
+
+app.notFound((context) => context.json({ error: "Not found" }, 404));
+
+const server = serve(
+  {
+    fetch: app.fetch,
+    port: config.port,
+    hostname: "0.0.0.0",
+  },
+  (info) => {
+    console.log(`veykor API listening on http://0.0.0.0:${info.port}`);
+    console.log(`SQLite database: ${config.databaseUrl}`);
+  },
+);
+
+server.on("error", (cause: NodeJS.ErrnoException) => {
+  if (cause.code === "EADDRINUSE") {
+    console.error(
+      `Port ${config.port} is already in use by another process. Stop it and retry.`,
+    );
+    process.exit(1);
+  }
+
+  throw cause;
 });
