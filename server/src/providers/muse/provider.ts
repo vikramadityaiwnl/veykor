@@ -25,7 +25,8 @@ interface RuntimeState {
     {
       approval: ChatApproval;
       choiceIds: string[];
-      resolve: (decision: ApprovalDecisionInput) => void;
+      decide: (choiceId: string) => Promise<void>;
+      deciding: boolean;
     }
   >;
   usage: Map<string, ChatUsage>;
@@ -74,6 +75,26 @@ export async function describeConversation(
       error: failure,
       messages: [],
     };
+  }
+
+  if (busy.has(`${userId}:${id}`)) {
+    void live.session
+      .syncApprovals()
+      .then(() => {
+        if (
+          live.state.lastError.startsWith("Unable to check pending approvals:")
+        ) {
+          live.state.lastError = "";
+        }
+      })
+      .catch((error) => {
+        if (
+          !live.state.lastError ||
+          live.state.lastError.startsWith("Unable to check pending approvals:")
+        ) {
+          live.state.lastError = `Unable to check pending approvals: ${error.message}`;
+        }
+      });
   }
 
   const { messages, activities } = await projectMessages(
@@ -172,7 +193,11 @@ async function runtime(userId: number, id: string): Promise<Runtime> {
             })),
           },
           choiceIds: request.availableChoices.map((choice) => choice.choiceId),
-          resolve,
+          deciding: false,
+          decide: (choiceId) =>
+            new Promise<void>((onApplied, onError) => {
+              resolve({ choiceId, onApplied, onError });
+            }),
         });
       });
     };
@@ -376,8 +401,22 @@ export async function decideApproval(
   if (!request || !request.choiceIds.includes(choiceId)) {
     throw new Error("This permission choice is no longer available");
   }
-  live.state.approvals.delete(approvalId);
-  request.resolve({ choiceId });
+  if (request.deciding) {
+    throw new Error("This permission decision is already being submitted");
+  }
+
+  request.deciding = true;
+  try {
+    await request.decide(choiceId);
+    if (live.state.lastError.startsWith("Permission decision failed:")) {
+      live.state.lastError = "";
+    }
+    if (live.state.approvals.get(approvalId) === request) {
+      live.state.approvals.delete(approvalId);
+    }
+  } finally {
+    request.deciding = false;
+  }
 }
 
 export async function stopConversation(

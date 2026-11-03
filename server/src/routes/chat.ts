@@ -169,7 +169,7 @@ chatRoute.put("/sessions", async (c) => {
       (existing.nativeSessionId || hasSubmittedMessages(userId, existing.id))
     );
     let agentId: string | null | undefined;
-    let agentName = "";
+    let agentName = existing?.agentName || "";
     let agentProviderId: string | undefined;
     let agentModelId: string | undefined;
     let agentEffort: string | undefined;
@@ -189,7 +189,7 @@ chatRoute.put("/sessions", async (c) => {
         );
       }
 
-      if (agentId) {
+      if (agentId && (!existing || agentId !== existing.agentId)) {
         const agent = readAgent(userId, agentId);
 
         if (
@@ -234,7 +234,14 @@ chatRoute.put("/sessions", async (c) => {
                 : isReasoningEffort(candidate.reasoningEffort)
                   ? candidate.reasoningEffort
                   : existing.reasoningEffort || "",
-            permissionMode: agentPermission || existing.permissionMode,
+            permissionMode:
+              !started &&
+              agentId !== undefined &&
+              agentId !== (existing.agentId ?? null)
+                ? permissionModes.includes(candidate.permissionMode)
+                  ? candidate.permissionMode
+                  : agentPermission || existing.permissionMode
+                : existing.permissionMode,
             agentId:
               agentId !== undefined ? agentId : (existing.agentId ?? null),
             agentName:
@@ -260,7 +267,10 @@ chatRoute.put("/sessions", async (c) => {
                   ? candidate.reasoningEffort
                   : "",
             nativeSessionId: "",
-            permissionMode: agentPermission || "promptUnmatched",
+            permissionMode:
+              agentId && permissionModes.includes(candidate.permissionMode)
+                ? candidate.permissionMode
+                : agentPermission || "promptUnmatched",
             agentId: agentId ?? null,
             agentName,
             agentSnapshot: null,
@@ -652,7 +662,7 @@ chatRoute.post("/", async (c) => {
       latest.providerId = snapshot.providerId;
       latest.modelId = snapshot.modelId;
       latest.reasoningEffort = snapshot.reasoningEffort;
-      latest.permissionMode = snapshot.permissionMode;
+      latest.permissionMode = input.permissionMode;
       writeConversation(userId, latest);
     }
   }
@@ -662,7 +672,6 @@ chatRoute.post("/", async (c) => {
       .providerId as typeof input.providerId;
     input.modelId = latest.agentSnapshot.modelId;
     input.reasoningEffort = latest.agentSnapshot.reasoningEffort;
-    input.permissionMode = latest.agentSnapshot.permissionMode;
   }
 
   try {

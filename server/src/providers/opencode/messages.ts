@@ -46,7 +46,9 @@ export async function projectMessages(
       const id = part.id || `${row.id}-${index}`;
 
       if (part.type === "text") {
-        text.push(part.text || "");
+        if (!/^step interrupted[.!]?$/i.test((part.text || "").trim())) {
+          text.push(part.text || "");
+        }
       } else if (part.type === "reasoning") {
         thinking.push(part.text || "");
         thoughtEntries.push({

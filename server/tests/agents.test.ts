@@ -423,6 +423,54 @@ test("agents CRUD, ownership, project access, snapshot, and locking", async () =
       200,
     );
 
+    const selectedPermissionSession = {
+      ...baseSession,
+      id: "agent-chat-selected-permission",
+      agentId: agent.id,
+      permissionMode: "denyUnmatched",
+    };
+    assert.equal((await saveSession(selectedPermissionSession)).status, 200);
+    const selectedPermissionSessions = (await (
+      await request("chat/sessions", { cookie })
+    ).json()) as {
+      sessions: { id: string; permissionMode: string }[];
+    };
+    assert.equal(
+      selectedPermissionSessions.sessions.find(
+        (entry) => entry.id === selectedPermissionSession.id,
+      )?.permissionMode,
+      "denyUnmatched",
+    );
+
+    const permissionSession = {
+      ...baseSession,
+      id: "agent-chat-permissions",
+      agentId: agent.id,
+    };
+    assert.equal((await saveSession(permissionSession)).status, 200);
+    assert.equal(
+      (
+        await request("chat/sessions/agent-chat-permissions/mode", {
+          method: "POST",
+          body: { mode: "denyUnmatched" },
+          cookie,
+        })
+      ).status,
+      200,
+    );
+    assert.equal((await saveSession(permissionSession)).status, 200);
+    const permissionSessions = (await (
+      await request("chat/sessions", { cookie })
+    ).json()) as {
+      sessions: { id: string; permissionMode: string }[];
+    };
+    assert.equal(
+      permissionSessions.sessions.find(
+        (entry) => entry.id === permissionSession.id,
+      )?.permissionMode,
+      "denyUnmatched",
+    );
+
     if (provider) {
       const submitted = await request("chat", {
         method: "POST",
@@ -431,7 +479,7 @@ test("agents CRUD, ownership, project access, snapshot, and locking", async () =
           messageId: "message-with-agent",
           providerId: input.providerId,
           modelId: input.modelId,
-          permissionMode: "promptUnmatched",
+          permissionMode: "denyUnmatched",
           reasoningEffort: provider.models[0].defaultReasoningEffort,
           systemPrompt: "",
           messages: [{ role: "user", text: "Hello agent" }],
@@ -447,6 +495,7 @@ test("agents CRUD, ownership, project access, snapshot, and locking", async () =
         sessions: {
           id: string;
           agentName?: string;
+          permissionMode: string;
           providerId: string;
           modelId: string;
         }[];
@@ -455,6 +504,7 @@ test("agents CRUD, ownership, project access, snapshot, and locking", async () =
         (entry) => entry.id === "agent-chat-1",
       )!;
 
+      assert.equal(saved.permissionMode, "denyUnmatched");
       assert.equal(saved.agentName, "Reviewer");
       assert.equal(saved.providerId, input.providerId);
       assert.equal(saved.modelId, input.modelId);
@@ -499,6 +549,26 @@ test("agents CRUD, ownership, project access, snapshot, and locking", async () =
         afterDelete.sessions.find((entry) => entry.id === "agent-chat-1")
           ?.agentName,
         "Reviewer",
+      );
+
+      assert.equal(
+        (
+          await request("chat/sessions", {
+            method: "PUT",
+            body: {
+              sessions: [
+                { ...baseSession, agentId: agent.id },
+                {
+                  ...baseSession,
+                  id: "chat-after-agent-deletion",
+                  agentId: secondAgent.id,
+                },
+              ],
+            },
+            cookie,
+          })
+        ).status,
+        200,
       );
 
       const remaining = (await (

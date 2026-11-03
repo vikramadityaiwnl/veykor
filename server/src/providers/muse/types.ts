@@ -21,6 +21,8 @@ export interface FoldedItem {
 
 export interface ApprovalDecisionInput {
   choiceId: string;
+  onApplied?: () => void;
+  onError?: (error: Error) => void;
 }
 
 export interface ApprovalRequest {

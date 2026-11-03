@@ -31,7 +31,7 @@ export async function chatAction(
     },
   );
   if (!response.ok) {
-    const payload = await response.json();
+    const payload = await response.json().catch(() => ({}));
     throw new Error(payload.error || "Muse request failed");
   }
 }
@@ -81,6 +81,19 @@ export const useChatRuntimeStore = create<ChatRuntimeState>()((set, get) => ({
     });
     try {
       await useChatSessionsStore.getState().save();
+      const saved = useChatSessionsStore.getState();
+      if (
+        saved.error ||
+        !saved.sessions.some((session) => session.id === sessionId)
+      ) {
+        throw Object.assign(
+          new Error(
+            saved.error ||
+              "Unable to save this conversation. Please try again.",
+          ),
+          { kind: "rejected" as const },
+        );
+      }
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -129,6 +142,15 @@ export const useChatRuntimeStore = create<ChatRuntimeState>()((set, get) => ({
       } else {
         pendingSubmissions.delete(sessionId);
       }
+
+      set({
+        runningSessionId:
+          useChatSessionsStore
+            .getState()
+            .sessions.find((session) => session.status === "running")?.id ||
+          [...pendingSubmissions.keys()][0] ||
+          "",
+      });
     }
   },
 }));

@@ -29,6 +29,8 @@ export class MuseSession {
   private approvalHandler?: ApprovalHandler;
   private approvalErrorHandler?: ApprovalErrorHandler;
   private requirements = new Map<string, string>();
+  private approvalSync?: Promise<void>;
+  private approvalsCheckedAt = 0;
 
   readonly items = {
     list: () => [...this.itemStore.values()],
@@ -103,14 +105,7 @@ export class MuseSession {
         session.receive(event);
       }
 
-      const approvals = await transport.connection.request(
-        "approval/listPending",
-        { sessionId: session.sessionId },
-      );
-
-      for (const request of approvals.approvals || []) {
-        session.approve(request);
-      }
+      await session.syncApprovals(true);
 
       return session;
     } finally {
@@ -140,15 +135,28 @@ export class MuseSession {
     void this.approvalHandler(request)
       .then(async (decision) => {
         if (this.requirements.get(request.approvalId) !== key) {
+          decision.onError?.(
+            new Error(
+              "This permission request has changed. Review the latest request.",
+            ),
+          );
           return;
         }
 
-        await this.transport.connection.command("approval/decide", {
-          sessionId: this.sessionId,
-          approvalId: request.approvalId,
-          requirementId: request.currentRequirementId,
-          choiceId: decision.choiceId,
-        });
+        try {
+          await this.transport.connection.command("approval/decide", {
+            sessionId: this.sessionId,
+            approvalId: request.approvalId,
+            requirementId: request.currentRequirementId,
+            choiceId: decision.choiceId,
+          });
+          decision.onApplied?.();
+        } catch (error) {
+          decision.onError?.(
+            error instanceof Error ? error : new Error("Approval failed"),
+          );
+          throw error;
+        }
       })
       .catch((error) => {
         this.requirements.delete(request.approvalId);
@@ -157,6 +165,36 @@ export class MuseSession {
         });
         this.approve(request);
       });
+  }
+
+  async syncApprovals(force = false): Promise<void> {
+    if (this.approvalSync) {
+      return this.approvalSync;
+    }
+
+    if (!force && Date.now() - this.approvalsCheckedAt < 1000) {
+      return;
+    }
+
+    this.approvalsCheckedAt = Date.now();
+    this.approvalSync = (async () => {
+      const result = await this.transport.connection.request(
+        "approval/listPending",
+        {
+          sessionId: this.sessionId,
+        },
+      );
+
+      for (const request of result.approvals || []) {
+        this.approve(request);
+      }
+    })();
+
+    try {
+      await this.approvalSync;
+    } finally {
+      this.approvalSync = undefined;
+    }
   }
 
   private receive(event: MuseEvent) {
@@ -173,6 +211,10 @@ export class MuseSession {
     ) {
       if (p.availableChoices && p.currentRequirementId) {
         this.approve(p);
+      } else {
+        void this.syncApprovals(true).catch((error) => {
+          this.approvalErrorHandler?.({ kind: error.message });
+        });
       }
     } else if (event.method === "approval/resolved") {
       this.requirements.delete(p.approvalId);

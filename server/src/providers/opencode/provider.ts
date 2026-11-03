@@ -191,15 +191,20 @@ async function sync(
     const failedExecution = info.data.outcome === "failed";
     const interruptedHost =
       !live.nativeBusy && (info.data.time.busy || 0) > live.idleAt;
-    const failure =
-      [...rows].reverse().find((row) => row.type === "assistant")?.error
-        ?.message ||
-      (failedExecution
-        ? "OpenCode execution failed. Check the session in OpenCode for details."
-        : "") ||
-      (interruptedHost
-        ? "Execution was interrupted and its outcome is uncertain. Review the conversation before sending again; nothing was resent automatically."
-        : "");
+    const intentionalStop = info.data.outcome === "interrupted";
+    if (intentionalStop) {
+      live.session.error = "";
+    }
+    const failure = intentionalStop
+      ? ""
+      : [...rows].reverse().find((row) => row.type === "assistant")?.error
+          ?.message ||
+        (failedExecution
+          ? "OpenCode execution failed. Check the session in OpenCode for details."
+          : "") ||
+        (interruptedHost
+          ? "Execution was interrupted and its outcome is uncertain. Review the conversation before sending again; nothing was resent automatically."
+          : "");
     live.session = {
       ...metadataSession(metadata),
       status: running

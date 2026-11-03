@@ -18,6 +18,7 @@ import { ConversationMessages } from "./components/conversation-messages";
 import { useProjectsStore } from "./projects-store";
 import { chatGreeting } from "./chat-greeting";
 import { useAgentsStore } from "../agents/agents-store";
+import { useAgentPreferencesStore } from "./agent-preferences-store";
 
 const noMessages: SessionMessage[] = [];
 
@@ -53,13 +54,19 @@ export function ProjectHomePage() {
   const draft = (location.state as { draft?: ChatDraft } | null)?.draft;
   const [defaultProvider, setDefaultProvider] = useState("");
   const [defaultModel, setDefaultModel] = useState("");
-  const [permissionChoice, setPermissionChoice] =
-    useState<ChatPermissionMode | null>(null);
+  const permissionContext = sessionId || draft?.id || "home";
+  const [permissionSelection, setPermissionSelection] = useState<{
+    context: string;
+    mode: ChatPermissionMode;
+  } | null>(null);
+  const permissionChoice =
+    permissionSelection?.context === permissionContext
+      ? permissionSelection.mode
+      : null;
   const [effortChoice, setEffortChoice] = useState<{
     modelId: string;
     effort: ChatReasoningEffort;
   } | null>(null);
-  const [selectedAgentId, setSelectedAgentId] = useState("");
   const sessions = useChatSessionsStore((state) => state.sessions);
   const status = useChatSessionsStore((state) => state.status);
   const historyError = useChatSessionsStore((state) => state.error);
@@ -108,7 +115,22 @@ export function ProjectHomePage() {
   );
   const loadForProject = useAgentsStore((state) => state.loadForProject);
   const agentList = projectAgents || [];
-  const effectiveAgentId = session?.agentId || selectedAgentId;
+  const preferredAgentId = useAgentPreferencesStore(
+    (state) => state.agents[`${userId}:${activeProjectId}`] || "",
+  );
+  const recentAgentId = [...sessions]
+    .reverse()
+    .find(
+      (entry) =>
+        entry.projectId === activeProjectId &&
+        agentList.some((agent) => agent.id === entry.agentId),
+    )?.agentId;
+  const effectiveAgentId =
+    session?.agentId ||
+    agentList.find((agent) => agent.id === preferredAgentId)?.id ||
+    recentAgentId ||
+    agentList[0]?.id ||
+    "";
   const selectedAgent = agentList.find(
     (agent) => agent.id === effectiveAgentId,
   );
@@ -218,6 +240,16 @@ export function ProjectHomePage() {
     }
   }, [activeProjectId, loadForProject]);
 
+  function setPermissionChoice(mode: ChatPermissionMode | null) {
+    setPermissionSelection((current) =>
+      mode
+        ? { context: permissionContext, mode }
+        : current?.context === permissionContext
+          ? null
+          : current,
+    );
+  }
+
   function select(providerId: string, modelId: string) {
     if (isProviderLocked && session?.providerId !== providerId) {
       return;
@@ -251,7 +283,12 @@ export function ProjectHomePage() {
       return;
     }
 
-    setSelectedAgentId(agentId);
+    if (userId !== null) {
+      useAgentPreferencesStore
+        .getState()
+        .select(userId, activeProjectId, agentId);
+    }
+    setPermissionChoice(agent.permissionMode);
     setEffortChoice(null);
     useChatRuntimeStore.setState({
       error: "",
@@ -300,7 +337,7 @@ export function ProjectHomePage() {
       chatProviderId,
       chatModelId,
       chatEffort,
-      undefined,
+      chatPermissionMode,
       isProjectChat ? effectiveAgentId || null : undefined,
       isProjectChat
         ? selectedAgent?.name || session?.agentName || ""
@@ -314,7 +351,7 @@ export function ProjectHomePage() {
       delivery: messageBehavior,
       conversationId: target.id,
       messageId: message.id,
-      permissionMode: session?.permissionMode || chatPermissionMode,
+      permissionMode: chatPermissionMode,
       reasoningEffort: chatEffort,
       providerId: chatProviderId as ProviderCliId,
       modelId: chatModelId,
@@ -351,91 +388,104 @@ export function ProjectHomePage() {
         </Center>
       }
       composer={
-        <ChatComposerPanel
-          key={sessionId || draft?.id || "home"}
-          isProjectChat={isProjectChat}
-          agents={agentList}
-          agentId={effectiveAgentId}
-          agentName={session?.agentName || selectedAgent?.name || ""}
-          isAgentLocked={isProviderLocked}
-          agentMissing={agentMissing}
-          onAgentChange={selectAgent}
-          permissionMode={session?.permissionMode || chatPermissionMode}
-          onPermissionMode={(mode) => {
-            setPermissionChoice(mode);
+        <>
+          {session ? (
+            <ChatNativeActivity key={session.id} session={session} />
+          ) : null}
+          <ChatComposerPanel
+            key={sessionId || draft?.id || "home"}
+            isProjectChat={isProjectChat}
+            agents={agentList}
+            agentId={effectiveAgentId}
+            agentName={session?.agentName || selectedAgent?.name || ""}
+            isAgentLocked={isProviderLocked}
+            agentMissing={agentMissing}
+            onAgentChange={selectAgent}
+            permissionMode={chatPermissionMode}
+            onPermissionMode={(mode) => {
+              setPermissionChoice(mode);
 
-            if (session) {
-              useChatSessionsStore
-                .getState()
-                .configure(
-                  session.id,
-                  chatProviderId,
-                  chatModelId,
-                  undefined,
-                  mode,
+              if (session) {
+                useChatSessionsStore
+                  .getState()
+                  .configure(
+                    session.id,
+                    chatProviderId,
+                    chatModelId,
+                    undefined,
+                    mode,
+                  );
+                void chatAction(session.id, "mode", { mode }).catch((error) => {
+                  setPermissionChoice(null);
+                  void useChatSessionsStore.getState().openSession(session.id);
+                  useChatRuntimeStore.setState({
+                    error: error.message,
+                    errorKind: "rejected",
+                    errorSessionId: session.id,
+                  });
+                });
+              }
+
+              if (!isProjectChat) {
+                void useChatDefaultsStore.getState().savePermission(mode);
+              }
+            }}
+            reasoningEffort={chatEffort}
+            onReasoningEffort={(effort) => {
+              setEffortChoice({ modelId: chatModelId, effort });
+
+              if (session) {
+                useChatSessionsStore
+                  .getState()
+                  .configure(session.id, chatProviderId, chatModelId, effort);
+                void chatAction(session.id, "settings", {
+                  reasoningEffort: effort,
+                }).catch((error) =>
+                  useChatRuntimeStore.setState({
+                    error: error.message,
+                    errorKind: "rejected",
+                    errorSessionId: session.id,
+                  }),
                 );
-              void chatAction(session.id, "mode", { mode }).catch((error) =>
-                useChatRuntimeStore.setState({
-                  error: error.message,
-                  errorKind: "rejected",
-                  errorSessionId: session.id,
-                }),
-              );
-            }
+              }
 
-            if (!isProjectChat) {
-              void useChatDefaultsStore.getState().savePermission(mode);
+              if (!isProjectChat && modelId) {
+                void useChatDefaultsStore
+                  .getState()
+                  .saveEffort(modelId, effort);
+              }
+            }}
+            isNewProjectChat={!sessionId && !!draft?.projectId}
+            project={projects.find(
+              (project) =>
+                project.id === (session?.projectId || draft?.projectId),
+            )}
+            providers={providers}
+            isProviderLocked={isProviderLocked}
+            providerId={chatProviderId}
+            modelId={chatModelId}
+            preferredModels={
+              isProjectChat ? noPreferredModels : preferredModels
             }
-          }}
-          reasoningEffort={chatEffort}
-          onReasoningEffort={(effort) => {
-            setEffortChoice({ modelId: chatModelId, effort });
-
-            if (session) {
-              useChatSessionsStore
-                .getState()
-                .configure(session.id, chatProviderId, chatModelId, effort);
-              void chatAction(session.id, "settings", {
-                reasoningEffort: effort,
-              }).catch((error) =>
-                useChatRuntimeStore.setState({
-                  error: error.message,
-                  errorKind: "rejected",
-                  errorSessionId: session.id,
-                }),
-              );
+            loading={loading}
+            isReady={ready}
+            isRunning={session?.status === "running" || runningId === sessionId}
+            sessionId={sessionId || ""}
+            queuedMessages={session?.queuedMessages || []}
+            queuePaused={session?.queuePaused || false}
+            messageBehavior={messageBehavior}
+            isBusy={!!runningId}
+            error={
+              runtimeError || session?.error || historyError || catalogError
             }
-
-            if (!isProjectChat && modelId) {
-              void useChatDefaultsStore.getState().saveEffort(modelId, effort);
-            }
-          }}
-          isNewProjectChat={!sessionId && !!draft?.projectId}
-          project={projects.find(
-            (project) =>
-              project.id === (session?.projectId || draft?.projectId),
-          )}
-          providers={providers}
-          isProviderLocked={isProviderLocked}
-          providerId={chatProviderId}
-          modelId={chatModelId}
-          preferredModels={isProjectChat ? noPreferredModels : preferredModels}
-          loading={loading}
-          isReady={ready}
-          isRunning={session?.status === "running" || runningId === sessionId}
-          sessionId={sessionId || ""}
-          queuedMessages={session?.queuedMessages || []}
-          queuePaused={session?.queuePaused || false}
-          messageBehavior={messageBehavior}
-          isBusy={!!runningId}
-          error={runtimeError || session?.error || historyError || catalogError}
-          errorKind={runtimeError ? runtimeErrorKind : ""}
-          usage={lastReply?.usage || emptyUsage()}
-          hasMessages={messages.some((message) => message.role === "user")}
-          onSelection={select}
-          onSubmit={submit}
-          onStop={() => stop(sessionId)}
-        />
+            errorKind={runtimeError ? runtimeErrorKind : ""}
+            usage={lastReply?.usage || emptyUsage()}
+            hasMessages={messages.some((message) => message.role === "user")}
+            onSelection={select}
+            onSubmit={submit}
+            onStop={() => stop(sessionId)}
+          />
+        </>
       }
     >
       {hasThreadContent ? (
@@ -448,7 +498,6 @@ export function ProjectHomePage() {
               }
             />
           ) : null}
-          {session ? <ChatNativeActivity session={session} /> : null}
         </>
       ) : null}
     </ChatLayout>

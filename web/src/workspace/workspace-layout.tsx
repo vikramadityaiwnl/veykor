@@ -127,9 +127,7 @@ export function WorkspaceLayout() {
     location.pathname === "/" || location.pathname.startsWith("/chat/");
 
   function selectProject(id: string) {
-    navigate("/");
     setSelectedProjectId(id);
-    selectSession(null);
     setExpandedProjectIds((current) =>
       current.includes(id)
         ? current.filter((existing) => existing !== id)
