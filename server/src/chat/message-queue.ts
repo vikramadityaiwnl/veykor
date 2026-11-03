@@ -6,6 +6,8 @@ import { commandId } from "../providers/command-id.js";
 import { chatProviderFor } from "../providers/index.js";
 import { parseChatDefaults } from "../settings/chat-defaults.js";
 import { readConversation, validConversationLocation, writeConversation } from "./conversations.js";
+import { attachCollabDigest, confirmCollabDigest } from "./collab-dispatch.js";
+import { onQueueRowError, onTurnSettled } from "../collab/turn-hooks.js";
 
 type InputRow = typeof chatInputs.$inferSelect;
 
@@ -119,6 +121,7 @@ function markError(
     .where(eq(chatInputs.id, row.id))
     .run();
   pauseQueue(row.userId, row.conversationId, true);
+  onQueueRowError(row.id);
 }
 
 async function drain(userId: number, conversationId: string) {
@@ -181,13 +184,18 @@ async function drain(userId: number, conversationId: string) {
 
     try {
       const input = JSON.parse(row.payload) as ChatRequest;
-      await provider.runTurn(userId, { ...input, messageId: row.id });
+      const collab = attachCollabDigest(userId, input);
+      await provider.runTurn(userId, { ...collab.input, messageId: row.id });
       const snapshot = await provider.describe(userId, conversationId);
 
       if (
         snapshot?.messages.some((message) => message.submissionId === row.id)
       ) {
         markSent(row);
+        confirmCollabDigest(userId, collab, conversationId);
+        await onTurnSettled(userId, conversationId, row).catch((error) => {
+          console.error("Collaboration follow-up failed", error);
+        });
         if (snapshot.error) {
           pauseQueue(userId, conversationId, true);
           return;

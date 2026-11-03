@@ -28,10 +28,18 @@ export interface ConversationMetadata {
   agentId?: string | null;
   agentName?: string;
   agentSnapshot?: AgentSnapshot | null;
+  parentConversationId?: string | null;
+  collabRole?: "lead" | "delegate";
   attachments: StoredAttachment[];
   queuePaused?: boolean;
   recoveryError?: string;
   turnTimings?: Record<string, { startedAt: number; seconds: number }>;
+}
+
+export function isInternalConversation(
+  metadata: Pick<ConversationMetadata, "parentConversationId">,
+): boolean {
+  return !!metadata.parentConversationId;
 }
 
 export function readConversation(
@@ -175,10 +183,27 @@ async function slimSession(
   };
 }
 
-function deleteConversation(userId: number, id: string) {
+export function deleteConversation(userId: number, id: string) {
   db.delete(conversations)
     .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
     .run();
+}
+
+export function listOrdinaryConversations(
+  userId: number,
+): ConversationMetadata[] {
+  return listConversations(userId).filter(
+    (metadata) => !isInternalConversation(metadata),
+  );
+}
+
+export function listInternalConversations(
+  userId: number,
+  parentConversationId: string,
+): ConversationMetadata[] {
+  return listConversations(userId).filter(
+    (metadata) => metadata.parentConversationId === parentConversationId,
+  );
 }
 
 export function listProjectConversations(
@@ -187,6 +212,15 @@ export function listProjectConversations(
 ): ConversationMetadata[] {
   return listConversations(userId).filter(
     (metadata) => metadata.projectId === projectId,
+  );
+}
+
+export function listOrdinaryProjectConversations(
+  userId: number,
+  projectId: string,
+): ConversationMetadata[] {
+  return listProjectConversations(userId, projectId).filter(
+    (metadata) => !isInternalConversation(metadata),
   );
 }
 

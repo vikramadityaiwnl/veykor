@@ -8,11 +8,19 @@ const pendingSubmissions = new Map<string, number>();
 
 export type SubmissionErrorKind = "" | "rejected" | "uncertain";
 
+export interface SubmissionInterruption {
+  sessionId: string;
+  taskId: string;
+  state: string;
+  interruptState: string;
+}
+
 interface ChatRuntimeState {
   runningSessionId: string;
   error: string;
   errorKind: SubmissionErrorKind;
   errorSessionId: string;
+  lastInterruption: SubmissionInterruption | null;
   send: (sessionId: string, input: ChatRequest) => Promise<boolean>;
   stop: (sessionId?: string) => void;
 }
@@ -56,6 +64,7 @@ export const useChatRuntimeStore = create<ChatRuntimeState>()((set, get) => ({
   error: "",
   errorKind: "",
   errorSessionId: "",
+  lastInterruption: null,
   stop: (sessionId) => {
     const id = sessionId || get().runningSessionId;
     if (id) {
@@ -78,13 +87,19 @@ export const useChatRuntimeStore = create<ChatRuntimeState>()((set, get) => ({
       error: "",
       errorKind: "",
       errorSessionId: "",
+      lastInterruption: null,
     });
     try {
-      await useChatSessionsStore.getState().save();
+      const sessionsState = useChatSessionsStore.getState();
+      const isInternal = !!sessionsState.internalSessions[sessionId];
+      if (!isInternal) {
+        await sessionsState.save();
+      }
       const saved = useChatSessionsStore.getState();
       if (
         saved.error ||
-        !saved.sessions.some((session) => session.id === sessionId)
+        (!isInternal &&
+          !saved.sessions.some((session) => session.id === sessionId))
       ) {
         throw Object.assign(
           new Error(
@@ -108,6 +123,23 @@ export const useChatRuntimeStore = create<ChatRuntimeState>()((set, get) => ({
           new Error(payload.error || "Unable to send message"),
           { kind: "rejected" as const },
         );
+      }
+      const payload = (await response.json().catch(() => ({}))) as {
+        interruption?: {
+          taskId: string;
+          state: string;
+          interruptState: string;
+        };
+      };
+      if (payload.interruption) {
+        set({
+          lastInterruption: {
+            sessionId,
+            taskId: payload.interruption.taskId,
+            state: payload.interruption.state,
+            interruptState: payload.interruption.interruptState,
+          },
+        });
       }
       return true;
     } catch (error) {
@@ -185,6 +217,7 @@ const unsubscribeAuth = useAuthStore.subscribe((state, previous) => {
       error: "",
       errorKind: "",
       errorSessionId: "",
+      lastInterruption: null,
     });
   }
 });

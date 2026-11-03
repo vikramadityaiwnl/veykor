@@ -21,6 +21,7 @@ import { getAttachmentKind, isImageFile, openInNewTab, readFileAsDataUrl } from 
 import { appendTranscript, useTranscribeRecorder } from "../transcribe-recorder";
 
 interface Props {
+  minimalControls?: boolean;
   isProjectChat?: boolean;
   agents?: ProjectAgent[];
   agentId?: string;
@@ -318,7 +319,7 @@ export function ChatComposerPanel(props: Props) {
                 clickAction={() => fileInput.current?.click()}
               />
 
-              {props.isProjectChat ? (
+              {props.minimalControls ? null : props.isProjectChat ? (
                 <AgentSelector
                   agents={props.agents || []}
                   value={props.agentId || ""}
@@ -360,18 +361,23 @@ export function ChatComposerPanel(props: Props) {
               )}
 
               <HStack gap={3} vAlign="center" className="ml-auto">
-                {props.hasMessages && model && model.contextWindow > 0 && (
-                  <ChatContextProgress
-                    tokens={contextTokens}
-                    limit={model.contextWindow}
+                {!props.minimalControls &&
+                  props.hasMessages &&
+                  model &&
+                  model.contextWindow > 0 && (
+                    <ChatContextProgress
+                      tokens={contextTokens}
+                      limit={model.contextWindow}
+                    />
+                  )}
+
+                {!props.minimalControls && (
+                  <ChatPermissionSelection
+                    providerId={props.providerId}
+                    value={props.permissionMode}
+                    onChange={props.onPermissionMode}
                   />
                 )}
-
-                <ChatPermissionSelection
-                  providerId={props.providerId}
-                  value={props.permissionMode}
-                  onChange={props.onPermissionMode}
-                />
 
                 <ComposerTranscribeButton
                   status={recorder.status}

@@ -8,7 +8,8 @@ import { requireAuth, type AuthEnv } from "../auth/auth.js";
 import { isHostRequest } from "../auth/host-access.js";
 import { chatProviderFor } from "../providers/index.js";
 import { removeStaged } from "../chat/attachments.js";
-import { deleteProjectConversations, listProjectConversations } from "../chat/conversations.js";
+import { isInternalConversation, deleteProjectConversations, listProjectConversations } from "../chat/conversations.js";
+import { deleteCollaboration } from "../collab/store.js";
 import { createProject, deleteProject, listProjects, updateProject } from "../db/projects.js";
 import { isProjectSection } from "../db/sidebar-sections.js";
 
@@ -198,6 +199,12 @@ projectsRoute.delete("/:id/chats", async (c) => {
     ),
   );
 
+  for (const metadata of doomed) {
+    if (!isInternalConversation(metadata)) {
+      deleteCollaboration(userId, metadata.id);
+    }
+  }
+
   deleteProjectConversations(userId, id);
 
   const response: DeleteProjectChatsResponse = { deleted: doomed.length };
@@ -237,6 +244,12 @@ projectsRoute.delete("/:id", async (c) => {
       metadata.attachments.map((attachment) => removeStaged(attachment.id)),
     ),
   );
+
+  for (const metadata of doomed) {
+    if (!isInternalConversation(metadata)) {
+      deleteCollaboration(userId, metadata.id);
+    }
+  }
 
   deleteProjectConversations(userId, id);
   deleteProject(userId, id);

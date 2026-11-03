@@ -108,6 +108,178 @@ export const agents = sqliteTable("agents", {
   updatedAt: integer("updated_at").notNull().default(0),
 });
 
+export const collabParticipants = sqliteTable(
+  "collab_participants",
+  {
+    id: text("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .default(0)
+      .references(() => users.id),
+    parentConversationId: text("parent_conversation_id").notNull().default(""),
+    conversationId: text("conversation_id").notNull().default(""),
+    agentId: text("agent_id").notNull().default(""),
+    agentName: text("agent_name").notNull().default(""),
+    role: text("role").notNull().default("delegate"),
+    status: text("status").notNull().default("active"),
+    joinedAt: integer("joined_at").notNull().default(0),
+    lastDeliveredSeq: integer("last_delivered_seq").notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex("collab_participants_session").on(
+      table.userId,
+      table.parentConversationId,
+      table.conversationId,
+    ),
+    uniqueIndex("collab_participants_agent").on(
+      table.userId,
+      table.parentConversationId,
+      table.agentId,
+    ),
+    index("collab_participants_parent").on(
+      table.userId,
+      table.parentConversationId,
+    ),
+  ],
+);
+
+export const collabTasks = sqliteTable(
+  "collab_tasks",
+  {
+    id: text("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .default(0)
+      .references(() => users.id),
+    parentConversationId: text("parent_conversation_id").notNull().default(""),
+    participantId: text("participant_id").notNull().default(""),
+    conversationId: text("conversation_id").notNull().default(""),
+    agentId: text("agent_id").notNull().default(""),
+    agentName: text("agent_name").notNull().default(""),
+    title: text("title").notNull().default(""),
+    instructions: text("instructions").notNull().default(""),
+    expectedOutcome: text("expected_outcome").notNull().default(""),
+    context: text("context").notNull().default(""),
+    state: text("state").notNull().default("queued"),
+    waitingOn: text("waiting_on").notNull().default("[]"),
+    blockedBy: text("blocked_by").notNull().default(""),
+    interruptState: text("interrupt_state").notNull().default("none"),
+    interruptReason: text("interrupt_reason").notNull().default(""),
+    result: text("result").notNull().default(""),
+    resultPreview: text("result_preview").notNull().default(""),
+    resultIncomplete: integer("result_incomplete").notNull().default(0),
+    error: text("error").notNull().default(""),
+    turnId: text("turn_id").notNull().default(""),
+    submissionId: text("submission_id").notNull().default(""),
+    reminders: integer("reminders").notNull().default(0),
+    createdByConversationId: text("created_by_conversation_id")
+      .notNull()
+      .default(""),
+    createdAt: integer("created_at").notNull().default(0),
+    updatedAt: integer("updated_at").notNull().default(0),
+  },
+  (table) => [
+    index("collab_tasks_parent").on(table.userId, table.parentConversationId),
+    index("collab_tasks_session").on(table.userId, table.conversationId),
+  ],
+);
+
+export const collabEvents = sqliteTable(
+  "collab_events",
+  {
+    id: text("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .default(0)
+      .references(() => users.id),
+    parentConversationId: text("parent_conversation_id").notNull().default(""),
+    seq: integer("seq").notNull().default(0),
+    type: text("type").notNull().default("message"),
+    sourceKind: text("source_kind").notNull().default("system"),
+    sourceConversationId: text("source_conversation_id").notNull().default(""),
+    sourceName: text("source_name").notNull().default(""),
+    participantId: text("participant_id").notNull().default(""),
+    participantName: text("participant_name").notNull().default(""),
+    taskId: text("task_id").notNull().default(""),
+    correlationId: text("correlation_id").notNull().default(""),
+    title: text("title").notNull().default(""),
+    body: text("body").notNull().default(""),
+    taskState: text("task_state").notNull().default(""),
+    responseRequired: integer("response_required").notNull().default(0),
+    createdAt: integer("created_at").notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex("collab_events_seq").on(
+      table.userId,
+      table.parentConversationId,
+      table.seq,
+    ),
+    uniqueIndex("collab_events_dedupe").on(
+      table.userId,
+      table.parentConversationId,
+      table.correlationId,
+      table.type,
+    ),
+    index("collab_events_parent").on(table.userId, table.parentConversationId),
+  ],
+);
+
+export const collabDeliveries = sqliteTable(
+  "collab_deliveries",
+  {
+    id: text("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .default(0)
+      .references(() => users.id),
+    eventId: text("event_id").notNull().default(""),
+    parentConversationId: text("parent_conversation_id").notNull().default(""),
+    conversationId: text("conversation_id").notNull().default(""),
+    state: text("state").notNull().default("queued"),
+    updatedAt: integer("updated_at").notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex("collab_deliveries_target").on(
+      table.userId,
+      table.eventId,
+      table.conversationId,
+    ),
+    index("collab_deliveries_session").on(
+      table.userId,
+      table.conversationId,
+      table.state,
+    ),
+  ],
+);
+
+export const collabMessages = sqliteTable(
+  "collab_messages",
+  {
+    id: text("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .default(0)
+      .references(() => users.id),
+    parentConversationId: text("parent_conversation_id").notNull().default(""),
+    fromConversationId: text("from_conversation_id").notNull().default(""),
+    fromName: text("from_name").notNull().default(""),
+    toConversationId: text("to_conversation_id").notNull().default(""),
+    toName: text("to_name").notNull().default(""),
+    taskId: text("task_id").notNull().default(""),
+    kind: text("kind").notNull().default("note"),
+    text: text("text").notNull().default(""),
+    correlationId: text("correlation_id").notNull().default(""),
+    createdAt: integer("created_at").notNull().default(0),
+  },
+  (table) => [
+    index("collab_messages_parent").on(
+      table.userId,
+      table.parentConversationId,
+    ),
+    index("collab_messages_task").on(table.userId, table.taskId),
+  ],
+);
+
 export const chatInputs = sqliteTable(
   "chat_inputs",
   {

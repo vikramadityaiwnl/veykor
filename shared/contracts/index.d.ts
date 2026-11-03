@@ -117,3 +117,27 @@ export type {
   ProjectAgentsResponse,
   AgentSnapshot,
 } from "./agents/index.js";
+
+export type {
+  CollabTaskState,
+  CollabInterruptState,
+  CollabEventType,
+  CollabMessageKind,
+  CollabSourceKind,
+  CollabDeliveryState,
+  CollabParticipant,
+  CollabTask,
+  CollabEvent,
+  CollabDelivery,
+  CollabMessage,
+  CollabSnapshot,
+  CollabSessionState,
+  CollabDetailResponse,
+  DelegateTaskInput,
+  DelegateTaskResponse,
+  SendCollabMessageInput,
+  SendCollabMessageResponse,
+  ReportCollabResultInput,
+  InterruptCollabTaskResponse,
+  CollabAttachmentReference,
+} from "./collab/index.js";

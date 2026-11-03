@@ -10,7 +10,13 @@ import { permissionModes } from "../providers/provider.js";
 import { validChatRequest, hasNonImageAttachment } from "../chat/chat-validation.js";
 import { db } from "../db/client.js";
 import { conversations, sessions as authSessions } from "../db/schema.js";
-import { listConversations, metadataSession, readConversation, writeConversation, validConversationLocation, projectFolder } from "../chat/conversations.js";
+import { listOrdinaryConversations, isInternalConversation, listInternalConversations, metadataSession, readConversation, writeConversation, validConversationLocation, projectFolder } from "../chat/conversations.js";
+import { activeTaskForSession, listParticipants } from "../collab/store.js";
+import { agentNameFor } from "../collab/sessions.js";
+import { recordDelegateInstruction } from "../collab/human.js";
+import { requestInterruption } from "../collab/interruption.js";
+import { parseDelegateStopCommand, parseMainStopCommand } from "../collab/stop-commands.js";
+import { deleteCollaborationTree } from "../collab/routes.js";
 import { attachmentBytes, removeStaged } from "../chat/attachments.js";
 import { withQueue, hasSubmittedMessages, submitMessage, pauseQueue, editQueuedMessage, deleteQueuedMessage, steerQueuedMessage } from "../chat/message-queue.js";
 import { LiveSnapshotTracker } from "../chat/live-cursor.js";
@@ -27,7 +33,7 @@ chatRoute.use("*", bodyLimit({ maxSize: 80_000_000 }));
 
 async function snapshots(userId: number) {
   return Promise.all(
-    listConversations(userId).map(async (metadata) => {
+    listOrdinaryConversations(userId).map(async (metadata) => {
       const live = await chatProviderFor(metadata.providerId)?.describe(
         userId,
         metadata.id,
@@ -67,7 +73,7 @@ chatRoute.get("/providers/:providerId/sessions", async (c) => {
 
 chatRoute.get("/sessions", (c) =>
   c.json({
-    sessions: listConversations(c.get("user").id).map((metadata) =>
+    sessions: listOrdinaryConversations(c.get("user").id).map((metadata) =>
       withQueue(c.get("user").id, metadataSession(metadata)),
     ),
   }),
@@ -141,6 +147,9 @@ chatRoute.put("/sessions", async (c) => {
       return c.json({ error: "Conversation not found" }, 404);
     }
     const existing = readConversation(userId, candidate.id);
+    if (existing && isInternalConversation(existing)) {
+      continue;
+    }
     if (
       existing &&
       (existing.projectId !== candidate.projectId ||
@@ -300,7 +309,8 @@ chatRoute.get("/sessions/:id", async (c) => {
   const conversation = readConversation(c.get("user").id, c.req.param("id"));
   if (
     !conversation ||
-    !validConversationLocation(c.get("user").id, conversation)
+    !validConversationLocation(c.get("user").id, conversation) ||
+    isInternalConversation(conversation)
   ) {
     return c.json({ error: "Conversation not found" }, 404);
   }
@@ -321,14 +331,24 @@ chatRoute.delete("/sessions/:id", async (c) => {
   if (!metadata) {
     return c.json({ error: "Conversation not found" }, 404);
   }
+  if (isInternalConversation(metadata)) {
+    return c.json(
+      { error: "Delete the main chat to remove its collaboration" },
+      400,
+    );
+  }
   const provider = chatProviderFor(metadata.providerId);
-  if (provider?.isBusy(userId, id)) {
+  const internalBusy = listInternalConversations(userId, id).some((entry) =>
+    chatProviderFor(entry.providerId)?.isBusy(userId, entry.id),
+  );
+  if (provider?.isBusy(userId, id) || internalBusy) {
     return c.json({ error: "Stop the conversation before deleting it" }, 409);
   }
   await provider?.release(userId, id);
   await Promise.all(
     metadata.attachments.map((attachment) => removeStaged(attachment.id)),
   );
+  await deleteCollaborationTree(userId, id);
   db.delete(conversations)
     .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
     .run();
@@ -441,6 +461,12 @@ chatRoute.post("/sessions/:id/mode", async (c) => {
     return c.json({ error: "Invalid permission mode" }, 400);
   }
   const conversation = readConversation(c.get("user").id, c.req.param("id"));
+  if (conversation && isInternalConversation(conversation)) {
+    return c.json(
+      { error: "Delegate permissions come from its agent configuration" },
+      400,
+    );
+  }
   const provider = conversation
     ? chatProviderFor(conversation.providerId)
     : undefined;
@@ -480,6 +506,12 @@ chatRoute.post("/sessions/:id/settings", async (c) => {
   const conversation = readConversation(c.get("user").id, c.req.param("id"));
   if (!conversation) {
     return c.json({ error: "Conversation not found" }, 404);
+  }
+  if (isInternalConversation(conversation)) {
+    return c.json(
+      { error: "Delegate settings come from its agent configuration" },
+      400,
+    );
   }
   writeConversation(c.get("user").id, {
     ...conversation,
@@ -522,6 +554,16 @@ chatRoute.post("/sessions/:id/approval", async (c) => {
 chatRoute.post("/sessions/:id/stop", async (c) => {
   const input = await c.req.json().catch(() => ({}));
   const conversation = readConversation(c.get("user").id, c.req.param("id"));
+  if (
+    conversation &&
+    isInternalConversation(conversation) &&
+    activeTaskForSession(c.get("user").id, conversation.id)
+  ) {
+    return c.json(
+      { error: "Use the delegate Stop control to stop this agent" },
+      400,
+    );
+  }
   const provider = conversation
     ? chatProviderFor(conversation.providerId)
     : undefined;
@@ -606,6 +648,142 @@ chatRoute.post("/", async (c) => {
   if (latest.providerId !== input.providerId) {
     latest.providerId = input.providerId;
     writeConversation(userId, latest);
+  }
+
+  const userText = input.messages.at(-1)?.text || "";
+
+  if (isInternalConversation(latest) && latest.parentConversationId) {
+    const parentId = latest.parentConversationId;
+    const participants = listParticipants(userId, parentId);
+    const self =
+      participants.find((entry) => entry.conversationId === latest.id) || null;
+    const others = participants
+      .filter(
+        (entry) =>
+          entry.role === "delegate" && entry.conversationId !== latest.id,
+      )
+      .map((entry) => ({
+        conversationId: entry.conversationId,
+        agentName: entry.agentName,
+      }));
+    const parsed = parseDelegateStopCommand(
+      userText,
+      {
+        conversationId: latest.id,
+        agentName:
+          self?.agentName || agentNameFor(userId, latest.id, "Delegate"),
+      },
+      others,
+    );
+
+    if (parsed.action === "stop") {
+      try {
+        const { task } = await requestInterruption({
+          userId,
+          conversationId: parsed.conversationId,
+          instructionText: userText,
+          sourceKind: "human",
+          sourceConversationId: latest.id,
+          sourceName: "You",
+        });
+
+        return c.json(
+          {
+            accepted: true,
+            interruption: {
+              taskId: task.id,
+              state: task.state,
+              interruptState: task.interruptState,
+            },
+          },
+          202,
+        );
+      } catch (error) {
+        return c.json(
+          { error: error instanceof Error ? error.message : "Unable to stop" },
+          400,
+        );
+      }
+    }
+
+    recordDelegateInstruction({
+      userId,
+      delegateConversationId: latest.id,
+      text: userText,
+      attachments: (input.messages.at(-1)?.attachments || []).map(
+        (attachment) => ({
+          id: attachment.id,
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+          size: attachment.size,
+          kind: attachment.kind,
+        }),
+      ),
+    });
+  } else if (latest.projectId) {
+    const delegates = listParticipants(userId, latest.id)
+      .filter((entry) => entry.role === "delegate")
+      .map((entry) => ({
+        conversationId: entry.conversationId,
+        agentName: entry.agentName,
+      }));
+
+    if (delegates.length > 0) {
+      const parsed = parseMainStopCommand(userText, delegates);
+
+      if (parsed.action === "stop") {
+        const active = activeTaskForSession(userId, parsed.conversationId);
+
+        if (!active) {
+          return c.json(
+            { error: `${parsed.agentName} has no active task to stop.` },
+            400,
+          );
+        }
+
+        try {
+          const { task } = await requestInterruption({
+            userId,
+            conversationId: parsed.conversationId,
+            instructionText: userText,
+            sourceKind: "human",
+            sourceConversationId: latest.id,
+            sourceName: "You",
+          });
+
+          return c.json(
+            {
+              accepted: true,
+              interruption: {
+                taskId: task.id,
+                state: task.state,
+                interruptState: task.interruptState,
+              },
+            },
+            202,
+          );
+        } catch (error) {
+          return c.json(
+            {
+              error: error instanceof Error ? error.message : "Unable to stop",
+            },
+            400,
+          );
+        }
+      }
+
+      if (parsed.action === "ask") {
+        return c.json(
+          {
+            error:
+              parsed.candidates.length > 0
+                ? `Which agent should stop? Say ${parsed.candidates.map((name) => `"stop ${name}"`).join(" or ")}.`
+                : "There is no active delegate to stop.",
+          },
+          409,
+        );
+      }
+    }
   }
 
   if (latest.projectId && !latest.agentSnapshot) {

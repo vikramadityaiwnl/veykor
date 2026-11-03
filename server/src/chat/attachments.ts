@@ -2,12 +2,12 @@ import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { databaseUrl } from "../auth/config.js";
+import { resolveDbPath } from "../db/path.js";
 
 const legacyRoot = join(tmpdir(), "veykor-uploads");
 const stagingRoot = join(
   legacyRoot,
-  createHash("sha256").update(resolve(databaseUrl)).digest("hex"),
+  createHash("sha256").update(resolve(resolveDbPath())).digest("hex"),
 );
 
 function stagedPath(id: string): string {

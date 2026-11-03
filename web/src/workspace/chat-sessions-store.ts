@@ -27,6 +27,9 @@ interface ChatSessionsState {
     agentName?: string,
   ) => void;
   messages: Record<string, SessionMessage[]>;
+  internalSessions: Record<string, ChatSession>;
+  receiveInternal: (sessions: SavedChatSession[]) => void;
+  clearInternal: () => void;
   activeSessionId: string | null;
   createChatSession: (sectionId: string) => ChatSession;
   createProjectSession: (projectId: string) => ChatSession;
@@ -36,6 +39,7 @@ interface ChatSessionsState {
     text: string,
     attachments?: ChatAttachment[],
   ) => void;
+  removeMessage: (sessionId: string, messageId: string) => void;
 }
 
 let loadVersion = 0;
@@ -155,6 +159,35 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
       },
     });
   },
+  internalSessions: {},
+  receiveInternal: (sessions) => {
+    const internal: Record<string, ChatSession> = {};
+
+    for (const session of sessions) {
+      internal[session.id] = sessionMetadata(session);
+    }
+
+    set({
+      internalSessions: internal,
+      messages: {
+        ...get().messages,
+        ...Object.fromEntries(
+          sessions.map((session) => [
+            session.id,
+            reconcileMessages(
+              session.id,
+              session.messages,
+              get().messages[session.id] || [],
+              session.queuedMessages || [],
+            ),
+          ]),
+        ),
+      },
+    });
+  },
+  clearInternal: () => {
+    set({ internalSessions: {} });
+  },
   openSession: async (sessionId) => {
     const userId = useAuthStore.getState().status?.user?.id;
     const messagesAtStart = get().messages[sessionId];
@@ -172,20 +205,24 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
       ) {
         return;
       }
-      set({
-        sessions: get().sessions.map((session) =>
-          session.id === sessionId ? sessionMetadata(payload.session) : session,
-        ),
+      const opened = sessionMetadata(payload.session);
+
+      set((state) => ({
+        sessions: state.sessions.some((session) => session.id === sessionId)
+          ? state.sessions.map((session) =>
+              session.id === sessionId ? opened : session,
+            )
+          : [...state.sessions, opened],
         messages: {
-          ...get().messages,
+          ...state.messages,
           [sessionId]: reconcileMessages(
             sessionId,
             payload.session.messages,
-            get().messages[sessionId] || [],
+            state.messages[sessionId] || [],
             payload.session.queuedMessages || [],
           ),
         },
-      });
+      }));
     } catch {
       return;
     }
@@ -502,7 +539,7 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
 
     optimisticMessages.set(sessionId, {
       message,
-      userCount: get().messages[sessionId].filter(
+      userCount: (get().messages[sessionId] || []).filter(
         (entry) => entry.role === "user",
       ).length,
     });
@@ -510,14 +547,31 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
     set({
       sessions: get().sessions.map((session) =>
         session.id === sessionId &&
-        get().messages[sessionId].length === 0 &&
+        (get().messages[sessionId] || []).length === 0 &&
         (session.title === "New Chat" || /^Session \d+$/.test(session.title))
           ? { ...session, title: text.slice(0, 60) }
           : session,
       ),
       messages: {
         ...get().messages,
-        [sessionId]: [...get().messages[sessionId], message],
+        [sessionId]: [...(get().messages[sessionId] || []), message],
+      },
+    });
+  },
+
+  removeMessage: (sessionId, messageId) => {
+    const pending = optimisticMessages.get(sessionId);
+
+    if (pending && pending.message.id === messageId) {
+      optimisticMessages.delete(sessionId);
+    }
+
+    set({
+      messages: {
+        ...get().messages,
+        [sessionId]: (get().messages[sessionId] || []).filter(
+          (message) => message.id !== messageId,
+        ),
       },
     });
   },
@@ -531,6 +585,7 @@ useAuthStore.subscribe((state, previous) => {
     useChatSessionsStore.setState({
       sessions: [],
       messages: {},
+      internalSessions: {},
       activeSessionId: null,
       status: "idle",
       error: "",

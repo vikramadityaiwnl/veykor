@@ -7,8 +7,10 @@ import type { ApprovalDecisionInput, FoldedItem, Session } from "./types.js";
 import { spawnMuse } from "./connection.js";
 import { scanDetectedServers } from "../../mcp/detect.js";
 import { listMcpServers } from "../../mcp/store.js";
-import { isSessionMcpNameConflict, mergeSessionMcpSources, toSessionMcpServers } from "../../mcp/session-config.js";
+import { mergeSessionMcpSources, toSessionMcpServers } from "../../mcp/session-config.js";
 import { metadataSession, projectFolder, readConversation, writeConversation, type StoredAttachment } from "../../chat/conversations.js";
+import { collabMcpEntry } from "../../collab/mcp-inject.js";
+import { leadInstructions } from "../../collab/guidance.js";
 import { attachmentBytes, stageAttachment } from "../../chat/attachments.js";
 import { dbPath } from "../../db/client.js";
 import { responseSeconds } from "../../chat/chat-response-timing.js";
@@ -27,6 +29,7 @@ interface RuntimeState {
       choiceIds: string[];
       decide: (choiceId: string) => Promise<void>;
       deciding: boolean;
+      turnId: string;
     }
   >;
   usage: Map<string, ChatUsage>;
@@ -181,6 +184,7 @@ async function runtime(userId: number, id: string): Promise<Runtime> {
 
       return new Promise<ApprovalDecisionInput>((resolve) => {
         state.approvals.set(request.approvalId, {
+          turnId: state.currentTurn,
           approval: {
             id: request.approvalId,
             toolName: request.toolName,
@@ -273,28 +277,28 @@ async function runtime(userId: number, id: string): Promise<Runtime> {
       );
     }
 
+    const collabEntry = collabMcpEntry(userId, id, metadata);
+
+    if (collabEntry) {
+      mcpServers = { ...(mcpServers || {}), ...collabEntry };
+    }
+
+    if (mcpServers) {
+      mcpServers = Object.fromEntries(
+        Object.entries(mcpServers).map(([name, server]) => [
+          `veykor-session-${name}`,
+          server,
+        ]),
+      );
+    }
+
     let session: Session;
     try {
-      try {
-        session = await openNativeSession(muse, folder, metadata, {
-          onApproval,
-          onApprovalError,
-          mcpServers,
-        });
-      } catch (error) {
-        if (
-          snapshot?.mcpMode === "restricted" ||
-          !isSessionMcpNameConflict(error)
-        ) {
-          throw error;
-        }
-
-        session = await openNativeSession(muse, folder, metadata, {
-          onApproval,
-          onApprovalError,
-          mcpServers: undefined,
-        });
-      }
+      session = await openNativeSession(muse, folder, metadata, {
+        onApproval,
+        onApprovalError,
+        mcpServers,
+      });
       session.onApproval(onApproval);
       session.onApprovalError(onApprovalError);
       metadata.nativeSessionId = session.sessionId;
@@ -424,18 +428,27 @@ export async function stopConversation(
   id: string,
   cancel = false,
 ) {
-  if (!isBusy(userId, id)) {
+  if (!readConversation(userId, id)?.nativeSessionId && !isBusy(userId, id)) {
     return;
   }
-  stopRequested.set(`${userId}:${id}`, cancel);
-  const live = await runtime(userId, id);
-  const turnId = live.session.activeTurnId;
-  if (turnId) {
-    await live.muse.connection.command(
-      cancel ? "turn/cancel" : "turn/interrupt",
-      { sessionId: live.session.sessionId, turnId },
-    );
+
+  const live = await runtime(userId, id).catch(() => undefined);
+
+  if (!live) {
+    return;
   }
+
+  const turnId = live.session.activeTurnId;
+
+  if (!turnId) {
+    return;
+  }
+
+  stopRequested.set(`${userId}:${id}`, cancel);
+  await live.muse.connection.command(
+    cancel ? "turn/cancel" : "turn/interrupt",
+    { sessionId: live.session.sessionId, turnId },
+  );
 }
 
 export function isBusy(userId: number, id: string) {
@@ -524,13 +537,17 @@ export async function runChat(userId: number, input: ChatRequest) {
     writeConversation(userId, metadata);
     const live = await runtime(userId, id);
     const snapshot = metadata.agentSnapshot ?? null;
+    const isLeadProjectChat =
+      !!metadata.projectId && !metadata.parentConversationId;
     const parts = await nativeInput(
       [
         ...(message.attachments || []),
         ...(await stagedInputs(pendingAttachments)),
       ],
       snapshot
-        ? buildInstructionPrefix(snapshot.instructions) + message.text
+        ? buildInstructionPrefix(
+            leadInstructions(snapshot.instructions, isLeadProjectChat),
+          ) + message.text
         : message.text,
       input.modelId,
     );
@@ -617,6 +634,14 @@ export async function runChat(userId: number, input: ChatRequest) {
           },
         };
         writeConversation(userId, settled);
+      }
+      const live = runtimes.get(key);
+      if (live) {
+        for (const [approvalId, entry] of live.state.approvals) {
+          if (entry.turnId === submittedTurnId) {
+            live.state.approvals.delete(approvalId);
+          }
+        }
       }
     }
     busy.delete(key);
