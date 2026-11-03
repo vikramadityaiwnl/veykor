@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ChatAttachment, ChatMessage, ChatUsage, ChatSessionsResponse, ChatSession as SavedChatSession } from "@veykor/shared";
+import type { QueuedChatMessage, ChatAttachment, ChatMessage, ChatUsage, ChatSessionsResponse, ChatSession as SavedChatSession } from "@veykor/shared";
 import { useAuthStore } from "../auth/auth-store";
 
 export type SessionMessage = ChatMessage;
@@ -16,8 +16,20 @@ interface ChatSessionsState {
   save: () => Promise<void>;
   renameSession: (sessionId: string, title: string) => Promise<boolean>;
   deleteSession: (sessionId: string) => Promise<boolean>;
-  configure: (sessionId: string, providerId: string, modelId: string) => void;
+  deleteProjectSessions: (projectId: string) => Promise<boolean>;
+  configure: (
+    sessionId: string,
+    providerId: string,
+    modelId: string,
+    reasoningEffort?: ChatSession["reasoningEffort"],
+    permissionMode?: ChatSession["permissionMode"],
+    agentId?: string | null,
+    agentName?: string,
+  ) => void;
   messages: Record<string, SessionMessage[]>;
+  internalSessions: Record<string, ChatSession>;
+  receiveInternal: (sessions: SavedChatSession[]) => void;
+  clearInternal: () => void;
   activeSessionId: string | null;
   createChatSession: (sectionId: string) => ChatSession;
   createProjectSession: (projectId: string) => ChatSession;
@@ -27,6 +39,7 @@ interface ChatSessionsState {
     text: string,
     attachments?: ChatAttachment[],
   ) => void;
+  removeMessage: (sessionId: string, messageId: string) => void;
 }
 
 let loadVersion = 0;
@@ -54,8 +67,17 @@ function reconcileMessages(
   sessionId: string,
   incoming: SessionMessage[],
   current: SessionMessage[],
+  queued: QueuedChatMessage[] = [],
 ): SessionMessage[] {
-  const pending = optimisticMessages.get(sessionId);
+  let pending = optimisticMessages.get(sessionId);
+  if (
+    pending &&
+    queued.some((entry) => entry.clientMessageId === pending!.message.id)
+  ) {
+    current = current.filter((message) => message.id !== pending!.message.id);
+    optimisticMessages.delete(sessionId);
+    pending = undefined;
+  }
   const users = incoming.filter((message) => message.role === "user");
   if (pending && users.length > pending.userCount) {
     const acknowledged = users[pending.userCount];
@@ -95,12 +117,17 @@ function sessionMetadata(session: SavedChatSession): ChatSession {
     sectionId: session.sectionId,
     providerId: session.providerId,
     modelId: session.modelId,
+    reasoningEffort: session.reasoningEffort,
     nativeSessionId: session.nativeSessionId || "",
     permissionMode: session.permissionMode || "promptUnmatched",
+    agentId: session.agentId ?? null,
+    agentName: session.agentName || "",
     status: session.status || "idle",
     error: session.error || "",
     approvals: session.approvals || [],
     activities: session.activities || [],
+    queuedMessages: session.queuedMessages || [],
+    queuePaused: session.queuePaused || false,
   };
 }
 
@@ -125,11 +152,41 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
               session.id,
               session.messages,
               get().messages[session.id] || [],
+              session.queuedMessages || [],
             ),
           ]),
         ),
       },
     });
+  },
+  internalSessions: {},
+  receiveInternal: (sessions) => {
+    const internal: Record<string, ChatSession> = {};
+
+    for (const session of sessions) {
+      internal[session.id] = sessionMetadata(session);
+    }
+
+    set({
+      internalSessions: internal,
+      messages: {
+        ...get().messages,
+        ...Object.fromEntries(
+          sessions.map((session) => [
+            session.id,
+            reconcileMessages(
+              session.id,
+              session.messages,
+              get().messages[session.id] || [],
+              session.queuedMessages || [],
+            ),
+          ]),
+        ),
+      },
+    });
+  },
+  clearInternal: () => {
+    set({ internalSessions: {} });
   },
   openSession: async (sessionId) => {
     const userId = useAuthStore.getState().status?.user?.id;
@@ -148,19 +205,24 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
       ) {
         return;
       }
-      set({
-        sessions: get().sessions.map((session) =>
-          session.id === sessionId ? sessionMetadata(payload.session) : session,
-        ),
+      const opened = sessionMetadata(payload.session);
+
+      set((state) => ({
+        sessions: state.sessions.some((session) => session.id === sessionId)
+          ? state.sessions.map((session) =>
+              session.id === sessionId ? opened : session,
+            )
+          : [...state.sessions, opened],
         messages: {
-          ...get().messages,
+          ...state.messages,
           [sessionId]: reconcileMessages(
             sessionId,
             payload.session.messages,
-            get().messages[sessionId] || [],
+            state.messages[sessionId] || [],
+            payload.session.queuedMessages || [],
           ),
         },
-      });
+      }));
     } catch {
       return;
     }
@@ -329,11 +391,88 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
     });
     return true;
   },
-  configure: (sessionId, providerId, modelId) => {
+  deleteProjectSessions: async (projectId) => {
+    if (get().status !== "ready") {
+      return false;
+    }
+
+    const doomed = get().sessions.filter(
+      (session) => session.projectId === projectId,
+    );
+
+    if (doomed.length === 0) {
+      return true;
+    }
+
+    const doomedIds = new Set(doomed.map((session) => session.id));
+    const originalSessions = get().sessions;
+    const originalMessages = get().messages;
+    const messages = { ...get().messages };
+
+    for (const id of doomedIds) {
+      delete messages[id];
+    }
+
+    set({
+      sessions: get().sessions.filter(
+        (session) => session.projectId !== projectId,
+      ),
+      messages,
+    });
+
+    const userId = useAuthStore.getState().status?.user?.id;
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/chats`,
+      { method: "DELETE", headers: { "X-Veykor-Request": "1" } },
+    );
+    const failed = !response.ok;
+
+    if (failed) {
+      set({
+        error: "Unable to delete conversations. Stop any running turn first.",
+      });
+    }
+
+    if (useAuthStore.getState().status?.user?.id !== userId) {
+      return false;
+    }
+
+    if (failed) {
+      set({
+        sessions: originalSessions,
+        messages: originalMessages,
+      });
+      return false;
+    }
+
+    set({
+      activeSessionId: doomedIds.has(get().activeSessionId ?? "")
+        ? null
+        : get().activeSessionId,
+    });
+    return true;
+  },
+  configure: (
+    sessionId,
+    providerId,
+    modelId,
+    reasoningEffort,
+    permissionMode,
+    agentId,
+    agentName,
+  ) => {
     set({
       sessions: get().sessions.map((session) =>
         session.id === sessionId
-          ? { ...session, providerId, modelId }
+          ? {
+              ...session,
+              providerId,
+              modelId,
+              ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
+              ...(permissionMode !== undefined ? { permissionMode } : {}),
+              ...(agentId !== undefined ? { agentId } : {}),
+              ...(agentName !== undefined ? { agentName } : {}),
+            }
           : session,
       ),
     });
@@ -400,7 +539,7 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
 
     optimisticMessages.set(sessionId, {
       message,
-      userCount: get().messages[sessionId].filter(
+      userCount: (get().messages[sessionId] || []).filter(
         (entry) => entry.role === "user",
       ).length,
     });
@@ -408,14 +547,31 @@ export const useChatSessionsStore = create<ChatSessionsState>()((set, get) => ({
     set({
       sessions: get().sessions.map((session) =>
         session.id === sessionId &&
-        get().messages[sessionId].length === 0 &&
+        (get().messages[sessionId] || []).length === 0 &&
         (session.title === "New Chat" || /^Session \d+$/.test(session.title))
           ? { ...session, title: text.slice(0, 60) }
           : session,
       ),
       messages: {
         ...get().messages,
-        [sessionId]: [...get().messages[sessionId], message],
+        [sessionId]: [...(get().messages[sessionId] || []), message],
+      },
+    });
+  },
+
+  removeMessage: (sessionId, messageId) => {
+    const pending = optimisticMessages.get(sessionId);
+
+    if (pending && pending.message.id === messageId) {
+      optimisticMessages.delete(sessionId);
+    }
+
+    set({
+      messages: {
+        ...get().messages,
+        [sessionId]: (get().messages[sessionId] || []).filter(
+          (message) => message.id !== messageId,
+        ),
       },
     });
   },
@@ -429,6 +585,7 @@ useAuthStore.subscribe((state, previous) => {
     useChatSessionsStore.setState({
       sessions: [],
       messages: {},
+      internalSessions: {},
       activeSessionId: null,
       status: "idle",
       error: "",

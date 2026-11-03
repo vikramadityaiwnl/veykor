@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ChatPermissionMode, ChatAttachment, ChatProvider, ChatReasoningEffort, ChatUsage, Project } from "@veykor/shared";
+import type { ChatMessageBehavior, ProjectAgent, QueuedChatMessage, ChatPermissionMode, ChatAttachment, ChatProvider, ChatReasoningEffort, ChatUsage, Project } from "@veykor/shared";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCube, faPaperclip, faArrowUp, faStop } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "@astryxdesign/core/Button";
@@ -9,16 +9,30 @@ import { ComposerModelSelection } from "./composer-model-selection";
 import { ChatContextProgress } from "./chat-context-progress";
 import { ChatEffortSelection } from "./chat-effort-selection";
 import { ChatPermissionSelection } from "./chat-permission-selection";
+import { ComposerQueue } from "./composer-queue";
 import { ComposerProjectContext } from "./composer-project-context";
 import { ComposerTranscribeButton } from "./composer-transcribe-button";
 import { Banner } from "@astryxdesign/core/Banner";
 import { ComposerAttachment } from "./composer-attachment";
+import { AgentSelector } from "../../agents/components/agent-selector";
 import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
 import { getAttachmentKind, isImageFile, openInNewTab, readFileAsDataUrl } from "../chat-attachments";
 import { appendTranscript, useTranscribeRecorder } from "../transcribe-recorder";
 
 interface Props {
+  minimalControls?: boolean;
+  isProjectChat?: boolean;
+  agents?: ProjectAgent[];
+  agentId?: string;
+  agentName?: string;
+  isAgentLocked?: boolean;
+  agentMissing?: boolean;
+  onAgentChange?: (agentId: string) => void;
+  sessionId: string;
+  queuedMessages: QueuedChatMessage[];
+  queuePaused: boolean;
+  messageBehavior: ChatMessageBehavior;
   permissionMode: ChatPermissionMode;
   onPermissionMode: (mode: ChatPermissionMode) => void;
   reasoningEffort: ChatReasoningEffort;
@@ -26,6 +40,7 @@ interface Props {
   project?: Project;
   isNewProjectChat: boolean;
   providers: ChatProvider[];
+  isProviderLocked: boolean;
   providerId: string;
   modelId: string;
   preferredModels: Record<string, string>;
@@ -34,6 +49,7 @@ interface Props {
   isRunning: boolean;
   isBusy: boolean;
   error: string;
+  errorKind: "" | "rejected" | "uncertain";
   usage: ChatUsage;
   hasMessages: boolean;
   onSelection: (providerId: string, modelId: string) => void;
@@ -41,13 +57,14 @@ interface Props {
     text: string,
     systemPrompt: string,
     attachments: ChatAttachment[],
-  ) => void;
+  ) => Promise<boolean>;
   onStop: () => void;
 }
 
 export function ChatComposerPanel(props: Props) {
   const [isModelDialogOpen, setIsModelDialogOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
   const [isReadingFiles, setIsReadingFiles] = useState(false);
@@ -82,10 +99,11 @@ export function ChatComposerPanel(props: Props) {
   const contextTokens = props.usage.inputTokens + props.usage.outputTokens;
   const disabled =
     !props.isReady ||
+    !!props.agentMissing ||
     !provider?.available ||
     !model ||
-    props.isBusy ||
-    isReadingFiles;
+    isReadingFiles ||
+    isSubmitting;
 
   async function attach(files: File[]) {
     if (isReadingFiles || files.length === 0) {
@@ -147,7 +165,7 @@ export function ChatComposerPanel(props: Props) {
     }
   }
 
-  function submit(value: string) {
+  async function submit(value: string) {
     if (transcribing) {
       recorder.cancel();
     }
@@ -167,14 +185,40 @@ export function ChatComposerPanel(props: Props) {
       return;
     }
 
-    props.onSubmit(text, "", attachments);
-    setDraft("");
-    setAttachments([]);
+    setIsSubmitting(true);
+    try {
+      if (await props.onSubmit(text, "", attachments)) {
+        setDraft("");
+        setAttachments([]);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
     <VStack gap={2} className="mx-auto w-full max-w-4xl px-4 pb-4">
-      {error && <Banner status="error" title={error} />}
+      {error && (
+        <Banner
+          status="error"
+          title={
+            props.errorKind === "uncertain"
+              ? `${error} Nothing was resent automatically.`
+              : props.errorKind === "rejected"
+                ? `${error} Your text and images are still here; edit them or send again.`
+                : error
+          }
+        />
+      )}
+
+      {props.isProjectChat &&
+        !props.isAgentLocked &&
+        (props.agents || []).length === 0 && (
+          <Banner
+            status="info"
+            title="No agents available for this project. Create an agent from Agents and assign it to this project to start chatting."
+          />
+        )}
 
       <input
         ref={fileInput}
@@ -190,11 +234,19 @@ export function ChatComposerPanel(props: Props) {
       />
 
       <VStack gap={0} className="min-w-0">
+        {props.queuedMessages.length > 0 && (
+          <ComposerQueue
+            key={props.sessionId}
+            sessionId={props.sessionId}
+            messages={props.queuedMessages}
+            paused={props.queuePaused}
+          />
+        )}
         <form
           className="relative z-10 min-w-0 rounded-(--radius-chat) border border-solid border-(--color-border-emphasized) bg-(--color-background-surface) p-4"
           onSubmit={(event) => {
             event.preventDefault();
-            submit(draft);
+            void submit(draft);
           }}
           onKeyDown={(event) => {
             if (
@@ -204,7 +256,7 @@ export function ChatComposerPanel(props: Props) {
               !event.nativeEvent.isComposing
             ) {
               event.preventDefault();
-              submit(draft);
+              void submit(draft);
             }
           }}
           onDragOver={(event) => event.preventDefault()}
@@ -262,51 +314,70 @@ export function ChatComposerPanel(props: Props) {
                 size="sm"
                 variant="ghost"
                 isIconOnly
-                isDisabled={props.isBusy || isReadingFiles}
+                isDisabled={isReadingFiles}
                 icon={<FontAwesomeIcon icon={faPaperclip} />}
                 clickAction={() => fileInput.current?.click()}
               />
 
-              <HStack className="hidden! min-w-0 md:flex!">
-                <ComposerModelSelection
-                  providers={props.providers}
-                  providerId={props.providerId}
-                  modelId={props.modelId}
-                  preferredModels={props.preferredModels}
-                  loading={props.loading}
-                  onSelection={props.onSelection}
+              {props.minimalControls ? null : props.isProjectChat ? (
+                <AgentSelector
+                  agents={props.agents || []}
+                  value={props.agentId || ""}
+                  isLocked={!!props.isAgentLocked}
+                  lockedName={props.agentName || ""}
+                  onChange={(agentId) => props.onAgentChange?.(agentId)}
                 />
-              </HStack>
+              ) : (
+                <>
+                  <HStack className="hidden! min-w-0 md:flex!">
+                    <ComposerModelSelection
+                      providers={props.providers}
+                      providerId={props.providerId}
+                      isProviderLocked={props.isProviderLocked}
+                      modelId={props.modelId}
+                      preferredModels={props.preferredModels}
+                      loading={props.loading}
+                      onSelection={props.onSelection}
+                    />
+                  </HStack>
 
-              <HStack className="md:hidden!">
-                <Button
-                  label="Choose provider and model"
-                  size="sm"
-                  variant="ghost"
-                  isIconOnly
-                  icon={<FontAwesomeIcon icon={faCube} />}
-                  clickAction={() => setIsModelDialogOpen(true)}
-                />
-              </HStack>
+                  <HStack className="md:hidden!">
+                    <Button
+                      label="Choose provider and model"
+                      size="sm"
+                      variant="ghost"
+                      isIconOnly
+                      icon={<FontAwesomeIcon icon={faCube} />}
+                      clickAction={() => setIsModelDialogOpen(true)}
+                    />
+                  </HStack>
 
-              <ChatEffortSelection
-                model={model}
-                value={props.reasoningEffort}
-                onChange={props.onReasoningEffort}
-              />
+                  <ChatEffortSelection
+                    model={model}
+                    value={props.reasoningEffort}
+                    onChange={props.onReasoningEffort}
+                  />
+                </>
+              )}
 
               <HStack gap={3} vAlign="center" className="ml-auto">
-                {props.hasMessages && model && model.contextWindow > 0 && (
-                  <ChatContextProgress
-                    tokens={contextTokens}
-                    limit={model.contextWindow}
+                {!props.minimalControls &&
+                  props.hasMessages &&
+                  model &&
+                  model.contextWindow > 0 && (
+                    <ChatContextProgress
+                      tokens={contextTokens}
+                      limit={model.contextWindow}
+                    />
+                  )}
+
+                {!props.minimalControls && (
+                  <ChatPermissionSelection
+                    providerId={props.providerId}
+                    value={props.permissionMode}
+                    onChange={props.onPermissionMode}
                   />
                 )}
-
-                <ChatPermissionSelection
-                  value={props.permissionMode}
-                  onChange={props.onPermissionMode}
-                />
 
                 <ComposerTranscribeButton
                   status={recorder.status}
@@ -315,7 +386,7 @@ export function ChatComposerPanel(props: Props) {
                   onDismissError={recorder.clearError}
                 />
 
-                {props.isRunning ? (
+                {props.isRunning && (
                   <Button
                     label="Stop response"
                     size="sm"
@@ -324,17 +395,22 @@ export function ChatComposerPanel(props: Props) {
                     icon={<FontAwesomeIcon icon={faStop} />}
                     clickAction={props.onStop}
                   />
-                ) : (
-                  <Button
-                    className="rounded-full!"
-                    label="Send message"
-                    type="submit"
-                    size="sm"
-                    isIconOnly
-                    isDisabled={disabled || !draft.trim()}
-                    icon={<FontAwesomeIcon icon={faArrowUp} />}
-                  />
                 )}
+                <Button
+                  className="rounded-full!"
+                  label={
+                    props.isRunning
+                      ? props.messageBehavior === "queue"
+                        ? "Queue message"
+                        : "Steer message"
+                      : "Send message"
+                  }
+                  type="submit"
+                  size="sm"
+                  isIconOnly
+                  isDisabled={disabled || !draft.trim()}
+                  icon={<FontAwesomeIcon icon={faArrowUp} />}
+                />
               </HStack>
             </HStack>
           </VStack>
@@ -360,6 +436,7 @@ export function ChatComposerPanel(props: Props) {
                 <ComposerModelSelection
                   providers={props.providers}
                   providerId={props.providerId}
+                  isProviderLocked={props.isProviderLocked}
                   modelId={props.modelId}
                   preferredModels={props.preferredModels}
                   loading={props.loading}

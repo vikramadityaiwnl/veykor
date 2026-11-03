@@ -1,5 +1,5 @@
 import type { ChatDefaults, ChatPermissionMode, ChatReasoningEffort, ProviderCliId } from "@veykor/shared";
-import { isReasoningEffort } from "../chat/reasoning-effort.js";
+import { isReasoningEffort } from "../providers/reasoning-effort.js";
 
 const permissionModes: ChatPermissionMode[] = [
   "promptUnmatched",
@@ -8,19 +8,13 @@ const permissionModes: ChatPermissionMode[] = [
   "allowAll",
 ];
 
-const providerIds: ProviderCliId[] = [
-  "muse",
-  "claude",
-  "codex",
-  "opencode",
-  "deepseek",
-  "aider",
-];
+const providerIds: ProviderCliId[] = ["muse", "opencode"];
 
 const modelPattern = /^[a-zA-Z0-9][a-zA-Z0-9._:@+/-]{0,199}$/;
 
 export function emptyChatDefaults(): ChatDefaults {
   return {
+    messageBehavior: "queue",
     defaultProviderId: "",
     models: {},
     efforts: {},
@@ -83,6 +77,7 @@ export function parseChatDefaults(value: unknown): ChatDefaults {
   const candidate = parsed as Partial<ChatDefaults>;
 
   return {
+    messageBehavior: candidate.messageBehavior === "steer" ? "steer" : "queue",
     defaultProviderId: providerIds.includes(
       candidate.defaultProviderId as ProviderCliId,
     )
@@ -104,6 +99,13 @@ export function validChatDefaults(value: unknown): value is ChatDefaults {
   }
 
   const input = value as ChatDefaults;
+
+  if (
+    input.messageBehavior !== undefined &&
+    !["queue", "steer"].includes(input.messageBehavior)
+  ) {
+    return false;
+  }
 
   if (
     typeof input.defaultProviderId !== "string" ||

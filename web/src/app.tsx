@@ -4,7 +4,7 @@ import { ProtectedLayout } from "./auth/auth-routes";
 import { useAuthSession } from "./auth/use-auth-session";
 import { WorkspaceLayout } from "./workspace/workspace-layout";
 import { ProjectHomePage } from "./workspace/project-home-page";
-import { AgentPresetsPage } from "./agent-presets/agent-presets-page";
+import { AgentsPage } from "./agents/agents-page";
 import { IntegrationsPage } from "./integrations/integrations-page";
 import { SettingsPage } from "./settings/settings-page";
 import { ConfigurationPage } from "./configuration/configuration-page";
@@ -23,7 +23,11 @@ function App() {
           <Route path="/" element={<WorkspaceLayout />}>
             <Route index element={<ProjectHomePage />} />
             <Route path="chat/:sessionId" element={<ProjectHomePage />} />
-            <Route path="agent-presets" element={<AgentPresetsPage />} />
+            <Route path="agents" element={<AgentsPage />} />
+            <Route
+              path="agent-presets"
+              element={<Navigate to="/agents" replace />}
+            />
             <Route path="integrations" element={<IntegrationsPage />} />
             <Route
               path="profile"

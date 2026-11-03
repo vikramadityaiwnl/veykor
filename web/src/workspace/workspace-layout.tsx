@@ -11,6 +11,8 @@ import { useChatSessionsStore, type ChatSession } from "./chat-sessions-store";
 import { useProjectsStore } from "./projects-store";
 import { useSidebarSectionsStore } from "./sidebar-sections-store";
 import { AddProjectDialog } from "./components/add-project-dialog";
+import { DeleteProjectChatsDialog } from "./components/delete-project-chats-dialog";
+import { DeleteProjectDialog } from "./components/delete-project-dialog";
 import { DeleteSectionDialog } from "./components/delete-section-dialog";
 import { RenameProjectDialog } from "./components/rename-project-dialog";
 import { SectionFormDialog, type SectionDialogState } from "./components/section-form-dialog";
@@ -45,6 +47,10 @@ export function WorkspaceLayout() {
     null,
   );
   const [renameProjectId, setRenameProjectId] = useState<string | null>(null);
+  const [projectPendingDelete, setProjectPendingDelete] =
+    useState<Project | null>(null);
+  const [projectChatsPendingDelete, setProjectChatsPendingDelete] =
+    useState<Project | null>(null);
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([]);
   const [sectionDialog, setSectionDialog] = useState<SectionDialogState | null>(
     null,
@@ -69,6 +75,7 @@ export function WorkspaceLayout() {
   const createProject = useProjectsStore((state) => state.createProject);
   const renameProject = useProjectsStore((state) => state.renameProject);
   const moveProject = useProjectsStore((state) => state.moveProject);
+  const deleteProject = useProjectsStore((state) => state.deleteProject);
   const sessions = useChatSessionsStore((state) => state.sessions);
   const activeSessionId = useChatSessionsStore(
     (state) => state.activeSessionId,
@@ -123,9 +130,7 @@ export function WorkspaceLayout() {
     location.pathname === "/" || location.pathname.startsWith("/chat/");
 
   function selectProject(id: string) {
-    navigate("/");
     setSelectedProjectId(id);
-    selectSession(null);
     setExpandedProjectIds((current) =>
       current.includes(id)
         ? current.filter((existing) => existing !== id)
@@ -224,6 +229,93 @@ export function WorkspaceLayout() {
       current.filter((id) => remainingIds.has(id)),
     );
 
+    await loadChats();
+
+    const remainingSessions = new Set(
+      useChatSessionsStore.getState().sessions.map((session) => session.id),
+    );
+
+    if (activeSessionId !== null && !remainingSessions.has(activeSessionId)) {
+      selectSession(null);
+      navigate("/");
+    }
+
+    return true;
+  }
+
+  async function confirmDeleteProjectChats(): Promise<boolean> {
+    if (!projectChatsPendingDelete) {
+      return false;
+    }
+
+    const projectId = projectChatsPendingDelete.id;
+    const doomedIds = new Set(
+      sessions
+        .filter((session) => session.projectId === projectId)
+        .map((session) => session.id),
+    );
+    const runningId = useChatRuntimeStore.getState().runningSessionId;
+
+    if (runningId && doomedIds.has(runningId)) {
+      useChatRuntimeStore.getState().stop();
+    }
+
+    const deleted = await useChatSessionsStore
+      .getState()
+      .deleteProjectSessions(projectId);
+
+    if (!deleted) {
+      return false;
+    }
+
+    if (activeSessionId !== null && doomedIds.has(activeSessionId)) {
+      selectSession(null);
+      navigate("/");
+    }
+
+    await loadChats();
+
+    return true;
+  }
+
+  async function confirmDeleteProject(): Promise<boolean> {
+    if (!projectPendingDelete) {
+      return false;
+    }
+
+    const projectId = projectPendingDelete.id;
+    const doomedIds = new Set(
+      sessions
+        .filter((session) => session.projectId === projectId)
+        .map((session) => session.id),
+    );
+    const runningId = useChatRuntimeStore.getState().runningSessionId;
+
+    if (runningId && doomedIds.has(runningId)) {
+      useChatRuntimeStore.getState().stop();
+    }
+
+    const deleted = await deleteProject(projectId);
+
+    if (!deleted) {
+      return false;
+    }
+
+    if (selectedProjectId === projectId) {
+      setSelectedProjectId(null);
+    }
+
+    setExpandedProjectIds((current) =>
+      current.filter((id) => id !== projectId),
+    );
+
+    if (activeSessionId !== null && doomedIds.has(activeSessionId)) {
+      selectSession(null);
+      navigate("/");
+    }
+
+    await loadChats();
+
     return true;
   }
 
@@ -297,6 +389,8 @@ export function WorkspaceLayout() {
               onAddProjectSession={addProjectSession}
               onRenameProject={setRenameProjectId}
               onMoveProject={moveProjectToSection}
+              onDeleteProject={setProjectPendingDelete}
+              onDeleteProjectChats={setProjectChatsPendingDelete}
               onToggleSection={(section) => {
                 void toggleSection(section);
               }}
@@ -410,6 +504,34 @@ export function WorkspaceLayout() {
           setSectionDialog(null);
         }}
         onSubmit={submitSection}
+      />
+      <DeleteProjectChatsDialog
+        project={projectChatsPendingDelete}
+        chatCount={
+          projectChatsPendingDelete === null
+            ? 0
+            : sessions.filter(
+                (session) => session.projectId === projectChatsPendingDelete.id,
+              ).length
+        }
+        onCancel={() => {
+          setProjectChatsPendingDelete(null);
+        }}
+        onConfirm={confirmDeleteProjectChats}
+      />
+      <DeleteProjectDialog
+        project={projectPendingDelete}
+        chatCount={
+          projectPendingDelete === null
+            ? 0
+            : sessions.filter(
+                (session) => session.projectId === projectPendingDelete.id,
+              ).length
+        }
+        onCancel={() => {
+          setProjectPendingDelete(null);
+        }}
+        onConfirm={confirmDeleteProject}
       />
       <DeleteSectionDialog
         section={sectionPendingDelete}

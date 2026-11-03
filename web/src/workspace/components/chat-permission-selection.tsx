@@ -2,9 +2,11 @@ import type { ReactNode } from "react";
 import type { ChatPermissionMode } from "@veykor/shared";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBan, faCircleQuestion, faShieldHalved, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
+import { Text } from "@astryxdesign/core/Text";
 import { Selector, SelectorOption } from "@astryxdesign/core/Selector";
 
 interface Props {
+  providerId: string;
   value: ChatPermissionMode;
   onChange: (mode: ChatPermissionMode) => void;
 }
@@ -20,7 +22,7 @@ const options: PermissionOption[] = [
   {
     value: "promptUnmatched",
     label: "Ask for approval",
-    description: "Muse asks before running actions outside your rules.",
+    description: "Ask before running actions outside the provider’s rules.",
     icon: <FontAwesomeIcon icon={faCircleQuestion} />,
   },
   {
@@ -33,7 +35,7 @@ const options: PermissionOption[] = [
   {
     value: "allowAll",
     label: "Full access",
-    description: "Muse runs everything without asking. Use with care.",
+    description: "Allow actions without asking. Use with care.",
     icon: (
       <FontAwesomeIcon
         icon={faTriangleExclamation}
@@ -51,6 +53,16 @@ const legacyOption: PermissionOption = {
 };
 
 export function ChatPermissionSelection(props: Props) {
+  const availableOptions =
+    props.providerId === "opencode"
+      ? [
+          ...options.filter((option) => option.value !== "onRequest"),
+          legacyOption,
+        ]
+      : props.value === "denyUnmatched"
+        ? [...options, legacyOption]
+        : options;
+
   return (
     <Selector
       label="Permission mode"
@@ -59,20 +71,20 @@ export function ChatPermissionSelection(props: Props) {
       variant="ghost"
       placement="above"
       value={props.value}
-      options={
-        props.value === "denyUnmatched" ? [...options, legacyOption] : options
-      }
+      options={availableOptions}
       renderOption={(option) =>
         option.value === "allowAll" ? (
           <SelectorOption
             icon={option.icon}
             label={
-              <span className="text-(--color-text-red)">{option.label}</span>
+              <Text type="inherit" className="text-(--color-text-red)">
+                {option.label}
+              </Text>
             }
             description={
-              <span className="text-(--color-text-red)">
+              <Text type="inherit" className="text-(--color-text-red)">
                 {option.description}
-              </span>
+              </Text>
             }
           />
         ) : (
@@ -89,9 +101,9 @@ export function ChatPermissionSelection(props: Props) {
               <SelectorOption
                 icon={option.icon}
                 label={
-                  <span className="text-(--color-text-red)">
+                  <Text type="inherit" className="text-(--color-text-red)">
                     {option.label}
-                  </span>
+                  </Text>
                 }
               />
             )

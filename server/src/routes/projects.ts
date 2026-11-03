@@ -3,10 +3,14 @@ import { promisify } from "node:util";
 import { resolve } from "node:path";
 import type { ProjectContext } from "@veykor/shared";
 import { Hono } from "hono";
-import type { CreateProjectInput, ProjectsResponse, UpdateProjectInput } from "@veykor/shared";
+import type { CreateProjectInput, DeleteProjectChatsResponse, ProjectsResponse, UpdateProjectInput } from "@veykor/shared";
 import { requireAuth, type AuthEnv } from "../auth/auth.js";
 import { isHostRequest } from "../auth/host-access.js";
-import { createProject, listProjects, updateProject } from "../db/projects.js";
+import { chatProviderFor } from "../providers/index.js";
+import { removeStaged } from "../chat/attachments.js";
+import { isInternalConversation, deleteProjectConversations, listProjectConversations } from "../chat/conversations.js";
+import { deleteCollaboration } from "../collab/store.js";
+import { createProject, deleteProject, listProjects, updateProject } from "../db/projects.js";
 import { isProjectSection } from "../db/sidebar-sections.js";
 
 const maxNameLength = 80;
@@ -157,6 +161,101 @@ projectsRoute.patch("/:id", async (c) => {
 
   const response: ProjectsResponse = {
     projects: listProjects(c.get("user").id),
+  };
+
+  return c.json(response);
+});
+
+projectsRoute.delete("/:id/chats", async (c) => {
+  const userId = c.get("user").id;
+  const id = c.req.param("id");
+
+  const project = listProjects(userId).find((entry) => entry.id === id);
+
+  if (!project) {
+    return c.json({ error: "Project not found" }, 404);
+  }
+
+  const doomed = listProjectConversations(userId, id);
+
+  if (
+    doomed.some((metadata) =>
+      chatProviderFor(metadata.providerId)?.isBusy(userId, metadata.id),
+    )
+  ) {
+    return c.json(
+      { error: "Stop the project's running chats before deleting them" },
+      409,
+    );
+  }
+
+  for (const metadata of doomed) {
+    await chatProviderFor(metadata.providerId)?.release(userId, metadata.id);
+  }
+
+  await Promise.all(
+    doomed.flatMap((metadata) =>
+      metadata.attachments.map((attachment) => removeStaged(attachment.id)),
+    ),
+  );
+
+  for (const metadata of doomed) {
+    if (!isInternalConversation(metadata)) {
+      deleteCollaboration(userId, metadata.id);
+    }
+  }
+
+  deleteProjectConversations(userId, id);
+
+  const response: DeleteProjectChatsResponse = { deleted: doomed.length };
+
+  return c.json(response);
+});
+
+projectsRoute.delete("/:id", async (c) => {
+  const userId = c.get("user").id;
+  const id = c.req.param("id");
+
+  const project = listProjects(userId).find((entry) => entry.id === id);
+
+  if (!project) {
+    return c.json({ error: "Project not found" }, 404);
+  }
+
+  const doomed = listProjectConversations(userId, id);
+
+  if (
+    doomed.some((metadata) =>
+      chatProviderFor(metadata.providerId)?.isBusy(userId, metadata.id),
+    )
+  ) {
+    return c.json(
+      { error: "Stop the project's running chats before deleting it" },
+      409,
+    );
+  }
+
+  for (const metadata of doomed) {
+    await chatProviderFor(metadata.providerId)?.release(userId, metadata.id);
+  }
+
+  await Promise.all(
+    doomed.flatMap((metadata) =>
+      metadata.attachments.map((attachment) => removeStaged(attachment.id)),
+    ),
+  );
+
+  for (const metadata of doomed) {
+    if (!isInternalConversation(metadata)) {
+      deleteCollaboration(userId, metadata.id);
+    }
+  }
+
+  deleteProjectConversations(userId, id);
+  deleteProject(userId, id);
+
+  const response: ProjectsResponse = {
+    projects: listProjects(userId),
   };
 
   return c.json(response);

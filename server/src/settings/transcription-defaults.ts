@@ -1,13 +1,6 @@
 import type { ProviderCliId, TranscriptionDefaults } from "@veykor/shared";
 
-const providerIds: ProviderCliId[] = [
-  "muse",
-  "claude",
-  "codex",
-  "opencode",
-  "deepseek",
-  "aider",
-];
+const providerIds: ProviderCliId[] = ["muse", "opencode"];
 
 const modelPattern = /^[a-zA-Z0-9][a-zA-Z0-9._:@+/-]{0,199}$/;
 

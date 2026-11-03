@@ -32,27 +32,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       const settings = (await response.json()) as SettingsResponse;
       if (version === loadVersion) {
         set({
-          providers: [
-            ...settings.providers,
-            ...[
-              { id: "claude", label: "Claude Code", company: "Anthropic" },
-              { id: "codex", label: "Codex", company: "OpenAI" },
-              { id: "opencode", label: "OpenCode", company: "SST" },
-              { id: "deepseek", label: "DeepSeek", company: "DeepSeek" },
-              { id: "aider", label: "Aider", company: "Aider" },
-            ].map((entry) => ({
-              ...entry,
-              id: entry.id as SettingsProvider["id"],
-              name: entry.label,
-              cli: entry.id,
-              installed: false,
-              version: "",
-              available: false,
-              error: "",
-              source: "Coming soon",
-              models: [],
-            })),
-          ],
+          providers: settings.providers,
           status: "ready",
           error: "",
         });

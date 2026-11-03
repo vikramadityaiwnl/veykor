@@ -1,5 +1,5 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faFolder, faFolderOpen, faFolderTree, faPen, faPenToSquare } from "@fortawesome/free-solid-svg-icons";
+import { faFolder, faFolderOpen, faFolderTree, faPen, faPenToSquare, faTrash } from "@fortawesome/free-solid-svg-icons";
 import type { Project, SidebarSection } from "@veykor/shared";
 import { useAppShellMobile } from "@astryxdesign/core/AppShell";
 import { Button } from "@astryxdesign/core/Button";
@@ -24,6 +24,8 @@ interface Props {
   onAddSession: (projectId: string) => void;
   onRenameProject: (projectId: string) => void;
   onMoveProject: (projectId: string, sectionId: string) => void;
+  onDeleteProject: (project: Project) => void;
+  onDeleteProjectChats: (project: Project) => void;
 }
 
 export function WorkspaceProjectsList(props: Props) {
@@ -73,6 +75,23 @@ export function WorkspaceProjectsList(props: Props) {
                 },
               })),
             }),
+      },
+      {
+        label: "Delete all chat",
+        icon: <FontAwesomeIcon icon={faTrash} size="sm" aria-hidden="true" />,
+        variant: "destructive" as const,
+        isDisabled: sessionsFor(project.id).length === 0,
+        onClick: () => {
+          props.onDeleteProjectChats(project);
+        },
+      },
+      {
+        label: "Delete project",
+        icon: <FontAwesomeIcon icon={faTrash} size="sm" aria-hidden="true" />,
+        variant: "destructive" as const,
+        onClick: () => {
+          props.onDeleteProject(project);
+        },
       },
     ];
   }

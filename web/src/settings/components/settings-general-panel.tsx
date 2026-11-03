@@ -5,6 +5,7 @@ import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/Segme
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { useThemeStore } from "../../theme-store";
+import { MessageBehaviorPreference } from "./message-behavior-preference";
 import { SettingsGroup } from "./settings-group";
 
 export function SettingsGeneralPanel() {
@@ -64,6 +65,7 @@ export function SettingsGeneralPanel() {
           </SegmentedControl>
         </HStack>
       </SettingsGroup>
+      <MessageBehaviorPreference />
       {error && (
         <Banner
           status="error"

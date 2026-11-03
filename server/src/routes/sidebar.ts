@@ -1,6 +1,10 @@
 import { Hono } from "hono";
 import type { CreateSidebarSectionInput, SidebarSectionsResponse, UpdateSidebarSectionInput } from "@veykor/shared";
 import { requireAuth, type AuthEnv } from "../auth/auth.js";
+import { chatProviderFor } from "../providers/index.js";
+import { removeStaged } from "../chat/attachments.js";
+import { deleteProjectConversations, listProjectConversations } from "../chat/conversations.js";
+import { listProjects } from "../db/projects.js";
 import { createSidebarSection, deleteSidebarSection, listSidebarSections, updateSidebarSection } from "../db/sidebar-sections.js";
 
 const maxTitleLength = 80;
@@ -123,8 +127,26 @@ sidebarRoute.patch("/sections/:id", async (c) => {
   return c.json(response);
 });
 
-sidebarRoute.delete("/sections/:id", (c) => {
-  const result = deleteSidebarSection(c.get("user").id, c.req.param("id"));
+sidebarRoute.delete("/sections/:id", async (c) => {
+  const userId = c.get("user").id;
+  const id = c.req.param("id");
+
+  const doomed = listProjects(userId)
+    .filter((project) => project.sectionId === id)
+    .flatMap((project) => listProjectConversations(userId, project.id));
+
+  if (
+    doomed.some((metadata) =>
+      chatProviderFor(metadata.providerId)?.isBusy(userId, metadata.id),
+    )
+  ) {
+    return c.json(
+      { error: "Stop the section's running chats before deleting it" },
+      409,
+    );
+  }
+
+  const result = deleteSidebarSection(userId, id);
 
   if (result === "not-found") {
     return c.json({ error: "Section not found" }, 404);
@@ -134,8 +156,28 @@ sidebarRoute.delete("/sections/:id", (c) => {
     return c.json({ error: "The Chats section cannot be deleted." }, 403);
   }
 
+  for (const metadata of doomed) {
+    await chatProviderFor(metadata.providerId)?.release(userId, metadata.id);
+  }
+
+  await Promise.all(
+    doomed.flatMap((metadata) =>
+      metadata.attachments.map((attachment) => removeStaged(attachment.id)),
+    ),
+  );
+
+  const doomedProjectIds = new Set(
+    doomed.map((metadata) => metadata.projectId ?? ""),
+  );
+
+  for (const projectId of doomedProjectIds) {
+    if (projectId) {
+      deleteProjectConversations(userId, projectId);
+    }
+  }
+
   const response: SidebarSectionsResponse = {
-    sections: listSidebarSections(c.get("user").id),
+    sections: listSidebarSections(userId),
   };
 
   return c.json(response);

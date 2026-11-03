@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import type { ChatAttachment, ChatPermissionMode, ChatSession } from "@veykor/shared";
+import type { AgentSnapshot, ChatAttachment, ChatPermissionMode, ChatReasoningEffort, ChatSession } from "@veykor/shared";
 import { db } from "../db/client.js";
 import { conversations, chatHistories, projects, sidebarSections } from "../db/schema.js";
 import { attachmentAvailable, stageAttachment, sweepStaging } from "./attachments.js";
@@ -7,6 +7,7 @@ import { attachmentAvailable, stageAttachment, sweepStaging } from "./attachment
 export interface StoredAttachment {
   id: string;
   turnId: string;
+  submissionId?: string;
   name: string;
   mimeType: string;
   size: number;
@@ -21,10 +22,24 @@ export interface ConversationMetadata {
   sectionId: string | null;
   providerId: string;
   modelId: string;
+  reasoningEffort?: ChatReasoningEffort | "";
   nativeSessionId: string;
   permissionMode: ChatPermissionMode;
+  agentId?: string | null;
+  agentName?: string;
+  agentSnapshot?: AgentSnapshot | null;
+  parentConversationId?: string | null;
+  collabRole?: "lead" | "delegate";
   attachments: StoredAttachment[];
+  queuePaused?: boolean;
+  recoveryError?: string;
   turnTimings?: Record<string, { startedAt: number; seconds: number }>;
+}
+
+export function isInternalConversation(
+  metadata: Pick<ConversationMetadata, "parentConversationId">,
+): boolean {
+  return !!metadata.parentConversationId;
 }
 
 export function readConversation(
@@ -37,7 +52,11 @@ export function readConversation(
     .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
     .get();
   return row
-    ? ({ turnTimings: {}, ...JSON.parse(row.data) } as ConversationMetadata)
+    ? ({
+        turnTimings: {},
+        ...JSON.parse(row.data),
+        queuePaused: row.queuePaused === 1,
+      } as ConversationMetadata)
     : undefined;
 }
 
@@ -63,7 +82,11 @@ export function listConversations(userId: number): ConversationMetadata[] {
     .all()
     .map(
       (row) =>
-        ({ turnTimings: {}, ...JSON.parse(row.data) }) as ConversationMetadata,
+        ({
+          turnTimings: {},
+          ...JSON.parse(row.data),
+          queuePaused: row.queuePaused === 1,
+        }) as ConversationMetadata,
     );
 }
 
@@ -75,12 +98,17 @@ export function metadataSession(metadata: ConversationMetadata): ChatSession {
     sectionId: metadata.sectionId,
     providerId: metadata.providerId,
     modelId: metadata.modelId,
+    reasoningEffort: metadata.reasoningEffort || undefined,
     nativeSessionId: metadata.nativeSessionId,
     permissionMode: metadata.permissionMode,
-    status: "idle",
-    error: "",
+    agentId: metadata.agentId ?? null,
+    agentName: metadata.agentName || metadata.agentSnapshot?.name || "",
+    status: metadata.recoveryError ? "error" : "idle",
+    error: metadata.recoveryError || "",
     approvals: [],
     activities: [],
+    queuedMessages: [],
+    queuePaused: metadata.queuePaused || false,
     messages: [],
   };
 }
@@ -142,19 +170,71 @@ async function slimSession(
     title: session.title,
     projectId: session.projectId,
     sectionId: session.sectionId,
-    providerId: "muse",
+    providerId: session.providerId || "muse",
     modelId: session.modelId,
+    reasoningEffort: session.reasoningEffort || "",
     nativeSessionId: session.nativeSessionId || "",
     permissionMode: session.permissionMode || "promptUnmatched",
+    agentId: session.agentId ?? null,
+    agentName: session.agentName || "",
+    agentSnapshot: null,
     attachments,
     turnTimings: {},
   };
 }
 
-function deleteConversation(userId: number, id: string) {
+export function deleteConversation(userId: number, id: string) {
   db.delete(conversations)
     .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
     .run();
+}
+
+export function listOrdinaryConversations(
+  userId: number,
+): ConversationMetadata[] {
+  return listConversations(userId).filter(
+    (metadata) => !isInternalConversation(metadata),
+  );
+}
+
+export function listInternalConversations(
+  userId: number,
+  parentConversationId: string,
+): ConversationMetadata[] {
+  return listConversations(userId).filter(
+    (metadata) => metadata.parentConversationId === parentConversationId,
+  );
+}
+
+export function listProjectConversations(
+  userId: number,
+  projectId: string,
+): ConversationMetadata[] {
+  return listConversations(userId).filter(
+    (metadata) => metadata.projectId === projectId,
+  );
+}
+
+export function listOrdinaryProjectConversations(
+  userId: number,
+  projectId: string,
+): ConversationMetadata[] {
+  return listProjectConversations(userId, projectId).filter(
+    (metadata) => !isInternalConversation(metadata),
+  );
+}
+
+export function deleteProjectConversations(
+  userId: number,
+  projectId: string,
+): ConversationMetadata[] {
+  const doomed = listProjectConversations(userId, projectId);
+
+  for (const metadata of doomed) {
+    deleteConversation(userId, metadata.id);
+  }
+
+  return doomed;
 }
 
 export async function migrateStoredConversations(): Promise<void> {

@@ -15,6 +15,7 @@ interface ProjectsState {
   }) => Promise<boolean>;
   renameProject: (id: string, name: string) => Promise<boolean>;
   moveProject: (id: string, sectionId: string) => Promise<boolean>;
+  deleteProject: (id: string) => Promise<boolean>;
 }
 
 async function requestProjects(
@@ -100,6 +101,18 @@ export const useProjectsStore = create<ProjectsState>()((set, get) => ({
       return true;
     } catch {
       set({ error: "Unable to move the project. Please retry." });
+      return false;
+    }
+  },
+
+  deleteProject: async (id) => {
+    try {
+      const result = await requestProjects(`/${id}`, "DELETE");
+
+      set({ projects: result.projects, status: "ready", error: "" });
+      return true;
+    } catch {
+      set({ error: "Unable to delete the project. Please retry." });
       return false;
     }
   },

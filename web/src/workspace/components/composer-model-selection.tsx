@@ -2,6 +2,7 @@ import type { ChatModel, ChatProvider } from "@veykor/shared";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCube } from "@fortawesome/free-solid-svg-icons";
 import { Selector } from "@astryxdesign/core/Selector";
+import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { ChatProviderIcon } from "./chat-provider-icon";
 
@@ -11,6 +12,7 @@ interface Props {
   modelId: string;
   preferredModels: Record<string, string>;
   loading: boolean;
+  isProviderLocked?: boolean;
   onSelection: (providerId: string, modelId: string) => void;
   isCompact?: boolean;
 }
@@ -71,10 +73,9 @@ function modelDescription(model: ChatModel): string | undefined {
 }
 
 export function ComposerModelSelection(props: Props) {
-  const available = props.providers.filter((entry) => entry.available);
-  const provider =
-    available.find((entry) => entry.id === props.providerId) ||
-    props.providers.find((entry) => entry.id === props.providerId);
+  const provider = props.providers.find(
+    (entry) => entry.id === props.providerId,
+  );
 
   return (
     <VStack
@@ -84,6 +85,7 @@ export function ComposerModelSelection(props: Props) {
       <Selector
         startIcon={<ChatProviderIcon providerId={props.providerId} />}
         label="Provider"
+        isDisabled={props.isProviderLocked}
         isLabelHidden={!props.isCompact}
         variant={props.isCompact ? "input" : "ghost"}
         size="sm"
@@ -95,19 +97,23 @@ export function ComposerModelSelection(props: Props) {
           props.isCompact
             ? undefined
             : (option) => (
-                <span className="veykor-collapsed-label">{option.label}</span>
+                <Text type="inherit" className="veykor-collapsed-label">
+                  {option.label}
+                </Text>
               )
         }
         value={props.providerId}
         isLoading={props.loading}
         emptyText="No providers available"
-        options={available.map((entry) => ({
+        options={props.providers.map((entry) => ({
           value: entry.id,
           label: entry.name,
+          description: entry.available ? undefined : "Unavailable",
+          disabled: !entry.available,
           icon: <ChatProviderIcon providerId={entry.id} />,
         }))}
         onChange={(id) => {
-          const next = available.find((entry) => entry.id === id);
+          const next = props.providers.find((entry) => entry.id === id);
           const preferred = props.preferredModels[id];
           const model =
             (preferred &&
@@ -132,7 +138,9 @@ export function ComposerModelSelection(props: Props) {
           props.isCompact
             ? undefined
             : (option) => (
-                <span className="veykor-collapsed-label">{option.label}</span>
+                <Text type="inherit" className="veykor-collapsed-label">
+                  {option.label}
+                </Text>
               )
         }
         hasSearch

@@ -1,5 +1,4 @@
-export type ProviderCliId =
-  "muse" | "claude" | "codex" | "opencode" | "deepseek" | "aider";
+export type ProviderCliId = "muse" | "opencode";
 
 export interface ProviderCliStatus {
   id: ProviderCliId;
@@ -12,4 +11,16 @@ export interface ProviderCliStatus {
 
 export interface CliStatusResponse {
   providers: ProviderCliStatus[];
+}
+
+export interface ProviderSessionSummary {
+  id: string;
+  title: string;
+  workspaceRoot: string;
+  updatedAt: string;
+}
+
+export interface ProviderSessionsResponse {
+  sessions: ProviderSessionSummary[];
+  nextCursor: string;
 }

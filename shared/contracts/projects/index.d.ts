@@ -21,6 +21,10 @@ export interface UpdateProjectInput {
   sectionId?: string;
 }
 
+export interface DeleteProjectChatsResponse {
+  deleted: number;
+}
+
 export interface ProjectContext {
   branch: string;
   isWorktree: boolean;

@@ -14,7 +14,9 @@ export const settingsRoute = new Hono<AuthEnv>();
 
 settingsRoute.use("*", requireAuth);
 
-settingsRoute.get("/", async (c) => c.json(await getSettings(true)));
+settingsRoute.get("/", async (c) =>
+  c.json(await getSettings(c.req.query("refresh") === "true")),
+);
 
 settingsRoute.get("/general", (c) => {
   const user = db
@@ -70,6 +72,7 @@ settingsRoute.put("/chat-defaults", async (c) => {
   db.update(users)
     .set({
       chatDefaults: JSON.stringify({
+        messageBehavior: input.messageBehavior || "queue",
         defaultProviderId: input.defaultProviderId,
         models: input.models,
         efforts: input.efforts,

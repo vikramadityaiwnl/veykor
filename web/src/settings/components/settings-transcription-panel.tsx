@@ -38,11 +38,14 @@ export function SettingsTranscriptionPanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const available = providers.filter((entry) => entry.available);
+  const available = providers.filter(
+    (entry) =>
+      entry.available && catalog.some((candidate) => candidate.id === entry.id),
+  );
 
   const selection = resolveTranscriptionSelection(
     catalog,
-    providers,
+    available,
     savedProviderId,
     savedModelId,
   );

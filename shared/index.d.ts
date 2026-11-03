@@ -22,15 +22,21 @@ export type {
   ProjectContext,
   CreateProjectInput,
   UpdateProjectInput,
+  DeleteProjectChatsResponse,
 } from "./contracts/index.js";
 
 export type {
+  ProviderSessionSummary,
+  ProviderSessionsResponse,
   ProviderCliId,
   ProviderCliStatus,
   CliStatusResponse,
 } from "./contracts/index.js";
 
 export type {
+  ChatMessageBehavior,
+  QueuedChatMessage,
+  QueuedMessageErrorKind,
   ChatPermissionMode,
   ChatReasoningEffort,
   ChatReasoningEffortOption,
@@ -98,4 +104,39 @@ export type {
   SkillDetail,
   CreateSkillInput,
   UpdateSkillInput,
+} from "./contracts/index.js";
+
+export type {
+  AgentAccessMode,
+  Agent,
+  CreateAgentInput,
+  UpdateAgentInput,
+  AgentsResponse,
+  ProjectAgent,
+  ProjectAgentsResponse,
+  AgentSnapshot,
+} from "./contracts/index.js";
+
+export type {
+  CollabTaskState,
+  CollabInterruptState,
+  CollabEventType,
+  CollabMessageKind,
+  CollabSourceKind,
+  CollabDeliveryState,
+  CollabParticipant,
+  CollabTask,
+  CollabEvent,
+  CollabDelivery,
+  CollabMessage,
+  CollabSnapshot,
+  CollabSessionState,
+  CollabDetailResponse,
+  DelegateTaskInput,
+  DelegateTaskResponse,
+  SendCollabMessageInput,
+  SendCollabMessageResponse,
+  ReportCollabResultInput,
+  InterruptCollabTaskResponse,
+  CollabAttachmentReference,
 } from "./contracts/index.js";
