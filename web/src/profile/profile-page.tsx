@@ -75,7 +75,7 @@ function ProfilePage() {
         <Divider />
 
         <div className="grid grid-cols-2 items-start gap-10 2xl:grid-cols-3">
-          <div className="min-w-0">
+          <div className="grid min-w-0 place-items-center self-stretch">
             <div className="flex items-center gap-4">
               <Avatar name={draft.username} size={80} />
 

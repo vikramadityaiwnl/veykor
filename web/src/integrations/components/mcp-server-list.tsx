@@ -1,16 +1,8 @@
-import {
-  EllipsisHorizontalIcon,
-  PencilIcon,
-  PlusIcon,
-  PowerIcon,
-  TrashIcon,
-} from "@heroicons/react/24/outline";
+import { PlusIcon } from "@heroicons/react/24/outline";
 import type { McpServerSummary } from "@veykor/shared";
 import { mcpTransports } from "@veykor/shared";
 import Badge from "../../components/badge/badge.tsx";
-import Dropdown from "../../components/dropdown/dropdown.tsx";
 import EmptyState from "../../components/empty-state/empty-state.tsx";
-import { semanticColors } from "../../theme/semantic-colors.ts";
 
 interface Props {
   onAdd: () => void;
@@ -74,67 +66,7 @@ function McpServerList(props: Props) {
             role="button"
             tabIndex={0}
           >
-            <div className="flex items-start justify-between gap-2">
-              <h2 className="min-w-0 flex-1 truncate font-semibold">
-                {server.name}
-              </h2>
-
-              <div
-                onClick={(event) => event.stopPropagation()}
-                onKeyDown={(event) => event.stopPropagation()}
-              >
-                <Dropdown
-                  label={`Actions for ${server.name}`}
-                  trigger={
-                    <EllipsisHorizontalIcon
-                      aria-hidden="true"
-                      className="size-5"
-                    />
-                  }
-                  triggerClassName="grid size-8 shrink-0 place-items-center rounded-lg text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200"
-                  items={[
-                    {
-                      kind: "item",
-                      id: "edit",
-                      label: "Edit",
-                      icon: (
-                        <PencilIcon
-                          aria-hidden="true"
-                          className="size-4 text-zinc-400"
-                        />
-                      ),
-                      onSelect: () => props.onEdit(server),
-                    },
-                    {
-                      kind: "item",
-                      id: "toggle",
-                      label: server.enabled ? "Disable" : "Enable",
-                      icon: (
-                        <PowerIcon
-                          aria-hidden="true"
-                          className="size-4 text-zinc-400"
-                        />
-                      ),
-                      onSelect: () => props.onToggle(server),
-                    },
-                    { kind: "divider", id: "delete-divider" },
-                    {
-                      kind: "item",
-                      id: "delete",
-                      label: "Delete",
-                      icon: (
-                        <TrashIcon
-                          aria-hidden="true"
-                          className={`size-4 ${semanticColors.delete.text}`}
-                        />
-                      ),
-                      danger: true,
-                      onSelect: () => props.onDelete(server),
-                    },
-                  ]}
-                />
-              </div>
-            </div>
+            <h2 className="truncate font-semibold">{server.name}</h2>
 
             <div className="flex items-center gap-2">
               <Badge text={transportTitle(server)} />
@@ -143,6 +75,32 @@ function McpServerList(props: Props) {
                 text={server.enabled ? "Enabled" : "Disabled"}
                 tone={server.enabled ? "success" : "danger"}
               />
+            </div>
+
+            <div className="flex gap-4 text-xs">
+              <button
+                className={
+                  server.enabled
+                    ? "text-zinc-500 hover:text-rose-400"
+                    : "text-zinc-500 hover:text-emerald-400"
+                }
+                onClick={(event) => {
+                  event.stopPropagation();
+                  props.onToggle(server);
+                }}
+              >
+                {server.enabled ? "Disable" : "Enable"}
+              </button>
+
+              <button
+                className="text-zinc-500 hover:text-rose-400"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  props.onDelete(server);
+                }}
+              >
+                Delete
+              </button>
             </div>
           </div>
         ))}

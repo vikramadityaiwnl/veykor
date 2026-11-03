@@ -90,7 +90,16 @@ function AgentsPage() {
             {agents.map((agent) => (
               <div
                 key={agent.id}
-                className="space-y-4 rounded-2xl border border-zinc-800 p-5"
+                className="cursor-pointer space-y-4 rounded-2xl border border-zinc-800 p-5 transition hover:border-zinc-700"
+                onClick={() => setEditing(agent)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setEditing(agent);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
               >
                 <div className="flex items-center gap-3">
                   <AgentAvatar name={agent.name} size={40} />
@@ -102,11 +111,12 @@ function AgentsPage() {
                 </p>
 
                 <div className="flex gap-4 text-xs">
-                  <button onClick={() => setEditing(agent)}>Edit</button>
-
                   <button
                     className="text-zinc-500 hover:text-rose-400"
-                    onClick={() => setDeleting(agent)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setDeleting(agent);
+                    }}
                   >
                     Delete
                   </button>
