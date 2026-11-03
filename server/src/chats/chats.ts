@@ -29,6 +29,7 @@ import {
   buildSessionMcp,
   restoreSessionMcp,
 } from "../integrations/integrations.js";
+import { syncAccountSkills } from "../integrations/skills.js";
 import {
   applyChatSettings,
   cancelMuseTurn,
@@ -303,6 +304,10 @@ chatRoute.post("/", requireAuth, async (c) => {
 
   const sessionMcp = buildSessionMcp(userId);
   const mcpServerCount = Object.keys(sessionMcp.runtime).length;
+
+  if (!project) {
+    syncAccountSkills(userId);
+  }
 
   try {
     const started = await startMuseSession(userId, project?.folder, {

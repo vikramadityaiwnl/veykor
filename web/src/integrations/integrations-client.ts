@@ -2,15 +2,22 @@ import {
   integrationPaths,
   mcpStdioFieldsError,
   mcpValidationError,
+  skillPaths,
+  skillValidationError,
   veykorRequestHeaderName,
   veykorRequestHeaderValue,
 } from "@veykor/shared";
 import type {
+  ChatSkillsResponse,
   CreateMcpServerRequest,
+  CreateSkillRequest,
   McpServerListResponse,
   McpServerSummary,
   McpTransport,
+  SkillDetail,
+  SkillListResponse,
   UpdateMcpServerRequest,
+  UpdateSkillRequest,
 } from "@veykor/shared";
 
 async function readError(response: Response): Promise<string> {
@@ -117,4 +124,47 @@ export async function updateMcpServer(
 
 export async function deleteMcpServer(id: string): Promise<void> {
   await send<{ deleted: boolean }>(integrationPaths.mcpServer(id), "DELETE");
+}
+
+export async function fetchSkills(): Promise<SkillListResponse> {
+  return send<SkillListResponse>(skillPaths.skills, "GET");
+}
+
+export async function fetchSkill(id: string): Promise<SkillDetail> {
+  return send<SkillDetail>(skillPaths.skill(id), "GET");
+}
+
+export async function createSkill(
+  input: CreateSkillRequest,
+): Promise<SkillDetail> {
+  const validationError = skillValidationError(input, { partial: false });
+
+  if (validationError !== "") {
+    throw new Error(validationError);
+  }
+
+  return send<SkillDetail>(skillPaths.skills, "POST", input);
+}
+
+export async function updateSkill(
+  id: string,
+  input: UpdateSkillRequest,
+): Promise<SkillDetail> {
+  const validationError = skillValidationError(input, { partial: true });
+
+  if (validationError !== "") {
+    throw new Error(validationError);
+  }
+
+  return send<SkillDetail>(skillPaths.skill(id), "PUT", input);
+}
+
+export async function deleteSkill(id: string): Promise<void> {
+  await send<{ deleted: boolean }>(skillPaths.skill(id), "DELETE");
+}
+
+export async function fetchChatSkills(
+  chatId: string,
+): Promise<ChatSkillsResponse> {
+  return send<ChatSkillsResponse>(skillPaths.chatSkills(chatId), "GET");
 }

@@ -68,6 +68,21 @@ export const mcpServers = sqliteTable("mcp_servers", {
   updatedAt: text("updated_at").notNull().default(""),
 });
 
+export const skills = sqliteTable("skills", {
+  id: text("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .default(0)
+    .references(() => users.id, { onDelete: "cascade" }),
+  slug: text("slug").notNull().default(""),
+  name: text("name").notNull().default(""),
+  description: text("description").notNull().default(""),
+  instructions: text("instructions").notNull().default(""),
+  enabled: integer("enabled").notNull().default(1),
+  createdAt: text("created_at").notNull().default(""),
+  updatedAt: text("updated_at").notNull().default(""),
+});
+
 export const projects = sqliteTable("projects", {
   id: text("id").primaryKey(),
   userId: integer("user_id")

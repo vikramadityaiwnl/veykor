@@ -8,7 +8,7 @@ export interface MuseNotification {
 
 type Subscriber = (notification: MuseNotification) => void;
 
-function museBinary(): string {
+export function museBinary(): string {
   const override = process.env["MUSE_BIN"];
 
   if (override !== undefined && override.trim() !== "") {
@@ -44,7 +44,7 @@ class MuseHost {
   private async spawn(): Promise<Connection> {
     const handshake = spawnMspConnection({
       command: museBinary(),
-      args: ["serve"],
+      args: ["serve", "--trust-workspace"],
       cwd: process.cwd(),
       env: process.env,
       onStderr: () => {},

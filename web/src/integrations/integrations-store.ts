@@ -1,9 +1,10 @@
 import { create } from "zustand";
-import type { McpServerSummary } from "@veykor/shared";
-import { fetchMcpServers } from "./integrations-client.ts";
+import type { McpServerSummary, SkillSummary } from "@veykor/shared";
+import { fetchMcpServers, fetchSkills } from "./integrations-client.ts";
 
 interface IntegrationsState {
   servers: Array<McpServerSummary>;
+  skills: Array<SkillSummary>;
   stdioAllowed: boolean;
   loaded: boolean;
   loading: boolean;
@@ -13,6 +14,7 @@ interface IntegrationsState {
 
 export const useIntegrationsStore = create<IntegrationsState>()((set) => ({
   servers: [],
+  skills: [],
   stdioAllowed: false,
   loaded: false,
   loading: false,
@@ -22,11 +24,15 @@ export const useIntegrationsStore = create<IntegrationsState>()((set) => ({
     set({ loading: true, error: "" });
 
     try {
-      const response = await fetchMcpServers();
+      const [servers, skills] = await Promise.all([
+        fetchMcpServers(),
+        fetchSkills(),
+      ]);
 
       set({
-        servers: response.servers,
-        stdioAllowed: response.stdioAllowed,
+        servers: servers.servers,
+        skills: skills.skills,
+        stdioAllowed: servers.stdioAllowed,
         loaded: true,
         loading: false,
       });

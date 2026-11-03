@@ -1,18 +1,30 @@
 import { ServerStackIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { useEffect, useState } from "react";
-import type { McpServerSummary } from "@veykor/shared";
+import type {
+  McpServerSummary,
+  SkillDetail,
+  SkillSummary,
+} from "@veykor/shared";
 import AlertDialog from "../components/alert-dialog/alert-dialog.tsx";
 import McpServerDialog from "./components/mcp-server-dialog.tsx";
 import McpServerList from "./components/mcp-server-list.tsx";
-import SkillsPlaceholder from "./components/skills-placeholder.tsx";
+import SkillDialog from "./components/skill-dialog.tsx";
+import SkillList from "./components/skill-list.tsx";
 import Tabs from "../components/tabs/tabs.tsx";
 import { useIntegrationsStore } from "./integrations-store.ts";
-import { deleteMcpServer, updateMcpServer } from "./integrations-client.ts";
+import {
+  deleteMcpServer,
+  deleteSkill,
+  fetchSkill,
+  updateMcpServer,
+  updateSkill,
+} from "./integrations-client.ts";
 
 type IntegrationsTab = "mcp" | "skills";
 
 function IntegrationsPage() {
   const servers = useIntegrationsStore((state) => state.servers);
+  const skills = useIntegrationsStore((state) => state.skills);
   const stdioAllowed = useIntegrationsStore((state) => state.stdioAllowed);
   const error = useIntegrationsStore((state) => state.error);
   const load = useIntegrationsStore((state) => state.load);
@@ -21,6 +33,10 @@ function IntegrationsPage() {
     undefined,
   );
   const [deleting, setDeleting] = useState<McpServerSummary | null>(null);
+  const [editingSkill, setEditingSkill] = useState<
+    SkillDetail | null | undefined
+  >(undefined);
+  const [deletingSkill, setDeletingSkill] = useState<SkillSummary | null>(null);
   const [failure, setFailure] = useState("");
 
   useEffect(() => {
@@ -54,6 +70,48 @@ function IntegrationsPage() {
         cause instanceof Error ? cause.message : "Unable to delete the server.",
       );
       setDeleting(null);
+    }
+  }
+
+  async function editSkill(skill: SkillSummary) {
+    setFailure("");
+
+    try {
+      setEditingSkill(await fetchSkill(skill.id));
+    } catch (cause) {
+      setFailure(
+        cause instanceof Error ? cause.message : "Unable to open the skill.",
+      );
+    }
+  }
+
+  async function toggleSkill(skill: SkillSummary) {
+    setFailure("");
+
+    try {
+      await updateSkill(skill.id, { enabled: !skill.enabled });
+      await load();
+    } catch (cause) {
+      setFailure(
+        cause instanceof Error ? cause.message : "Unable to update the skill.",
+      );
+    }
+  }
+
+  async function removeSkill() {
+    if (!deletingSkill) {
+      return;
+    }
+
+    try {
+      await deleteSkill(deletingSkill.id);
+      setDeletingSkill(null);
+      await load();
+    } catch (cause) {
+      setFailure(
+        cause instanceof Error ? cause.message : "Unable to delete the skill.",
+      );
+      setDeletingSkill(null);
     }
   }
 
@@ -101,7 +159,13 @@ function IntegrationsPage() {
             servers={servers}
           />
         ) : (
-          <SkillsPlaceholder />
+          <SkillList
+            onAdd={() => setEditingSkill(null)}
+            onDelete={setDeletingSkill}
+            onEdit={(skill) => void editSkill(skill)}
+            onToggle={(skill) => void toggleSkill(skill)}
+            skills={skills}
+          />
         )}
 
         {editing !== undefined && (
@@ -123,6 +187,27 @@ function IntegrationsPage() {
             confirmLabel="Delete"
             onClose={() => setDeleting(null)}
             onConfirm={() => void remove()}
+          />
+        )}
+
+        {editingSkill !== undefined && (
+          <SkillDialog
+            onClose={() => setEditingSkill(undefined)}
+            onSaved={() => {
+              setEditingSkill(undefined);
+              void load();
+            }}
+            skill={editingSkill}
+          />
+        )}
+
+        {deletingSkill && (
+          <AlertDialog
+            title="Delete skill"
+            description={`Remove ${deletingSkill.name}? New chats will no longer see it.`}
+            confirmLabel="Delete"
+            onClose={() => setDeletingSkill(null)}
+            onConfirm={() => void removeSkill()}
           />
         )}
       </div>

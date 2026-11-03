@@ -117,6 +117,28 @@ export function runMigrations(sqlite: Database.Database): void {
     CREATE INDEX IF NOT EXISTS mcp_servers_user_idx ON mcp_servers(user_id);
   `);
 
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS skills (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL DEFAULT 0 REFERENCES users(id) ON DELETE CASCADE,
+      slug TEXT NOT NULL DEFAULT '',
+      name TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      instructions TEXT NOT NULL DEFAULT '',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT ''
+    );
+  `);
+
+  sqlite.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS skills_user_slug_idx ON skills(user_id, slug);
+  `);
+
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS skills_user_idx ON skills(user_id);
+  `);
+
   for (const [name, value] of [
     ["project_id", ""],
     ["agent_snapshot", "{}"],

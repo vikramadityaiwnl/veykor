@@ -9,6 +9,7 @@ import { loadServerConfig } from "./auth/config.js";
 import { chatRoute, modelRoute } from "./chats/chats.js";
 import { db } from "./db/client.js";
 import { integrationsRoute } from "./integrations/integrations.js";
+import { skillsRoute } from "./integrations/skills.js";
 import { preferencesRoute } from "./preferences/preferences.js";
 import { profileRoute } from "./profile/profile.js";
 import {
@@ -32,6 +33,7 @@ app.route("/api/models", modelRoute);
 app.route("/api/preferences", preferencesRoute);
 app.route("/api/profile", profileRoute);
 app.route("/api/integrations", integrationsRoute);
+app.route("/api/integrations/skills", skillsRoute);
 
 app.get("/api/health", async (context) => {
   await db.all(sql`select 1`);
