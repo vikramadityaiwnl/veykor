@@ -1,6 +1,13 @@
 import { create } from "zustand";
-import { defaultPreferences } from "@veykor/shared";
-import type { SidebarTab, UserPreferences } from "@veykor/shared";
+import { defaultPreferences, recentSectionId } from "@veykor/shared";
+import type {
+  ChatPermission,
+  InterruptionBehavior,
+  PreferredModel,
+  SidebarSection,
+  SidebarTab,
+  UserPreferences,
+} from "@veykor/shared";
 import { defaultChats } from "./chats.ts";
 import { fetchPreferences, savePreferences } from "./preferences-client.ts";
 
@@ -19,6 +26,14 @@ interface PreferencesState extends UserPreferences {
   renameChat: (chatId: string, title: string) => void;
   deleteChat: (chatId: string) => void;
   addChat: (sectionId: string) => void;
+  setPreferredModel: (tab: SidebarTab, model: PreferredModel | null) => void;
+  setPreferredEffort: (
+    tab: SidebarTab,
+    modelKey: string,
+    effort: string,
+  ) => void;
+  setPreferredPermission: (permission: ChatPermission) => void;
+  setInterruptionBehavior: (behavior: InterruptionBehavior) => void;
 }
 
 const initialSections = defaultPreferences().sections.map((section) => ({
@@ -38,6 +53,10 @@ function persist(): void {
     chatTitles: state.chatTitles,
     customChats: state.customChats,
     removedChatIds: state.removedChatIds,
+    preferredModels: state.preferredModels,
+    preferredEfforts: state.preferredEfforts,
+    preferredPermission: state.preferredPermission,
+    interruptionBehavior: state.interruptionBehavior,
   };
 
   saveQueue = saveQueue.then(async () => {
@@ -75,9 +94,18 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
     try {
       const stored = await fetchPreferences();
 
+      const sections: Array<SidebarSection> = stored.sections.some(
+        (section) => section.id === recentSectionId,
+      )
+        ? stored.sections
+        : [
+            { id: recentSectionId, title: "Recent", open: true },
+            ...stored.sections,
+          ];
+
       set({
         ...stored,
-        sections: stored.sections.map((section) => ({
+        sections: sections.map((section) => ({
           ...section,
           open: false,
         })),
@@ -87,7 +115,7 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
 
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          usePreferencesStore.setState({ sections: stored.sections });
+          usePreferencesStore.setState({ sections });
         });
       });
     } catch (cause) {
@@ -146,6 +174,10 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
   },
 
   deleteSection: (id) => {
+    if (id === recentSectionId) {
+      return;
+    }
+
     const state = get();
     const fallback = state.sections[0]?.id ?? "";
 
@@ -236,6 +268,35 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
       chatSections: { ...current.chatSections, [id]: sectionId },
       error: "",
     }));
+    persist();
+  },
+
+  setPreferredModel: (tab, model) => {
+    set((state) => ({
+      preferredModels: { ...state.preferredModels, [tab]: model },
+      error: "",
+    }));
+    persist();
+  },
+
+  setPreferredEffort: (tab, modelKey, effort) => {
+    set((state) => ({
+      preferredEfforts: {
+        ...state.preferredEfforts,
+        [tab]: { ...state.preferredEfforts[tab], [modelKey]: effort },
+      },
+      error: "",
+    }));
+    persist();
+  },
+
+  setPreferredPermission: (permission) => {
+    set({ preferredPermission: permission, error: "" });
+    persist();
+  },
+
+  setInterruptionBehavior: (behavior) => {
+    set({ interruptionBehavior: behavior, error: "" });
     persist();
   },
 }));

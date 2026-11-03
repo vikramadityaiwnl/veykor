@@ -26,3 +26,16 @@ export const preferences = sqliteTable("preferences", {
   data: text("data").notNull().default("{}"),
   updatedAt: text("updated_at").notNull().default(""),
 });
+
+export const chats = sqliteTable("chats", {
+  id: text("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .default(0)
+    .references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull().default("Untitled chat"),
+  sectionId: text("section_id").notNull().default("recent"),
+  museSessionId: text("muse_session_id").notNull().default(""),
+  createdAt: text("created_at").notNull().default(""),
+  updatedAt: text("updated_at").notNull().default(""),
+});

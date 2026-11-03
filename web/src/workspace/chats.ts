@@ -3,8 +3,4 @@ export interface ChatPreview {
   title: string;
 }
 
-export const defaultChats: Array<ChatPreview> = [
-  { id: "getting-started", title: "Getting started" },
-  { id: "api-design", title: "API design" },
-  { id: "debug-session", title: "Debug session" },
-];
+export const defaultChats: Array<ChatPreview> = [];

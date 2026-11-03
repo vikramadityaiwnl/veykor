@@ -32,7 +32,7 @@ function AlertDialog(props: Props) {
           className={
             danger
               ? `cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold transition ${semanticColors.delete.button}`
-              : "cursor-pointer rounded-lg bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-white"
+              : "cursor-pointer rounded-lg bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-white light:hover:bg-zinc-200"
           }
           onClick={props.onConfirm}
           type="button"

@@ -1,5 +1,8 @@
+import type { ChatPermission } from "../chats/chat-contracts.js";
 import type {
   CustomChat,
+  InterruptionBehavior,
+  PreferredModel,
   SidebarSection,
   SidebarTab,
   UserPreferences,
@@ -17,15 +20,112 @@ const maxIdLength = 128;
 
 const maxMappings = 500;
 
+export const recentSectionId = "recent";
+
 export function defaultPreferences(): UserPreferences {
   return {
     lastTab: "chat",
-    sections: [{ id: "chats", title: "Chats", open: true }],
+    sections: [
+      { id: recentSectionId, title: "Recent", open: true },
+      { id: "chats", title: "Chats", open: true },
+    ],
     chatSections: {},
     chatTitles: {},
     customChats: [],
     removedChatIds: [],
+    preferredModels: { chat: null, work: null },
+    preferredEfforts: { chat: {}, work: {} },
+    preferredPermission: "read-only",
+    interruptionBehavior: "queue",
   };
+}
+
+export const interruptionBehaviors: Array<{
+  value: InterruptionBehavior;
+  title: string;
+  description: string;
+}> = [
+  {
+    value: "queue",
+    title: "Queue",
+    description: "New messages wait in a queue until the agent is done.",
+  },
+  {
+    value: "steer",
+    title: "Steer",
+    description: "New messages steer the running turn right away.",
+  },
+];
+
+export function interruptionBehaviorTitle(
+  behavior: InterruptionBehavior,
+): string {
+  return (
+    interruptionBehaviors.find((entry) => entry.value === behavior)?.title ??
+    "Queue"
+  );
+}
+
+function sanitizePreferredModel(value: unknown): PreferredModel | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+
+  const record = value as { modelId?: unknown; providerId?: unknown };
+
+  if (typeof record.modelId !== "string" || record.modelId.trim() === "") {
+    return null;
+  }
+
+  return {
+    modelId: record.modelId.trim().slice(0, maxIdLength),
+    providerId:
+      typeof record.providerId === "string"
+        ? record.providerId.trim().slice(0, maxIdLength)
+        : "",
+  };
+}
+
+function sanitizeEffortMap(value: unknown): Record<string, string> {
+  const efforts: Record<string, string> = {};
+
+  if (typeof value !== "object" || value === null) {
+    return efforts;
+  }
+
+  const entries = Object.entries(value).slice(0, maxMappings);
+
+  for (const [modelKey, effort] of entries) {
+    const key = sanitizeId(modelKey);
+    const tier =
+      typeof effort === "string" ? effort.trim().slice(0, maxTitleLength) : "";
+
+    if (key !== "" && tier !== "") {
+      efforts[key] = tier;
+    }
+  }
+
+  return efforts;
+}
+
+function sanitizePermission(value: unknown): ChatPermission {
+  if (
+    value === "read-only" ||
+    value === "approved" ||
+    value === "full-access"
+  ) {
+    return value;
+  }
+
+  return "read-only";
+}
+
+function sanitizeInterruptionBehavior(value: unknown): InterruptionBehavior {
+  if (value === "queue" || value === "steer") {
+    return value;
+  }
+
+  return "queue";
 }
 
 function sanitizeId(value: unknown): string {
@@ -70,6 +170,10 @@ export function sanitizePreferences(input: unknown): UserPreferences {
     chatTitles?: unknown;
     customChats?: unknown;
     removedChatIds?: unknown;
+    preferredModels?: unknown;
+    preferredEfforts?: unknown;
+    preferredPermission?: unknown;
+    interruptionBehavior?: unknown;
   };
 
   const lastTab: SidebarTab = record.lastTab === "work" ? "work" : "chat";
@@ -157,6 +261,18 @@ export function sanitizePreferences(input: unknown): UserPreferences {
     }
   }
 
+  const preferredModelsInput =
+    typeof record.preferredModels === "object" &&
+    record.preferredModels !== null
+      ? (record.preferredModels as { chat?: unknown; work?: unknown })
+      : {};
+
+  const preferredEffortsInput =
+    typeof record.preferredEfforts === "object" &&
+    record.preferredEfforts !== null
+      ? (record.preferredEfforts as { chat?: unknown; work?: unknown })
+      : {};
+
   return {
     lastTab,
     sections,
@@ -164,5 +280,17 @@ export function sanitizePreferences(input: unknown): UserPreferences {
     chatTitles,
     customChats,
     removedChatIds,
+    preferredModels: {
+      chat: sanitizePreferredModel(preferredModelsInput.chat),
+      work: sanitizePreferredModel(preferredModelsInput.work),
+    },
+    preferredEfforts: {
+      chat: sanitizeEffortMap(preferredEffortsInput.chat),
+      work: sanitizeEffortMap(preferredEffortsInput.work),
+    },
+    preferredPermission: sanitizePermission(record.preferredPermission),
+    interruptionBehavior: sanitizeInterruptionBehavior(
+      record.interruptionBehavior,
+    ),
   };
 }

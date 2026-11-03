@@ -7,7 +7,7 @@ import {
   CpuChipIcon,
   UserIcon,
 } from "@heroicons/react/24/solid";
-import { navigate } from "../../router/navigation.ts";
+import { useNavigate } from "react-router";
 import { semanticColors } from "../../theme/semantic-colors.ts";
 import AlertDialog from "../alert-dialog/alert-dialog.tsx";
 import Avatar from "../avatar/avatar.tsx";
@@ -21,6 +21,7 @@ interface Props {
 }
 
 function ProfileCard(props: Props) {
+  const navigate = useNavigate();
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 

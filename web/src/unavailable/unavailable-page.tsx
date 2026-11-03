@@ -20,7 +20,7 @@ function UnavailablePage(props: Props) {
         </div>
 
         <button
-          className="rounded-lg bg-zinc-100 px-8 py-2 font-semibold text-zinc-950 transition duration-200 hover:bg-white"
+          className="rounded-lg bg-zinc-100 px-8 py-2 font-semibold text-zinc-950 transition duration-200 hover:bg-white light:hover:bg-zinc-200"
           onClick={props.onRetry}
           type="button"
         >

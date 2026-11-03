@@ -9,6 +9,7 @@ import {
   TrashIcon,
 } from "@heroicons/react/24/outline";
 import type { AuthUser } from "@veykor/shared";
+import { recentSectionId } from "@veykor/shared";
 import { themeColors } from "../../theme/colors.ts";
 import { semanticColors } from "../../theme/semantic-colors.ts";
 import AlertDialog from "../../components/alert-dialog/alert-dialog.tsx";
@@ -24,9 +25,10 @@ import EmptyState from "../../components/empty-state/empty-state.tsx";
 import ProfileCard from "../../components/profile-card/profile-card.tsx";
 import SearchInput from "../../components/search-input/search-input.tsx";
 import SegmentedControl from "../../components/segmented-control/segmented-control.tsx";
-import { defaultChats } from "../../workspace/chats.ts";
+import { useChatStore } from "../../chat/chat-store.ts";
 import { usePreferencesStore } from "../../workspace/preferences-store.ts";
 import { useProfileStore } from "../../profile/profile-store.ts";
+import { useNavigate } from "react-router";
 
 interface Props {
   onSignOut: () => void;
@@ -49,12 +51,9 @@ type AlertState =
   | { kind: "delete-section"; sectionId: string };
 
 function Sidebar(props: Props) {
+  const navigate = useNavigate();
   const lastTab = usePreferencesStore((state) => state.lastTab);
   const sections = usePreferencesStore((state) => state.sections);
-  const chatSections = usePreferencesStore((state) => state.chatSections);
-  const chatTitles = usePreferencesStore((state) => state.chatTitles);
-  const customChats = usePreferencesStore((state) => state.customChats);
-  const removedChatIds = usePreferencesStore((state) => state.removedChatIds);
   const load = usePreferencesStore((state) => state.load);
   const setLastTab = usePreferencesStore((state) => state.setLastTab);
   const setSectionOpen = usePreferencesStore((state) => state.setSectionOpen);
@@ -62,10 +61,13 @@ function Sidebar(props: Props) {
   const addSection = usePreferencesStore((state) => state.addSection);
   const renameSection = usePreferencesStore((state) => state.renameSection);
   const deleteSection = usePreferencesStore((state) => state.deleteSection);
-  const moveChat = usePreferencesStore((state) => state.moveChat);
-  const renameChat = usePreferencesStore((state) => state.renameChat);
-  const deleteChat = usePreferencesStore((state) => state.deleteChat);
-  const addChat = usePreferencesStore((state) => state.addChat);
+  const chats = useChatStore((state) => state.chats);
+  const activeChatId = useChatStore((state) => state.activeChatId);
+  const loadChats = useChatStore((state) => state.loadChats);
+  const startDraft = useChatStore((state) => state.startDraft);
+  const moveChat = useChatStore((state) => state.moveChat);
+  const renameChat = useChatStore((state) => state.renameChat);
+  const removeChat = useChatStore((state) => state.deleteChat);
   const storedUsername = useProfileStore((state) => state.username);
   const storedTag = useProfileStore((state) => state.tag);
   const loadProfile = useProfileStore((state) => state.load);
@@ -77,42 +79,49 @@ function Sidebar(props: Props) {
     y: number;
     context: MenuContext;
   } | null>(null);
-  const [activeChatId, setActiveChatId] = useState(defaultChats[0].id);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [dialogTitle, setDialogTitle] = useState("");
   const [alert, setAlert] = useState<AlertState | null>(null);
 
   const searchRef = useRef<HTMLInputElement | null>(null);
 
-  const fallbackSectionId = sections[0]?.id ?? "";
   const searching = debouncedQuery.trim() !== "";
+  const knownSections = new Set(sections.map((section) => section.id));
 
-  function displayTitle(chatId: string, fallback: string) {
-    return chatTitles[chatId] ?? fallback;
+  function sectionOf(chatSectionId: string): string {
+    if (knownSections.has(chatSectionId)) {
+      return chatSectionId;
+    }
+
+    if (knownSections.has(recentSectionId)) {
+      return recentSectionId;
+    }
+
+    return sections[0]?.id ?? "";
   }
 
-  const allChats = [...defaultChats, ...customChats].filter(
-    (chat) => !removedChatIds.includes(chat.id),
-  );
-
-  const matchingChats = allChats.filter((chat) =>
-    displayTitle(chat.id, chat.title)
-      .toLowerCase()
-      .includes(debouncedQuery.trim().toLowerCase()),
+  const matchingChats = chats.filter((chat) =>
+    chat.title.toLowerCase().includes(debouncedQuery.trim().toLowerCase()),
   );
 
   function chatsInSection(sectionId: string) {
     return matchingChats.filter(
-      (chat) => (chatSections[chat.id] ?? fallbackSectionId) === sectionId,
+      (chat) => sectionOf(chat.sectionId) === sectionId,
     );
+  }
+
+  function goHome(sectionId: string): void {
+    startDraft(sectionId);
+    navigate("/");
+  }
+
+  function handleOpenChat(chatId: string): void {
+    navigate(`/chat/${encodeURIComponent(chatId)}`);
   }
 
   const alertChatTitle =
     alert?.kind === "delete-chat"
-      ? displayTitle(
-          alert.chatId,
-          allChats.find((chat) => chat.id === alert.chatId)?.title ?? "",
-        )
+      ? (chats.find((chat) => chat.id === alert.chatId)?.title ?? "")
       : "";
 
   const alertSectionTitle =
@@ -164,6 +173,19 @@ function Sidebar(props: Props) {
     }
 
     if (context.kind === "section") {
+      if (context.sectionId === recentSectionId) {
+        return [
+          {
+            kind: "item",
+            icon: (
+              <PencilIcon aria-hidden="true" className="size-4 text-zinc-400" />
+            ),
+            id: "rename",
+            label: "Rename",
+          },
+        ];
+      }
+
       return [
         {
           kind: "item",
@@ -276,9 +298,9 @@ function Sidebar(props: Props) {
     }
 
     if (item.id === "rename-chat" && context.kind === "chat") {
-      const chat = allChats.find((entry) => entry.id === context.chatId);
+      const chat = chats.find((entry) => entry.id === context.chatId);
 
-      setDialogTitle(displayTitle(context.chatId, chat?.title ?? ""));
+      setDialogTitle(chat?.title ?? "");
       setDialog({ kind: "rename-chat", chatId: context.chatId });
       return;
     }
@@ -289,7 +311,7 @@ function Sidebar(props: Props) {
     }
 
     if (item.id.startsWith("move:") && context.kind === "chat") {
-      moveChat(context.chatId, item.id.slice("move:".length));
+      void moveChat(context.chatId, item.id.slice("move:".length));
     }
   }
 
@@ -307,7 +329,7 @@ function Sidebar(props: Props) {
     }
 
     if (dialog?.kind === "rename-chat" && title !== "") {
-      renameChat(dialog.chatId, title);
+      void renameChat(dialog.chatId, title);
     }
 
     setDialogTitle("");
@@ -316,11 +338,26 @@ function Sidebar(props: Props) {
 
   function handleConfirmAlert() {
     if (alert?.kind === "delete-chat") {
-      deleteChat(alert.chatId);
+      if (alert.chatId === activeChatId) {
+        startDraft(useChatStore.getState().pendingSectionId);
+        navigate("/", { replace: true });
+      }
+
+      void removeChat(alert.chatId);
     }
 
     if (alert?.kind === "delete-section") {
-      deleteSection(alert.sectionId);
+      const sectionId = alert.sectionId;
+
+      void (async () => {
+        await Promise.all(
+          chats
+            .filter((chat) => sectionOf(chat.sectionId) === sectionId)
+            .map((chat) => moveChat(chat.id, recentSectionId)),
+        );
+
+        deleteSection(sectionId);
+      })();
     }
 
     setAlert(null);
@@ -329,6 +366,10 @@ function Sidebar(props: Props) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadChats();
+  }, [loadChats]);
 
   useEffect(() => {
     void loadProfile();
@@ -378,9 +419,14 @@ function Sidebar(props: Props) {
     >
       <div className="space-y-4 p-4">
         <div className="flex items-center justify-between gap-2 px-1">
-          <h1 className="shrink-0 text-lg font-semibold text-zinc-50">
+          <button
+            className="shrink-0 cursor-pointer text-xl font-semibold text-zinc-50 transition hover:text-white light:hover:text-zinc-500"
+            onClick={() => goHome(recentSectionId)}
+            title="Go home"
+            type="button"
+          >
             veykor
-          </h1>
+          </button>
 
           <div className="w-36">
             <SegmentedControl
@@ -421,8 +467,8 @@ function Sidebar(props: Props) {
                   action={
                     <button
                       aria-label="New chat"
-                      className="pointer-events-none grid size-7 place-items-center rounded-lg text-zinc-500 opacity-0 transition hover:bg-zinc-800 hover:text-zinc-100 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
-                      onClick={() => addChat(section.id)}
+                      className="pointer-events-none grid size-7 place-items-center rounded-lg text-zinc-500 opacity-0 transition hover:bg-zinc-800 hover:text-zinc-50 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+                      onClick={() => goHome(section.id)}
                       title="New chat"
                       type="button"
                     >
@@ -452,7 +498,7 @@ function Sidebar(props: Props) {
                                   ? `flex w-full items-center gap-2.5 rounded-lg bg-zinc-800 px-3 py-2 text-left text-sm font-light ${themeColors.primary}`
                                   : `group/chat flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-light transition hover:bg-zinc-900 hover:text-zinc-100 ${themeColors.dimmed}`
                               }
-                              onClick={() => setActiveChatId(chat.id)}
+                              onClick={() => handleOpenChat(chat.id)}
                               onContextMenu={(event) =>
                                 handleChatMenu(event, chat.id)
                               }
@@ -467,9 +513,7 @@ function Sidebar(props: Props) {
                                 }
                               />
 
-                              <span className="truncate">
-                                {displayTitle(chat.id, chat.title)}
-                              </span>
+                              <span className="truncate">{chat.title}</span>
                             </button>
                           </li>
                         );
@@ -569,7 +613,7 @@ function Sidebar(props: Props) {
               </button>
 
               <button
-                className="cursor-pointer rounded-lg bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-white"
+                className="cursor-pointer rounded-lg bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-white light:hover:bg-zinc-200"
                 type="submit"
               >
                 {dialog.kind === "create-section" ? "Create" : "Save"}
@@ -585,7 +629,7 @@ function Sidebar(props: Props) {
           description={
             alert.kind === "delete-chat"
               ? `"${alertChatTitle}" will be permanently removed.`
-              : `"${alertSectionTitle}" and all chats in it will be permanently removed.`
+              : `"${alertSectionTitle}" will be removed. Its chats move to Recent.`
           }
           onClose={() => setAlert(null)}
           onConfirm={handleConfirmAlert}

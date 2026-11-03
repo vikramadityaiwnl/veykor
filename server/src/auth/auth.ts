@@ -59,6 +59,67 @@ function publicUser(row: typeof users.$inferSelect): AuthUser {
   };
 }
 
+export function sessionTokenFromCookieHeader(
+  header: string | undefined,
+): string {
+  if (header === undefined || header === "") {
+    return "";
+  }
+
+  for (const part of header.split(";")) {
+    const trimmed = part.trim();
+    const prefix = `${sessionCookie}=`;
+
+    if (trimmed.startsWith(prefix)) {
+      return trimmed.slice(prefix.length);
+    }
+  }
+
+  return "";
+}
+
+export interface SessionAuth {
+  user: AuthUser;
+  sessionId: string;
+  expiresAt: number;
+}
+
+export function findSessionAuth(token: string): SessionAuth | null {
+  if (token === "") {
+    return null;
+  }
+
+  try {
+    const session = db
+      .select()
+      .from(sessions)
+      .where(and(eq(sessions.id, token), gt(sessions.expiresAt, nowSeconds())))
+      .get();
+
+    if (!session) {
+      return null;
+    }
+
+    const row = db
+      .select()
+      .from(users)
+      .where(eq(users.id, session.userId))
+      .get();
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      user: publicUser(row),
+      sessionId: session.id,
+      expiresAt: session.expiresAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export const csrfProtection = createMiddleware(async (c, next) => {
   c.header("Cache-Control", "no-store");
 
@@ -74,41 +135,23 @@ export const csrfProtection = createMiddleware(async (c, next) => {
 });
 
 async function authenticate(c: Context<AuthEnv>): Promise<boolean> {
-  try {
-    const token = getCookie(c, sessionCookie);
+  const token = getCookie(c, sessionCookie);
 
-    if (!token) {
-      return false;
-    }
-
-    const session = db
-      .select()
-      .from(sessions)
-      .where(and(eq(sessions.id, token), gt(sessions.expiresAt, nowSeconds())))
-      .get();
-
-    if (!session) {
-      return false;
-    }
-
-    const row = db
-      .select()
-      .from(users)
-      .where(eq(users.id, session.userId))
-      .get();
-
-    if (!row) {
-      return false;
-    }
-
-    c.set("user", publicUser(row));
-    c.set("sessionId", session.id);
-    c.set("expiresAt", session.expiresAt);
-
-    return true;
-  } catch {
+  if (!token) {
     return false;
   }
+
+  const auth = findSessionAuth(token);
+
+  if (!auth) {
+    return false;
+  }
+
+  c.set("user", auth.user);
+  c.set("sessionId", auth.sessionId);
+  c.set("expiresAt", auth.expiresAt);
+
+  return true;
 }
 
 export const requireAuth = createMiddleware<AuthEnv>(async (c, next) => {

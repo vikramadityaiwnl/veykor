@@ -8,9 +8,11 @@
   },
   "include": [
     "auth/**/*.ts",
+    "chats/**/*.ts",
     "health/**/*.ts",
     "preferences/**/*.ts",
     "profile/**/*.ts",
+    "transcription/**/*.ts",
     "*.ts"
   ]
 }

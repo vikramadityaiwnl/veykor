@@ -1,13 +1,20 @@
 import { serve } from "@hono/node-server";
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
+import { WebSocketServer } from "ws";
 import type { CurrentUserResponse, HealthResponse } from "@veykor/shared";
 import { authRoute, csrfProtection, requireAuth } from "./auth/auth.js";
 import type { AuthEnv } from "./auth/auth.js";
 import { loadServerConfig } from "./auth/config.js";
+import { chatRoute, modelRoute } from "./chats/chats.js";
 import { db } from "./db/client.js";
 import { preferencesRoute } from "./preferences/preferences.js";
 import { profileRoute } from "./profile/profile.js";
+import {
+  handleTranscriptionUpgrade,
+  isTranscriptionUpgradePath,
+  transcriptionMaxPayloadBytes,
+} from "./transcription/transcription-upgrade.js";
 
 const config = loadServerConfig();
 
@@ -16,6 +23,8 @@ const app = new Hono<AuthEnv>();
 app.use("/api/*", csrfProtection);
 
 app.route("/api/auth", authRoute);
+app.route("/api/chats", chatRoute);
+app.route("/api/models", modelRoute);
 app.route("/api/preferences", preferencesRoute);
 app.route("/api/profile", profileRoute);
 
@@ -53,6 +62,21 @@ const server = serve(
     console.log(`SQLite database: ${config.databaseUrl}`);
   },
 );
+
+const transcriptionSockets = new WebSocketServer({
+  noServer: true,
+  maxPayload: transcriptionMaxPayloadBytes,
+});
+
+server.on("upgrade", (req, socket, head) => {
+  if (!isTranscriptionUpgradePath(req.url)) {
+    socket.destroy();
+
+    return;
+  }
+
+  handleTranscriptionUpgrade(req, socket, head, transcriptionSockets);
+});
 
 server.on("error", (cause: NodeJS.ErrnoException) => {
   if (cause.code === "EADDRINUSE") {
