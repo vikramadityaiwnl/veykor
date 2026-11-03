@@ -1,3 +1,4 @@
+import { compileAgentContext } from "../work/agent-context.js";
 import {
   sanitizePreferences,
   defaultProjectSectionId,
@@ -97,6 +98,7 @@ export function runMigrations(sqlite: Database.Database): void {
   for (const [name, value] of [
     ["project_id", ""],
     ["agent_snapshot", "{}"],
+    ["agent_context", ""],
   ]) {
     if (!chatColumns.some((column) => column.name === name)) {
       sqlite.exec(
@@ -138,4 +140,33 @@ export function runMigrations(sqlite: Database.Database): void {
       "UPDATE projects SET section_id = ? WHERE section_id IN ('recent', 'chats')",
     )
     .run(defaultProjectSectionId);
+  const legacyChats = sqlite
+    .prepare(
+      `SELECT chats.id, chats.agent_snapshot, COALESCE(projects.name, '') AS name, COALESCE(projects.folder, '') AS folder FROM chats LEFT JOIN projects ON projects.id = chats.project_id AND projects.user_id = chats.user_id WHERE chats.project_id != '' AND chats.agent_context = ''`,
+    )
+    .all() as {
+    id: string;
+    agent_snapshot: string;
+    name: string;
+    folder: string;
+  }[];
+
+  for (const chat of legacyChats) {
+    let agent;
+
+    try {
+      agent = JSON.parse(chat.agent_snapshot);
+    } catch {
+      continue;
+    }
+
+    if (typeof agent !== "object" || agent === null || Array.isArray(agent)) {
+      continue;
+    }
+
+    const context = compileAgentContext(agent, chat);
+    sqlite
+      .prepare("UPDATE chats SET agent_context = ? WHERE id = ?")
+      .run(context, chat.id);
+  }
 }

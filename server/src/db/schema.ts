@@ -37,6 +37,7 @@ export const chats = sqliteTable("chats", {
   sectionId: text("section_id").notNull().default("recent"),
   projectId: text("project_id").notNull().default(""),
   agentSnapshot: text("agent_snapshot").notNull().default("{}"),
+  agentContext: text("agent_context").notNull().default(""),
   museSessionId: text("muse_session_id").notNull().default(""),
   createdAt: text("created_at").notNull().default(""),
   updatedAt: text("updated_at").notNull().default(""),

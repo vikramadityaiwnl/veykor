@@ -127,7 +127,7 @@ interface ChatState {
 
 let chatsLoading = false;
 
-const localTurns = new Set<string>();
+const localTurns = new Map<string, string>();
 
 let openingChatId: string | null = null;
 
@@ -595,9 +595,22 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   syncChat: (detail) => {
+    const current = get();
+    const completedLocalTurn =
+      current.streaming &&
+      !detail.running &&
+      current.streamingTurnId !== "" &&
+      Object.hasOwn(detail.turnDurations, current.streamingTurnId) &&
+      detail.items.some(
+        (item) =>
+          item.turnId === current.streamingTurnId &&
+          item.kind === "agentMessage" &&
+          item.status === "completed",
+      );
+
     if (
-      get().activeChatId !== detail.chat.id ||
-      localTurns.has(detail.chat.id)
+      current.activeChatId !== detail.chat.id ||
+      (localTurns.has(detail.chat.id) && !completedLocalTurn)
     ) {
       return;
     }
@@ -917,7 +930,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       mediaType: image.mediaType,
       base64Data: image.base64Data,
     }));
-    optimisticItemId = `local-${crypto.randomUUID()}`;
+    const submissionId = `local-${crypto.randomUUID()}`;
+    optimisticItemId = submissionId;
 
     const optimisticItem: ChatHistoryItem = {
       itemId: optimisticItemId,
@@ -958,7 +972,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         );
 
         chatId = detail.chat.id;
-        localTurns.add(chatId);
+        localTurns.set(chatId, submissionId);
 
         set((current) => ({
           activeChatId: chatId,
@@ -970,7 +984,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         }));
       }
 
-      localTurns.add(chatId);
+      localTurns.set(chatId, submissionId);
 
       const turnChatId = chatId;
       const title = trimmed === "" ? null : titleFromText(trimmed);
@@ -1013,15 +1027,35 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         await updateSettings(chatId, settings);
       }
 
+      let currentTurnId = "";
+
       await streamTurn(chatId, trimmed, payload, (event) => {
-        if (get().activeChatId !== chatId) {
+        if (
+          get().activeChatId !== chatId ||
+          localTurns.get(turnChatId) !== submissionId ||
+          (currentTurnId !== "" &&
+            !get().streaming &&
+            Object.hasOwn(get().turnDurations, currentTurnId))
+        ) {
           return;
         }
 
         switch (event.type) {
           case "turn-started":
+            if (
+              !get().streaming &&
+              Object.hasOwn(get().turnDurations, event.turnId)
+            ) {
+              break;
+            }
+
+            currentTurnId = event.turnId;
             set((current) => ({
               streamingTurnId: event.turnId,
+              streamingStartedAt:
+                event.startedAt && event.startedAt > 0
+                  ? event.startedAt
+                  : current.streamingStartedAt,
               items:
                 optimisticItemId === null
                   ? current.items
@@ -1146,10 +1180,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
               streamingStartedAt: 0,
               turnDurations: {
                 ...current.turnDurations,
-                [event.turnId]:
-                  event.durationMs > 0
-                    ? event.durationMs
-                    : Math.max(1, Date.now() - startedAt),
+                [event.turnId]: event.durationMs > 0 ? event.durationMs : 0,
               },
               chats: moveToSectionTop(current.chats, turnChatId, false),
               finishedChatIds: markFinished(
@@ -1166,7 +1197,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         }
       });
 
-      if (get().activeChatId === chatId) {
+      if (
+        get().activeChatId === chatId &&
+        chatId !== null &&
+        localTurns.get(chatId) === submissionId
+      ) {
         set((current) => ({
           streaming: false,
           streamingTurnId: "",
@@ -1178,10 +1213,17 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     } catch (cause) {
       failed = true;
 
-      const failedId = optimisticItemId;
-      optimisticItemId = null;
+      const ownsSubmission =
+        chatId === null
+          ? get().draftSeq === state.draftSeq
+          : localTurns.get(chatId) === submissionId;
+      const failedId = submissionId;
 
-      if (get().activeChatId === chatId) {
+      if (optimisticItemId === submissionId) {
+        optimisticItemId = null;
+      }
+
+      if (get().activeChatId === chatId && ownsSubmission) {
         set((current) => ({
           streaming: false,
           streamingTurnId: "",
@@ -1198,7 +1240,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       }
     }
 
-    if (chatId !== null) {
+    if (chatId !== null && localTurns.get(chatId) === submissionId) {
       localTurns.delete(chatId);
     }
 

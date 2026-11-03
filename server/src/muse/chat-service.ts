@@ -1,3 +1,4 @@
+import { userMessageText } from "./user-message-text.js";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type {
@@ -8,27 +9,14 @@ import type {
   ChatModelOption,
   ChatPermission,
   ChatSummary,
+  ChatTurnEvent,
 } from "@veykor/shared";
 import { databasePath } from "../db/client.js";
 import { readTurnDurations } from "./turn-durations.js";
 import { museHost } from "./muse-host.js";
 import type { MuseNotification } from "./muse-host.js";
 
-export type TurnEvent =
-  | { type: "turn-started"; turnId: string }
-  | { type: "item"; item: ChatHistoryItem }
-  | { type: "delta"; itemId: string; field: string; delta: string }
-  | { type: "approval"; approval: ChatApprovalRequest }
-  | { type: "approval-resolved"; approvalId: string }
-  | { type: "todos"; todos: Array<Record<string, unknown>> }
-  | {
-      type: "turn-completed";
-      turnId: string;
-      terminal: string;
-      error?: string;
-      durationMs: number;
-    }
-  | { type: "error"; message: string };
+export type TurnEvent = ChatTurnEvent;
 
 const effortSettings = new Map<string, string>();
 
@@ -116,7 +104,6 @@ export function toHistoryItem(value: unknown): ChatHistoryItem {
 
   const turnId = item["turnId"];
   const kind = text(item["kind"]);
-  const presentation = text(item["displayText"]);
 
   return {
     itemId: text(item["itemId"]),
@@ -124,8 +111,8 @@ export function toHistoryItem(value: unknown): ChatHistoryItem {
     status: text(item["status"]),
     turnId: typeof turnId === "string" ? turnId : null,
     text:
-      kind === "userMessage" && presentation !== ""
-        ? presentation
+      kind === "userMessage"
+        ? userMessageText(text(item["text"]), item["displayText"])
         : text(item["text"]),
     summary,
     tool: text(item["tool"]),
@@ -495,7 +482,7 @@ export async function runMuseTurn(input: {
     input: parts,
   };
 
-  if (input.displayText !== undefined && input.displayText !== "") {
+  if (input.displayText !== undefined) {
     params["displayText"] = input.displayText;
   }
 
@@ -504,6 +491,9 @@ export async function runMuseTurn(input: {
   }
 
   let turnId = "";
+  let terminalReceived = false;
+  const userItemIds = new Set<string>();
+  const turnItemIds = new Set<string>();
 
   if (activeTurns.has(input.museSessionId)) {
     throw new Error("A turn is already running in this chat.");
@@ -512,6 +502,21 @@ export async function runMuseTurn(input: {
   const activeTurn = { turnId: "", startedAt: Date.now() };
 
   activeTurns.set(input.museSessionId, activeTurn);
+
+  async function announceTurn(id: string) {
+    if (terminalReceived || !id || turnId === id) {
+      return;
+    }
+
+    turnId = id;
+    activeTurn.turnId = id;
+    activeTurn.startedAt = Date.now();
+    await input.onEvent({
+      type: "turn-started",
+      turnId: id,
+      startedAt: activeTurn.startedAt,
+    });
+  }
 
   const completion = new Promise<{
     terminal: string;
@@ -523,14 +528,25 @@ export async function runMuseTurn(input: {
       (notification: MuseNotification) => {
         void (async () => {
           try {
+            const itemTurnId = text(
+              record(notification.params["item"])["turnId"],
+            );
+            const eventTurnId =
+              text(notification.params["turnId"]) || itemTurnId;
+
             if (
               turnId !== "" &&
-              text(notification.params["turnId"]) !== "" &&
-              text(notification.params["turnId"]) !== turnId &&
+              eventTurnId !== "" &&
+              eventTurnId !== turnId &&
               notification.method !== "approval/requested" &&
               notification.method !== "approval/resolved" &&
               notification.method !== "session/todoListChanged"
             ) {
+              return;
+            }
+
+            if (notification.method === "turn/started") {
+              await announceTurn(eventTurnId);
               return;
             }
 
@@ -544,14 +560,31 @@ export async function runMuseTurn(input: {
                   ? notification.params["item"]
                   : (notification.params["item"] ?? notification.params);
 
-              await input.onEvent({
-                type: "item",
-                item: toHistoryItem(payload),
-              });
+              const item = toHistoryItem(payload);
+              turnItemIds.add(item.itemId);
+
+              if (item.kind === "userMessage") {
+                userItemIds.add(item.itemId);
+
+                if (
+                  input.displayText !== undefined &&
+                  text(record(payload)["text"]) === input.text
+                ) {
+                  item.text = input.displayText;
+                }
+              }
+
+              await input.onEvent({ type: "item", item });
               return;
             }
 
             if (notification.method === "item/delta") {
+              const itemId = text(notification.params["itemId"]);
+
+              if (!turnItemIds.has(itemId) || userItemIds.has(itemId)) {
+                return;
+              }
+
               await input.onEvent({
                 type: "delta",
                 itemId: text(notification.params["itemId"]),
@@ -592,6 +625,7 @@ export async function runMuseTurn(input: {
               }
 
               if (finished !== "" && finished === turnId) {
+                terminalReceived = true;
                 unsubscribe();
 
                 const failure = record(notification.params["error"]);
@@ -618,10 +652,7 @@ export async function runMuseTurn(input: {
     void connection
       .command("turn/start", params)
       .then(async (ack) => {
-        turnId = text(ack["turnId"]);
-        activeTurn.turnId = turnId;
-
-        await input.onEvent({ type: "turn-started", turnId });
+        await announceTurn(text(ack["turnId"]));
       })
       .catch((cause: unknown) => {
         unsubscribe();
@@ -634,6 +665,24 @@ export async function runMuseTurn(input: {
       activeTurns.delete(input.museSessionId);
     }
   });
+
+  if (outcome.durationMs <= 0) {
+    try {
+      const measured = await readTurnDurations(async (cursor) =>
+        record(
+          await connection.request("view/page", {
+            sessionId: input.museSessionId,
+            direction: "forward",
+            limit: 1000,
+            ...(cursor ? { cursor } : {}),
+          }),
+        ),
+      );
+      outcome.durationMs = measured[turnId] ?? 0;
+    } catch {
+      outcome.durationMs = 0;
+    }
+  }
 
   if (outcome.error !== "") {
     await input.onEvent({

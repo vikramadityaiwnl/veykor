@@ -235,3 +235,147 @@ test("watcher completion is read for the active chat and unread for background c
     globalThis.fetch = originalFetch;
   }
 });
+
+test("a measured completed snapshot resolves a stalled local stream without accepting stale idle snapshots", async () => {
+  const originalFetch = globalThis.fetch;
+  const created = detail();
+  let stream!: ReadableStreamDefaultController<Uint8Array>;
+  const encoder = new TextEncoder();
+  globalThis.fetch = async (input) =>
+    String(input).endsWith("/turns")
+      ? new Response(
+          new ReadableStream({
+            start(controller) {
+              stream = controller;
+            },
+          }),
+        )
+      : Response.json(created);
+
+  try {
+    useWorkStore.setState({ projectId: "" });
+    useChatStore.setState({
+      activeChatId: "created",
+      items: [],
+      chats: [created.chat],
+      streaming: false,
+    });
+    const sending = useChatStore.getState().send("One more message");
+    await flush();
+    const event = (value: unknown) =>
+      stream.enqueue(
+        encoder.encode(`event: message\ndata: ${JSON.stringify(value)}\n\n`),
+      );
+    event({
+      type: "turn-started",
+      turnId: "measured",
+      startedAt: Date.now() - 6000,
+    });
+    await flush();
+    useChatStore.getState().syncChat(created);
+    assert.equal(useChatStore.getState().streaming, true);
+    const answer = {
+      ...useChatStore.getState().items[0],
+      itemId: "answer",
+      kind: "agentMessage",
+      status: "completed",
+      turnId: "measured",
+      text: "Complete",
+    };
+    useChatStore.getState().syncChat({
+      ...created,
+      items: [answer],
+      turnDurations: { measured: 6000 },
+    });
+    assert.equal(useChatStore.getState().streaming, false);
+    assert.equal(useChatStore.getState().turnDurations.measured, 6000);
+    event({ type: "turn-started", turnId: "measured" });
+    event({
+      type: "delta",
+      itemId: "answer",
+      field: "text",
+      delta: "duplicate",
+    });
+    stream.close();
+    await sending;
+    assert.equal(useChatStore.getState().items[0].text, "Complete");
+    assert.equal(useChatStore.getState().streamingTurnId, "");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("an older response stream cannot stop or overwrite the next message", async () => {
+  const originalFetch = globalThis.fetch;
+  const created = detail();
+  const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
+  const encoder = new TextEncoder();
+  globalThis.fetch = async (input) =>
+    String(input).endsWith("/turns")
+      ? new Response(
+          new ReadableStream({
+            start(controller) {
+              streams.push(controller);
+            },
+          }),
+        )
+      : Response.json([created.chat]);
+  const event = (index: number, value: unknown) =>
+    streams[index].enqueue(
+      encoder.encode(`event: message\ndata: ${JSON.stringify(value)}\n\n`),
+    );
+
+  try {
+    useWorkStore.setState({ projectId: "" });
+    useChatStore.setState({
+      activeChatId: "created",
+      items: [],
+      chats: [created.chat],
+      streaming: false,
+      turnDurations: {},
+    });
+    const first = useChatStore.getState().send("first");
+    await flush();
+    event(0, { type: "turn-started", turnId: "first" });
+    await flush();
+    const answer = {
+      ...useChatStore.getState().items[0],
+      itemId: "first-answer",
+      kind: "agentMessage",
+      status: "completed",
+      turnId: "first",
+      text: "first answer",
+    };
+    useChatStore.getState().syncChat({
+      ...created,
+      items: [answer],
+      turnDurations: { first: 6000 },
+    });
+    const second = useChatStore.getState().send("second");
+    await flush();
+    event(1, { type: "turn-started", turnId: "second" });
+    event(0, {
+      type: "turn-completed",
+      turnId: "first",
+      terminal: "completed",
+      durationMs: 6000,
+    });
+    streams[0].close();
+    await first;
+    await flush();
+    assert.equal(useChatStore.getState().streaming, true);
+    assert.equal(useChatStore.getState().streamingTurnId, "second");
+    event(1, {
+      type: "turn-completed",
+      turnId: "second",
+      terminal: "completed",
+      durationMs: 7000,
+    });
+    streams[1].close();
+    await second;
+    assert.equal(useChatStore.getState().streaming, false);
+    assert.equal(useChatStore.getState().turnDurations.second, 7000);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

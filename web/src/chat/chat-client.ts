@@ -9,26 +9,13 @@ import type {
   ChatHistoryItem,
   ChatModelCatalog,
   ChatSummary,
+  ChatTurnEvent,
   DecideApprovalRequest,
   SteerTurnRequest,
   UpdateChatSettingsRequest,
 } from "@veykor/shared";
 
-export type TurnEvent =
-  | { type: "turn-started"; turnId: string }
-  | { type: "item"; item: ChatHistoryItem }
-  | { type: "delta"; itemId: string; field: string; delta: string }
-  | { type: "approval"; approval: ChatApprovalRequest }
-  | { type: "approval-resolved"; approvalId: string }
-  | { type: "todos"; todos: Array<Record<string, unknown>> }
-  | {
-      type: "turn-completed";
-      turnId: string;
-      terminal: string;
-      error?: string;
-      durationMs: number;
-    }
-  | { type: "error"; message: string };
+export type TurnEvent = ChatTurnEvent;
 
 export interface TurnImageInput {
   mediaType: string;
@@ -159,7 +146,11 @@ function toTurnEvent(name: string, data: unknown): TurnEvent | null {
 
   switch (name) {
     case "turn-started":
-      return { type: "turn-started", turnId: readString(data, "turnId") };
+      return {
+        type: "turn-started",
+        turnId: readString(data, "turnId"),
+        startedAt: readDuration(data, "startedAt"),
+      };
 
     case "item": {
       const item = isRecord(data.item) ? data.item : data;

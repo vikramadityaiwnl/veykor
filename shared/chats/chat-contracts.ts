@@ -135,3 +135,19 @@ export interface UpdateChatSettingsRequest {
   reasoningEffort?: string;
   permission?: ChatPermission;
 }
+
+export type ChatTurnEvent =
+  | { type: "turn-started"; turnId: string; startedAt?: number }
+  | { type: "item"; item: ChatHistoryItem }
+  | { type: "delta"; itemId: string; field: string; delta: string }
+  | { type: "approval"; approval: ChatApprovalRequest }
+  | { type: "approval-resolved"; approvalId: string }
+  | { type: "todos"; todos: Array<Record<string, unknown>> }
+  | {
+      type: "turn-completed";
+      turnId: string;
+      terminal: string;
+      error?: string;
+      durationMs: number;
+    }
+  | { type: "error"; message: string };

@@ -34,7 +34,7 @@ function ThinkingBlock(props: Props) {
   const nativeSeconds =
     props.durationMs > 0 ? Math.round(props.durationMs / 1000) : 0;
 
-  const spent = nativeSeconds > 0 ? nativeSeconds : elapsed;
+  const spent = nativeSeconds;
 
   const title = props.running
     ? `Thinking for ${elapsed} ${elapsed === 1 ? "second" : "seconds"}`

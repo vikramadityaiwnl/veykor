@@ -1,3 +1,4 @@
+import { compileAgentContext, agentTurnInput } from "../work/agent-context.js";
 import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
 import { Hono } from "hono";
@@ -58,14 +59,6 @@ const imageTypes = new Set([
   "image/webp",
   "image/gif",
 ]);
-
-function agentTurnText(row: ChatRow, text: string): string {
-  const agent = JSON.parse(row.agentSnapshot) as Partial<AgentDefinition>;
-
-  return agent.instructions
-    ? `<agent-instructions name=${JSON.stringify(agent.name)}>\n${agent.instructions}\n</agent-instructions>\n\n${text}`
-    : text;
-}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -284,6 +277,7 @@ chatRoute.post("/", requireAuth, async (c) => {
       sectionId,
       projectId,
       agentSnapshot: JSON.stringify(agent ?? {}),
+      agentContext: agent && project ? compileAgentContext(agent, project) : "",
       museSessionId,
       createdAt: stamp,
       updatedAt: stamp,
@@ -481,12 +475,11 @@ chatRoute.post("/:id/turns", requireAuth, async (c) => {
         .where(and(eq(chats.id, row.id), eq(chats.userId, row.userId)))
         .run();
 
-      const modelText = agentTurnText(row, text);
+      const turnInput = agentTurnInput(row.agentContext, text);
 
       await runMuseTurn({
         museSessionId: summary.museSessionId,
-        text: modelText,
-        displayText: modelText === text || text === "" ? undefined : text,
+        ...turnInput,
         images,
         onEvent: async (event) => {
           if (!stream.aborted) {
