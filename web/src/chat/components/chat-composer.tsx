@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUpIcon,
   MicrophoneIcon,
@@ -7,11 +7,20 @@ import {
 } from "@heroicons/react/24/outline";
 import { StopIcon } from "@heroicons/react/24/solid";
 import { usePreferencesStore } from "../../workspace/preferences-store.ts";
+import Dialog from "../../components/dialog/dialog.tsx";
 import ComposerPanel from "./composer-panel.tsx";
 import EffortPicker from "./effort-picker.tsx";
 import ModelPicker from "./model-picker.tsx";
 import PermissionPicker from "./permission-picker.tsx";
 import { useChatStore } from "../chat-store.ts";
+import {
+  classifyMicrophoneFailure,
+  queryMicrophonePermission,
+  startTranscription,
+} from "../transcription-client.ts";
+import type { ActiveTranscription } from "../transcription-client.ts";
+
+type VoicePhase = "idle" | "connecting" | "listening" | "stopping";
 
 function ChatComposer() {
   const send = useChatStore((s) => s.send);
@@ -29,9 +38,15 @@ function ChatComposer() {
   );
 
   const [draft, setDraft] = useState("");
+  const [voicePhase, setVoicePhase] = useState<VoicePhase>("idle");
+  const [voiceError, setVoiceError] = useState("");
+  const [micBlocked, setMicBlocked] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const voiceSessionRef = useRef<ActiveTranscription | null>(null);
+  const voicePrefixRef = useRef("");
+  const voiceRunRef = useRef(0);
 
   const panelOpen =
     pendingApprovals.length > 0 ||
@@ -44,6 +59,13 @@ function ChatComposer() {
       ? "Steer the running turn"
       : "Queue message"
     : "Send";
+  const voiceActive = voicePhase !== "idle";
+  const placeholder =
+    voicePhase === "connecting"
+      ? "Connecting…"
+      : voiceActive
+        ? "Listening…"
+        : "Ask anything…";
 
   function autoresize() {
     const textarea = textareaRef.current;
@@ -71,12 +93,176 @@ function ChatComposer() {
     return () => window.cancelAnimationFrame(frame);
   }, [composerRestore]);
 
-  function handleSend() {
-    if (draft.trim() === "" && composerImages.length === 0) {
+  const stopVoiceSession = useCallback(async (): Promise<string | null> => {
+    voiceRunRef.current += 1;
+
+    const session = voiceSessionRef.current;
+
+    voiceSessionRef.current = null;
+
+    if (session === null) {
+      setVoicePhase("idle");
+
+      return null;
+    }
+
+    setVoicePhase("stopping");
+
+    try {
+      return await session.stop();
+    } catch {
+      return null;
+    } finally {
+      setVoicePhase("idle");
+    }
+  }, []);
+
+  const stopVoice = useCallback(async (): Promise<void> => {
+    const text = await stopVoiceSession();
+
+    if (text !== null) {
+      setDraft(voicePrefixRef.current + text);
+      autoresize();
+    }
+
+    textareaRef.current?.focus();
+  }, [stopVoiceSession]);
+
+  useEffect(() => {
+    if (voicePhase !== "listening" && voicePhase !== "connecting") {
       return;
     }
 
-    send(draft);
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        void stopVoice();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [voicePhase, stopVoice]);
+
+  useEffect(() => {
+    return () => {
+      voiceRunRef.current += 1;
+      voiceSessionRef.current?.abort();
+      voiceSessionRef.current = null;
+    };
+  }, []);
+
+  async function startVoice() {
+    const run = voiceRunRef.current + 1;
+
+    voiceRunRef.current = run;
+    setVoiceError("");
+
+    const permission = await queryMicrophonePermission();
+
+    if (voiceRunRef.current !== run) {
+      return;
+    }
+
+    if (permission === "denied") {
+      setMicBlocked(true);
+
+      return;
+    }
+
+    setVoicePhase("connecting");
+
+    if (draft === "" || draft.endsWith(" ") || draft.endsWith("\n")) {
+      voicePrefixRef.current = draft;
+    } else {
+      voicePrefixRef.current = `${draft} `;
+    }
+
+    let session: ActiveTranscription;
+
+    try {
+      session = await startTranscription({
+        onReady: () => {
+          if (voiceRunRef.current === run) {
+            setVoicePhase("listening");
+          }
+        },
+        onTranscript: (text) => {
+          if (voiceRunRef.current === run) {
+            setDraft(voicePrefixRef.current + text);
+            autoresize();
+          }
+        },
+        onError: (message) => {
+          if (voiceRunRef.current === run) {
+            setVoiceError(message);
+          }
+        },
+        onClosed: () => {
+          if (voiceRunRef.current === run) {
+            voiceSessionRef.current = null;
+            setVoicePhase("idle");
+          }
+        },
+      });
+    } catch (cause) {
+      if (voiceRunRef.current !== run) {
+        return;
+      }
+
+      setVoicePhase("idle");
+
+      if (cause instanceof DOMException) {
+        const failure = classifyMicrophoneFailure(
+          cause,
+          await queryMicrophonePermission(),
+        );
+
+        if (failure.kind === "blocked") {
+          setMicBlocked(true);
+        } else {
+          setVoiceError(failure.message);
+        }
+      } else {
+        setVoiceError(
+          cause instanceof Error && cause.message !== ""
+            ? cause.message
+            : "Voice input failed to start.",
+        );
+      }
+
+      return;
+    }
+
+    if (voiceRunRef.current !== run) {
+      session.abort();
+
+      return;
+    }
+
+    voiceSessionRef.current = session;
+  }
+
+  async function handleSend() {
+    let text = draft;
+
+    if (voiceSessionRef.current !== null || voicePhase !== "idle") {
+      const finalText = await stopVoiceSession();
+
+      if (finalText !== null) {
+        text = voicePrefixRef.current + finalText;
+        setDraft(text);
+      }
+    }
+
+    if (text.trim() === "" && composerImages.length === 0) {
+      return;
+    }
+
+    send(text);
     setDraft("");
 
     const textarea = textareaRef.current;
@@ -101,6 +287,12 @@ function ChatComposer() {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-4">
+      {voiceError !== "" && (
+        <p className="pb-2 text-sm font-light text-rose-400" role="alert">
+          {voiceError}
+        </p>
+      )}
+
       <ComposerPanel />
 
       <div
@@ -112,6 +304,7 @@ function ChatComposer() {
       >
         <textarea
           className="max-h-50 w-full resize-none bg-transparent px-4 pt-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
+          disabled={voiceActive}
           onChange={(event) => {
             setDraft(event.target.value);
             autoresize();
@@ -119,10 +312,10 @@ function ChatComposer() {
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
-              handleSend();
+              void handleSend();
             }
           }}
-          placeholder="Ask anything…"
+          placeholder={placeholder}
           ref={textareaRef}
           rows={1}
           value={draft}
@@ -182,12 +375,52 @@ function ChatComposer() {
             <PermissionPicker />
 
             <button
-              className="rounded-full p-2 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-              onClick={() => {}}
-              title="Voice input"
+              className={
+                voicePhase === "listening"
+                  ? "rounded-full p-2 text-red-400 hover:bg-zinc-800 hover:text-red-300"
+                  : "rounded-full p-2 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+              }
+              onClick={() => {
+                if (voiceActive) {
+                  void stopVoice();
+                } else {
+                  void startVoice();
+                }
+              }}
+              title={
+                voicePhase === "listening" ? "Stop dictation" : "Voice input"
+              }
               type="button"
             >
-              <MicrophoneIcon className="size-4" />
+              {voicePhase === "listening" ? (
+                <StopIcon aria-hidden="true" className="size-4" />
+              ) : voiceActive ? (
+                <svg
+                  aria-hidden="true"
+                  className="size-4 animate-spin motion-reduce:animate-none"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+
+                  <path
+                    className="opacity-90"
+                    d="M12 2a10 10 0 0 1 10 10"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeWidth="4"
+                  />
+                </svg>
+              ) : (
+                <MicrophoneIcon className="size-4" />
+              )}
             </button>
 
             {showStop ? (
@@ -202,8 +435,8 @@ function ChatComposer() {
             ) : (
               <button
                 className="grid place-items-center rounded-full bg-zinc-100 p-2 text-zinc-950 transition hover:bg-white disabled:opacity-40 light:hover:bg-zinc-200"
-                disabled={!canSend}
-                onClick={handleSend}
+                disabled={!canSend || voicePhase === "stopping"}
+                onClick={() => void handleSend()}
                 title={sendTitle}
                 type="button"
               >
@@ -213,6 +446,24 @@ function ChatComposer() {
           </div>
         </div>
       </div>
+
+      {micBlocked && (
+        <Dialog
+          description="veykor can't access your microphone. Allow microphone access in your browser's site settings, then try again."
+          onClose={() => setMicBlocked(false)}
+          title="Microphone is blocked"
+        >
+          <div className="flex justify-end">
+            <button
+              className="cursor-pointer rounded-lg bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-white light:hover:bg-zinc-200"
+              onClick={() => setMicBlocked(false)}
+              type="button"
+            >
+              Got it
+            </button>
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }
