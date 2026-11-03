@@ -16,3 +16,11 @@ export const sessions = sqliteTable("sessions", {
   expiresAt: integer("expires_at").notNull().default(0),
   createdAt: text("created_at").notNull().default(""),
 });
+
+export const preferences = sqliteTable("preferences", {
+  userId: integer("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  data: text("data").notNull().default("{}"),
+  updatedAt: text("updated_at").notNull().default(""),
+});

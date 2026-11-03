@@ -6,6 +6,7 @@ import { authRoute, csrfProtection, requireAuth } from "./auth/auth.js";
 import type { AuthEnv } from "./auth/auth.js";
 import { loadServerConfig } from "./auth/config.js";
 import { db } from "./db/client.js";
+import { preferencesRoute } from "./preferences/preferences.js";
 
 const config = loadServerConfig();
 
@@ -14,6 +15,7 @@ const app = new Hono<AuthEnv>();
 app.use("/api/*", csrfProtection);
 
 app.route("/api/auth", authRoute);
+app.route("/api/preferences", preferencesRoute);
 
 app.get("/api/health", async (context) => {
   await db.all(sql`select 1`);

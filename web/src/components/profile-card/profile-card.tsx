@@ -4,6 +4,8 @@ import {
   ArrowRightStartOnRectangleIcon,
   ChevronUpDownIcon,
 } from "@heroicons/react/24/solid";
+import { semanticColors } from "../../theme/semantic-colors.ts";
+import AlertDialog from "../alert-dialog/alert-dialog.tsx";
 import Avatar from "../avatar/avatar.tsx";
 import Popover from "../popover/popover.tsx";
 
@@ -16,6 +18,7 @@ interface Props {
 
 function ProfileCard(props: Props) {
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
   function handleToggle(event: MouseEvent<HTMLButtonElement>) {
     if (anchorRect !== null) {
@@ -24,6 +27,11 @@ function ProfileCard(props: Props) {
     }
 
     setAnchorRect(event.currentTarget.getBoundingClientRect());
+  }
+
+  function handleAskSignOut() {
+    setAnchorRect(null);
+    setConfirmingSignOut(true);
   }
 
   return (
@@ -56,9 +64,9 @@ function ProfileCard(props: Props) {
       {anchorRect !== null && (
         <Popover anchorRect={anchorRect} onClose={() => setAnchorRect(null)}>
           <button
-            className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs font-light text-rose-300 transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+            className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs font-light transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 ${semanticColors.delete.text}`}
             disabled={props.signingOut}
-            onClick={props.onSignOut}
+            onClick={handleAskSignOut}
             role="menuitem"
             type="button"
           >
@@ -70,6 +78,17 @@ function ProfileCard(props: Props) {
             {props.signingOut ? "Signing out..." : "Sign out"}
           </button>
         </Popover>
+      )}
+
+      {confirmingSignOut && (
+        <AlertDialog
+          confirmLabel="Sign out"
+          danger={false}
+          description="You will need to sign in again to access your workspace."
+          onClose={() => setConfirmingSignOut(false)}
+          onConfirm={props.onSignOut}
+          title="Sign out"
+        />
       )}
     </div>
   );

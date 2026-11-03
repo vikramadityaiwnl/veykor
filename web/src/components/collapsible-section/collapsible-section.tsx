@@ -1,9 +1,11 @@
 import { ChevronDownIcon } from "@heroicons/react/24/solid";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 
 interface Props {
   action?: ReactNode;
+  active?: boolean;
   children: ReactNode;
+  onTitleContextMenu?: (event: MouseEvent<HTMLButtonElement>) => void;
   onToggle: () => void;
   open: boolean;
   title: string;
@@ -12,26 +14,31 @@ interface Props {
 function CollapsibleSection(props: Props) {
   return (
     <section>
-      <div className="flex items-center justify-between">
+      <div className="relative flex items-center">
         <button
           aria-expanded={props.open}
-          className="flex items-center gap-1.5 rounded-md px-1 py-1 text-sm font-semibold text-zinc-200 transition hover:text-zinc-50"
+          className={
+            props.active === true
+              ? "flex flex-1 items-center gap-1.5 rounded-md px-1 py-1 pr-8 text-sm font-semibold text-zinc-200 transition hover:text-zinc-50"
+              : "flex flex-1 items-center gap-1.5 rounded-md px-1 py-1 pr-8 text-sm font-semibold text-zinc-500 transition hover:text-zinc-50"
+          }
           onClick={props.onToggle}
+          onContextMenu={props.onTitleContextMenu}
           type="button"
         >
           <ChevronDownIcon
             aria-hidden="true"
             className={
               props.open
-                ? "size-4 text-zinc-500 transition-transform duration-300"
-                : "size-4 -rotate-90 text-zinc-500 transition-transform duration-300"
+                ? "size-4 shrink-0 transition-transform duration-300"
+                : "size-4 shrink-0 -rotate-90 transition-transform duration-300"
             }
           />
 
-          {props.title}
+          <span className="truncate">{props.title}</span>
         </button>
 
-        {props.action}
+        <div className="absolute right-0">{props.action}</div>
       </div>
 
       <div

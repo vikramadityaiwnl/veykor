@@ -6,5 +6,5 @@
     "strict": true,
     "noEmit": true
   },
-  "include": ["auth/**/*.ts", "health/**/*.ts", "*.ts"]
+  "include": ["auth/**/*.ts", "health/**/*.ts", "preferences/**/*.ts", "*.ts"]
 }
