@@ -4,10 +4,12 @@ import Divider from "../../components/divider/divider.tsx";
 import ProjectDialog from "./project-dialog.tsx";
 import AgentAvatar from "../../agents/components/agent-avatar.tsx";
 import { useWorkStore } from "../work-store.ts";
+import { workGreetingFor } from "../work-greeting-titles.ts";
 
 function ProjectGreeting() {
   const { projects, agents, projectId, selectAgent, agentId } = useWorkStore();
   const [editing, setEditing] = useState(false);
+  const [greetingTime] = useState(() => new Date());
   const project = projects.find((entry) => entry.id === projectId);
   const assigned = agents.filter((agent) =>
     project?.agentIds.includes(agent.id),
@@ -19,7 +21,9 @@ function ProjectGreeting() {
         <Logo size={96} />
       </div>
       <h1 className="text-2xl font-semibold">
-        {project ? `Let’s work on ${project.name}` : "Loading project…"}
+        {project
+          ? workGreetingFor(greetingTime, project.name)
+          : "Loading project…"}
       </h1>
       <div className="flex flex-wrap items-center justify-center gap-3">
         {assigned.map((agent) => (
