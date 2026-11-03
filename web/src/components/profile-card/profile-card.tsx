@@ -3,7 +3,11 @@ import type { MouseEvent } from "react";
 import {
   ArrowRightStartOnRectangleIcon,
   ChevronUpDownIcon,
+  Cog6ToothIcon,
+  CpuChipIcon,
+  UserIcon,
 } from "@heroicons/react/24/solid";
+import { navigate } from "../../router/navigation.ts";
 import { semanticColors } from "../../theme/semantic-colors.ts";
 import AlertDialog from "../alert-dialog/alert-dialog.tsx";
 import Avatar from "../avatar/avatar.tsx";
@@ -32,6 +36,11 @@ function ProfileCard(props: Props) {
   function handleAskSignOut() {
     setAnchorRect(null);
     setConfirmingSignOut(true);
+  }
+
+  function handleNavigate(path: string) {
+    setAnchorRect(null);
+    navigate(path);
   }
 
   return (
@@ -63,6 +72,41 @@ function ProfileCard(props: Props) {
 
       {anchorRect !== null && (
         <Popover anchorRect={anchorRect} onClose={() => setAnchorRect(null)}>
+          <button
+            className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs font-light text-zinc-200 transition hover:bg-zinc-800"
+            onClick={() => handleNavigate("/agents")}
+            role="menuitem"
+            type="button"
+          >
+            <CpuChipIcon aria-hidden="true" className="size-4 text-zinc-400" />
+            Agents
+          </button>
+
+          <button
+            className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs font-light text-zinc-200 transition hover:bg-zinc-800"
+            onClick={() => handleNavigate("/profile")}
+            role="menuitem"
+            type="button"
+          >
+            <UserIcon aria-hidden="true" className="size-4 text-zinc-400" />
+            Profile
+          </button>
+
+          <button
+            className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs font-light text-zinc-200 transition hover:bg-zinc-800"
+            onClick={() => handleNavigate("/settings")}
+            role="menuitem"
+            type="button"
+          >
+            <Cog6ToothIcon
+              aria-hidden="true"
+              className="size-4 text-zinc-400"
+            />
+            Settings
+          </button>
+
+          <div aria-hidden="true" className="mx-2 my-1 h-px bg-zinc-800" />
+
           <button
             className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs font-light transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 ${semanticColors.delete.text}`}
             disabled={props.signingOut}

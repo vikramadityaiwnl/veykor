@@ -5,6 +5,8 @@ import AuthPage from "./auth/auth-page.tsx";
 import HomePage from "./home/home-page.tsx";
 import UnavailablePage from "./unavailable/unavailable-page.tsx";
 
+const workspacePaths = ["/", "/agents", "/profile", "/settings"];
+
 function currentPath(): string {
   return window.location.pathname;
 }
@@ -50,7 +52,9 @@ function App() {
     const desired = !status
       ? "/unavailable"
       : status.authenticated
-        ? "/"
+        ? workspacePaths.includes(pathname)
+          ? pathname
+          : "/"
         : "/auth";
 
     if (pathname !== desired) {
@@ -74,7 +78,13 @@ function App() {
   }
 
   if (status.authenticated) {
-    return <HomePage onSignedOut={() => void refresh()} user={status.user} />;
+    return (
+      <HomePage
+        onSignedOut={() => void refresh()}
+        pathname={pathname}
+        user={status.user}
+      />
+    );
   }
 
   return <AuthPage onAuthenticated={() => void refresh()} status={status} />;

@@ -9,6 +9,8 @@ export function runMigrations(sqlite: Database.Database): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL UNIQUE DEFAULT '',
       password_hash TEXT NOT NULL DEFAULT '',
+      tag TEXT NOT NULL DEFAULT 'Building',
+      status TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT ''
     );
   `);
@@ -19,6 +21,16 @@ export function runMigrations(sqlite: Database.Database): void {
 
   if (columns.some((column) => column.name === "is_host")) {
     sqlite.exec("ALTER TABLE users DROP COLUMN is_host");
+  }
+
+  if (!columns.some((column) => column.name === "tag")) {
+    sqlite.exec(
+      "ALTER TABLE users ADD COLUMN tag TEXT NOT NULL DEFAULT 'Building'",
+    );
+  }
+
+  if (!columns.some((column) => column.name === "status")) {
+    sqlite.exec("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT ''");
   }
 
   sqlite.exec(`

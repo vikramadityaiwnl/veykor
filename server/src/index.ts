@@ -7,6 +7,7 @@ import type { AuthEnv } from "./auth/auth.js";
 import { loadServerConfig } from "./auth/config.js";
 import { db } from "./db/client.js";
 import { preferencesRoute } from "./preferences/preferences.js";
+import { profileRoute } from "./profile/profile.js";
 
 const config = loadServerConfig();
 
@@ -16,6 +17,7 @@ app.use("/api/*", csrfProtection);
 
 app.route("/api/auth", authRoute);
 app.route("/api/preferences", preferencesRoute);
+app.route("/api/profile", profileRoute);
 
 app.get("/api/health", async (context) => {
   await db.all(sql`select 1`);

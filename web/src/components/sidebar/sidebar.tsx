@@ -26,6 +26,7 @@ import SearchInput from "../../components/search-input/search-input.tsx";
 import SegmentedControl from "../../components/segmented-control/segmented-control.tsx";
 import { defaultChats } from "../../workspace/chats.ts";
 import { usePreferencesStore } from "../../workspace/preferences-store.ts";
+import { useProfileStore } from "../../profile/profile-store.ts";
 
 interface Props {
   onSignOut: () => void;
@@ -65,6 +66,9 @@ function Sidebar(props: Props) {
   const renameChat = usePreferencesStore((state) => state.renameChat);
   const deleteChat = usePreferencesStore((state) => state.deleteChat);
   const addChat = usePreferencesStore((state) => state.addChat);
+  const storedUsername = useProfileStore((state) => state.username);
+  const storedTag = useProfileStore((state) => state.tag);
+  const loadProfile = useProfileStore((state) => state.load);
 
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -327,6 +331,10 @@ function Sidebar(props: Props) {
   }, [load]);
 
   useEffect(() => {
+    void loadProfile();
+  }, [loadProfile]);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedQuery(query);
     }, 200);
@@ -502,8 +510,8 @@ function Sidebar(props: Props) {
 
       <div className="p-4">
         <ProfileCard
-          description="Building"
-          name={props.user.username}
+          description={storedTag === "" ? "Building" : storedTag}
+          name={storedUsername === "" ? props.user.username : storedUsername}
           onSignOut={props.onSignOut}
           signingOut={props.signingOut}
         />

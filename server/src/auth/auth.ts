@@ -6,6 +6,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
 import { and, eq, gt, lte } from "drizzle-orm";
 import {
+  changePasswordValidationError,
   defaultAuthStatus,
   loginValidationError,
   registerValidationError,
@@ -15,6 +16,8 @@ import {
 import type {
   AuthStatus,
   AuthUser,
+  ChangePasswordRequest,
+  ChangePasswordResponse,
   LoginRequest,
   LoginResponse,
   RegisterRequest,
@@ -206,6 +209,45 @@ authRoute.post("/login", async (c) => {
   }
 
   return startSession(c, row, 200);
+});
+
+authRoute.post("/change-password", requireAuth, async (c) => {
+  const body = (await readJson(c)) as
+    Partial<ChangePasswordRequest> | undefined;
+
+  const input: ChangePasswordRequest = {
+    currentPassword:
+      typeof body?.currentPassword === "string" ? body.currentPassword : "",
+    newPassword: typeof body?.newPassword === "string" ? body.newPassword : "",
+  };
+
+  const validationError = changePasswordValidationError(input);
+
+  if (validationError) {
+    return c.json({ error: validationError }, 400);
+  }
+
+  const row = db
+    .select()
+    .from(users)
+    .where(eq(users.id, c.get("user").id))
+    .get();
+
+  if (
+    !row ||
+    !(await verifyPassword(input.currentPassword, row.passwordHash ?? ""))
+  ) {
+    return c.json({ error: "Current password is incorrect" }, 401);
+  }
+
+  db.update(users)
+    .set({ passwordHash: await hashPassword(input.newPassword) })
+    .where(eq(users.id, row.id))
+    .run();
+
+  const response: ChangePasswordResponse = { changed: true };
+
+  return c.json(response);
 });
 
 authRoute.post("/logout", requireAuth, (c) => {
