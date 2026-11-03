@@ -153,6 +153,15 @@ test("preferences default, update, and survive restart", async () => {
       chatTitles: { "getting-started": "Hello world" },
       customChats: [{ id: "draft-1", title: "Untitled chat" }],
       removedChatIds: [],
+      preferredModels: {
+        chat: { modelId: "muse-spark-1.3", providerId: "meta" },
+        work: null,
+      },
+      preferredEfforts: {
+        chat: { "meta:muse-spark-1.3": "medium" },
+        work: {},
+      },
+      preferredPermission: "approved",
     };
 
     const saved = await request(preferencesPaths.preferences, {
@@ -196,6 +205,9 @@ test("preferences default, update, and survive restart", async () => {
       chatTitles: { valid: "Spaced out" },
       customChats: [{ id: "kept", title: "Kept chat" }],
       removedChatIds: ["gone"],
+      preferredModels: { chat: null, work: null },
+      preferredEfforts: { chat: {}, work: {} },
+      preferredPermission: "read-only",
     });
 
     await stopServer(child);

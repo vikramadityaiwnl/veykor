@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { defaultPreferences, recentSectionId } from "@veykor/shared";
 import type {
+  ChatPermission,
+  PreferredModel,
   SidebarSection,
   SidebarTab,
   UserPreferences,
@@ -23,6 +25,13 @@ interface PreferencesState extends UserPreferences {
   renameChat: (chatId: string, title: string) => void;
   deleteChat: (chatId: string) => void;
   addChat: (sectionId: string) => void;
+  setPreferredModel: (tab: SidebarTab, model: PreferredModel | null) => void;
+  setPreferredEffort: (
+    tab: SidebarTab,
+    modelKey: string,
+    effort: string,
+  ) => void;
+  setPreferredPermission: (permission: ChatPermission) => void;
 }
 
 const initialSections = defaultPreferences().sections.map((section) => ({
@@ -42,6 +51,9 @@ function persist(): void {
     chatTitles: state.chatTitles,
     customChats: state.customChats,
     removedChatIds: state.removedChatIds,
+    preferredModels: state.preferredModels,
+    preferredEfforts: state.preferredEfforts,
+    preferredPermission: state.preferredPermission,
   };
 
   saveQueue = saveQueue.then(async () => {
@@ -253,6 +265,30 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
       chatSections: { ...current.chatSections, [id]: sectionId },
       error: "",
     }));
+    persist();
+  },
+
+  setPreferredModel: (tab, model) => {
+    set((state) => ({
+      preferredModels: { ...state.preferredModels, [tab]: model },
+      error: "",
+    }));
+    persist();
+  },
+
+  setPreferredEffort: (tab, modelKey, effort) => {
+    set((state) => ({
+      preferredEfforts: {
+        ...state.preferredEfforts,
+        [tab]: { ...state.preferredEfforts[tab], [modelKey]: effort },
+      },
+      error: "",
+    }));
+    persist();
+  },
+
+  setPreferredPermission: (permission) => {
+    set({ preferredPermission: permission, error: "" });
     persist();
   },
 }));

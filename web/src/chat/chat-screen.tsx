@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { usePreferencesStore } from "../workspace/preferences-store.ts";
 import { useChatStore } from "./chat-store.ts";
 import ChatComposer from "./components/chat-composer.tsx";
 import GreetingHeader from "./components/greeting-header.tsx";
@@ -16,10 +17,20 @@ function ChatScreen() {
   const error = useChatStore((state) => state.error);
   const clearError = useChatStore((state) => state.clearError);
   const loadCatalog = useChatStore((state) => state.loadCatalog);
+  const syncDraftPreferences = useChatStore(
+    (state) => state.syncDraftPreferences,
+  );
+  const prefsLoaded = usePreferencesStore((state) => state.loaded);
 
   useEffect(() => {
     void loadCatalog(activeChatId ?? undefined);
   }, [activeChatId, loadCatalog]);
+
+  useEffect(() => {
+    if (prefsLoaded && activeChatId === null) {
+      syncDraftPreferences();
+    }
+  }, [prefsLoaded, activeChatId, syncDraftPreferences]);
 
   const imageUrls =
     activeChatId === null ? [] : (sentAttachments[activeChatId] ?? []);

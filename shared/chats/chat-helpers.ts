@@ -54,6 +54,17 @@ export function defaultChatTitle(): string {
   return "Untitled chat";
 }
 
+export function preferredEffortKey(
+  providerId: string,
+  modelId: string,
+): string {
+  if (modelId === "") {
+    return "default";
+  }
+
+  return providerId === "" ? modelId : `${providerId}:${modelId}`;
+}
+
 export function permissionTitle(permission: ChatPermission): string {
   return (
     chatPermissions.find((entry) => entry.value === permission)?.title ??

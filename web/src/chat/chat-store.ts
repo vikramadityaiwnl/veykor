@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { preferredEffortKey } from "@veykor/shared";
 import type {
   ChatApprovalRequest,
   ChatHistoryItem,
@@ -8,6 +9,7 @@ import type {
   DecideApprovalRequest,
   UpdateChatSettingsRequest,
 } from "@veykor/shared";
+import { usePreferencesStore } from "../workspace/preferences-store.ts";
 import {
   cancelTurn as cancelTurnRequest,
   createChat,
@@ -54,6 +56,7 @@ interface ChatState {
   catalogLoading: boolean;
   loadChats: () => Promise<void>;
   startDraft: (sectionId: string) => void;
+  syncDraftPreferences: () => void;
   openChat: (id: string) => Promise<void>;
   send: (text: string) => Promise<void>;
   cancelTurn: () => Promise<void>;
@@ -193,6 +196,28 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       pendingApprovals: [],
       todos: [],
       composerImages: [],
+    });
+
+    get().syncDraftPreferences();
+  },
+
+  syncDraftPreferences: () => {
+    const prefs = usePreferencesStore.getState();
+    const tab = prefs.lastTab;
+    const model = prefs.preferredModels[tab];
+
+    const effort =
+      model === null
+        ? ""
+        : (prefs.preferredEfforts[tab]?.[
+            preferredEffortKey(model.providerId, model.modelId)
+          ] ?? "");
+
+    set({
+      modelId: model?.modelId ?? "",
+      providerId: model?.providerId ?? "",
+      reasoningEffort: effort,
+      permission: prefs.preferredPermission,
     });
   },
 
@@ -457,16 +482,33 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   setModel: (modelId, providerId) => {
-    set({ modelId, providerId });
+    const prefs = usePreferencesStore.getState();
+    const tab = prefs.lastTab;
+
+    prefs.setPreferredModel(tab, { modelId, providerId });
+
+    const savedEffort =
+      prefs.preferredEfforts[tab]?.[preferredEffortKey(providerId, modelId)] ??
+      "";
+
+    if (savedEffort !== "") {
+      set({ modelId, providerId, reasoningEffort: savedEffort });
+    } else {
+      set({ modelId, providerId });
+    }
 
     const state = get();
 
     if (state.activeChatId !== null) {
-      updateSettings(state.activeChatId, { modelId, providerId }).catch(
-        (cause: unknown) => {
-          set({ error: errorMessage(cause, "Unable to save model.") });
-        },
-      );
+      const settings: UpdateChatSettingsRequest = { modelId, providerId };
+
+      if (savedEffort !== "") {
+        settings.reasoningEffort = savedEffort;
+      }
+
+      updateSettings(state.activeChatId, settings).catch((cause: unknown) => {
+        set({ error: errorMessage(cause, "Unable to save model.") });
+      });
     }
   },
 
@@ -474,6 +516,13 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     set({ reasoningEffort: effort });
 
     const state = get();
+    const prefs = usePreferencesStore.getState();
+
+    prefs.setPreferredEffort(
+      prefs.lastTab,
+      preferredEffortKey(state.providerId, state.modelId),
+      effort,
+    );
 
     if (state.activeChatId !== null) {
       updateSettings(state.activeChatId, { reasoningEffort: effort }).catch(
@@ -486,6 +535,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
   setPermission: (permission) => {
     set({ permission });
+
+    usePreferencesStore.getState().setPreferredPermission(permission);
 
     const state = get();
 

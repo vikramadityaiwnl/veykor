@@ -60,7 +60,9 @@ function EffortPicker() {
         type="button"
       >
         <AdjustmentsHorizontalIcon className="size-4 shrink-0" />
-        <span>{reasoningEffort === "" ? "Auto" : reasoningEffort}</span>
+        <span className="capitalize">
+          {reasoningEffort === "" ? "Auto" : reasoningEffort}
+        </span>
       </button>
 
       {open && anchorRect !== null ? (

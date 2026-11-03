@@ -1,5 +1,7 @@
+import type { ChatPermission } from "../chats/chat-contracts.js";
 import type {
   CustomChat,
+  PreferredModel,
   SidebarSection,
   SidebarTab,
   UserPreferences,
@@ -30,7 +32,64 @@ export function defaultPreferences(): UserPreferences {
     chatTitles: {},
     customChats: [],
     removedChatIds: [],
+    preferredModels: { chat: null, work: null },
+    preferredEfforts: { chat: {}, work: {} },
+    preferredPermission: "read-only",
   };
+}
+
+function sanitizePreferredModel(value: unknown): PreferredModel | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+
+  const record = value as { modelId?: unknown; providerId?: unknown };
+
+  if (typeof record.modelId !== "string" || record.modelId.trim() === "") {
+    return null;
+  }
+
+  return {
+    modelId: record.modelId.trim().slice(0, maxIdLength),
+    providerId:
+      typeof record.providerId === "string"
+        ? record.providerId.trim().slice(0, maxIdLength)
+        : "",
+  };
+}
+
+function sanitizeEffortMap(value: unknown): Record<string, string> {
+  const efforts: Record<string, string> = {};
+
+  if (typeof value !== "object" || value === null) {
+    return efforts;
+  }
+
+  const entries = Object.entries(value).slice(0, maxMappings);
+
+  for (const [modelKey, effort] of entries) {
+    const key = sanitizeId(modelKey);
+    const tier =
+      typeof effort === "string" ? effort.trim().slice(0, maxTitleLength) : "";
+
+    if (key !== "" && tier !== "") {
+      efforts[key] = tier;
+    }
+  }
+
+  return efforts;
+}
+
+function sanitizePermission(value: unknown): ChatPermission {
+  if (
+    value === "read-only" ||
+    value === "approved" ||
+    value === "full-access"
+  ) {
+    return value;
+  }
+
+  return "read-only";
 }
 
 function sanitizeId(value: unknown): string {
@@ -75,6 +134,9 @@ export function sanitizePreferences(input: unknown): UserPreferences {
     chatTitles?: unknown;
     customChats?: unknown;
     removedChatIds?: unknown;
+    preferredModels?: unknown;
+    preferredEfforts?: unknown;
+    preferredPermission?: unknown;
   };
 
   const lastTab: SidebarTab = record.lastTab === "work" ? "work" : "chat";
@@ -162,6 +224,18 @@ export function sanitizePreferences(input: unknown): UserPreferences {
     }
   }
 
+  const preferredModelsInput =
+    typeof record.preferredModels === "object" &&
+    record.preferredModels !== null
+      ? (record.preferredModels as { chat?: unknown; work?: unknown })
+      : {};
+
+  const preferredEffortsInput =
+    typeof record.preferredEfforts === "object" &&
+    record.preferredEfforts !== null
+      ? (record.preferredEfforts as { chat?: unknown; work?: unknown })
+      : {};
+
   return {
     lastTab,
     sections,
@@ -169,5 +243,14 @@ export function sanitizePreferences(input: unknown): UserPreferences {
     chatTitles,
     customChats,
     removedChatIds,
+    preferredModels: {
+      chat: sanitizePreferredModel(preferredModelsInput.chat),
+      work: sanitizePreferredModel(preferredModelsInput.work),
+    },
+    preferredEfforts: {
+      chat: sanitizeEffortMap(preferredEffortsInput.chat),
+      work: sanitizeEffortMap(preferredEffortsInput.work),
+    },
+    preferredPermission: sanitizePermission(record.preferredPermission),
   };
 }
