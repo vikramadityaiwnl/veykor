@@ -267,17 +267,29 @@ test("skills follow the convention, stay owned, and reach sessions", async () =>
 
     assert.equal(skillFiles(folder, slug).length, 1);
 
+    const renamed = await request(skillPaths.skill(skillId), {
+      cookie,
+      method: "PUT",
+      body: { name: `${name} Renamed` },
+    });
+
+    assert.equal(renamed.status, 400);
+    assert.equal(
+      (await request(skillPaths.skill(skillId), { cookie })).body["name"],
+      name,
+    );
+
     const edited = await request(skillPaths.skill(skillId), {
       cookie,
       method: "PUT",
       body: {
-        name: `${name} Renamed`,
         description: "Greets the user briefly.",
         instructions: "Reply with a short greeting.",
       },
     });
 
     assert.equal(edited.status, 200);
+    assert.equal(edited.body["name"], name);
     assert.equal(edited.body["slug"], slug);
     assert.equal(
       readFileSync(skillFiles(folder, slug)[0], "utf8").includes(

@@ -3,7 +3,6 @@ import type {
   SkillDetail,
   SkillListResponse,
   SkillSummary,
-  UpdateSkillRequest,
 } from "./skills-contracts.js";
 
 export const skillPaths = {
@@ -117,7 +116,7 @@ export function defaultSkillDetail(): SkillDetail {
 }
 
 export function skillValidationError(
-  input: CreateSkillRequest | UpdateSkillRequest,
+  input: CreateSkillRequest,
   options: { partial: boolean },
 ): string {
   if (input.name !== undefined || !options.partial) {

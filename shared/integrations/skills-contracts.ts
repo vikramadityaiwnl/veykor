@@ -24,7 +24,6 @@ export interface CreateSkillRequest {
 }
 
 export interface UpdateSkillRequest {
-  name?: string;
   description?: string;
   instructions?: string;
   enabled?: boolean;

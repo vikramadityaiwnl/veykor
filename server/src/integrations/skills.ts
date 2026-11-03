@@ -377,6 +377,16 @@ skillsRoute.put("/:id", requireAuth, async (c) => {
   const body = await readJson(c);
   const input = body as Partial<UpdateSkillRequest>;
 
+  if (body.name !== undefined && body.name !== row.name) {
+    return c.json(
+      {
+        error:
+          "Skill names cannot be changed. Delete this skill and create a new one to use a different name.",
+      },
+      400,
+    );
+  }
+
   const validationError = skillValidationError(input, { partial: true });
 
   if (validationError !== "") {
@@ -387,7 +397,7 @@ skillsRoute.put("/:id", requireAuth, async (c) => {
     input.enabled !== undefined ? (input.enabled ? 1 : 0) : (row.enabled ?? 1);
 
   const next = {
-    name: input.name !== undefined ? input.name.trim() : (row.name ?? ""),
+    name: row.name ?? "",
     description:
       input.description !== undefined
         ? input.description.trim()

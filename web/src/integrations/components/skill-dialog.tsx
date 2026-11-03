@@ -56,7 +56,6 @@ function SkillDialog(props: Props) {
         await createSkill(input);
       } else {
         const input: UpdateSkillRequest = {
-          name,
           description,
           instructions,
           enabled,
@@ -102,7 +101,8 @@ function SkillDialog(props: Props) {
 
           <div className="space-y-1.5">
             <input
-              autoFocus
+              autoFocus={creating}
+              disabled={!creating}
               className={fieldClass}
               id="skill-name"
               maxLength={100}
@@ -117,6 +117,11 @@ function SkillDialog(props: Props) {
               type="text"
               value={name}
             />
+            {!creating && (
+              <p className="text-xs font-light text-zinc-500">
+                To use a different name, delete this skill and create a new one.
+              </p>
+            )}
           </div>
         </div>
 
@@ -130,6 +135,7 @@ function SkillDialog(props: Props) {
 
           <textarea
             className={fieldClass}
+            autoFocus={!creating}
             id="skill-description"
             maxLength={500}
             onChange={(event) => setDescription(event.target.value)}
