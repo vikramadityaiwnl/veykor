@@ -1,6 +1,7 @@
 import type {
   AuthStatus,
   AuthUser,
+  ChangePasswordRequest,
   LoginRequest,
   RegisterRequest,
 } from "./auth-contracts.js";
@@ -26,6 +27,7 @@ export const authPaths = {
   login: "/api/auth/login",
   logout: "/api/auth/logout",
   register: "/api/auth/register",
+  changePassword: "/api/auth/change-password",
   me: "/api/me",
 } as const;
 
@@ -59,6 +61,20 @@ export function loginValidationError(input: LoginRequest): string {
     !isValidLoginPassword(input.password)
   ) {
     return "Enter a valid username and password.";
+  }
+
+  return "";
+}
+
+export function changePasswordValidationError(
+  input: ChangePasswordRequest,
+): string {
+  if (!isValidLoginPassword(input.currentPassword)) {
+    return "Enter your current password.";
+  }
+
+  if (!isValidPassword(input.newPassword)) {
+    return "Use an 8-256 character password.";
   }
 
   return "";

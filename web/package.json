@@ -13,7 +13,8 @@
     "@heroicons/react": "^2.2.0",
     "@veykor/shared": "file:../shared",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "zustand": "^5.0.16"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

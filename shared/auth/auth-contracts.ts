@@ -34,3 +34,12 @@ export interface CurrentUserResponse {
   user: AuthUser;
   expiresAt: number;
 }
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface ChangePasswordResponse {
+  changed: boolean;
+}
