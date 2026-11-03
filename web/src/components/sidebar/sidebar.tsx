@@ -450,7 +450,7 @@ function Sidebar(props: Props) {
                               className={
                                 active
                                   ? `flex w-full items-center gap-2.5 rounded-lg bg-zinc-800 px-3 py-2 text-left text-sm font-light ${themeColors.primary}`
-                                  : `flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-light transition hover:bg-zinc-900 hover:text-zinc-100 ${themeColors.dimmed}`
+                                  : `group/chat flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-light transition hover:bg-zinc-900 hover:text-zinc-100 ${themeColors.dimmed}`
                               }
                               onClick={() => setActiveChatId(chat.id)}
                               onContextMenu={(event) =>
@@ -463,7 +463,7 @@ function Sidebar(props: Props) {
                                 className={
                                   active
                                     ? `size-4 shrink-0 ${themeColors.primary}`
-                                    : `size-4 shrink-0 ${themeColors.dimmed}`
+                                    : `size-4 shrink-0 transition group-hover/chat:text-zinc-100 ${themeColors.dimmed}`
                                 }
                               />
 

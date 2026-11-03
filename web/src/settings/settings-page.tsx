@@ -3,8 +3,8 @@ import Divider from "../components/divider/divider.tsx";
 import SegmentedControl from "../components/segmented-control/segmented-control.tsx";
 import type { SegmentedControlOption } from "../components/segmented-control/segmented-control.tsx";
 import SettingItem from "./components/setting-item.tsx";
-import { useThemeStore } from "./theme-store.ts";
-import type { Theme } from "./theme-store.ts";
+import { useThemeStore } from "../theme/theme-store.ts";
+import type { Theme } from "../theme/theme-store.ts";
 
 interface Props {
   [key: string]: never;

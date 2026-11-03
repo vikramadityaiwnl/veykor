@@ -8,7 +8,7 @@ function Logo(props: Props) {
   return (
     <img
       alt="veykor"
-      className="invert"
+      className="invert light:invert-0"
       height={size}
       src="/logo.svg"
       width={size}
