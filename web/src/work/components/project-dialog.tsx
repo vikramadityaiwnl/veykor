@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router";
 import FolderPicker from "./folder-picker.tsx";
-import { FolderIcon } from "@heroicons/react/24/outline";
+import { FolderIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { useState } from "react";
 import type { ProjectInput, WorkProject } from "@veykor/shared";
 import Dialog from "../../components/dialog/dialog.tsx";
@@ -134,6 +134,20 @@ function ProjectDialog(props: Props) {
         <div className="space-y-3">
           <p className="text-sm font-semibold text-zinc-200">Assigned agents</p>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="flex items-center gap-2 rounded-lg border border-dashed border-zinc-700 px-3 py-2 text-sm font-light text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+              onClick={() => {
+                props.onClose();
+                navigate("/agents");
+              }}
+            >
+              <span className="grid size-6 place-items-center">
+                <PlusIcon className="size-4" />
+              </span>
+              Add agent
+            </button>
+
             {agents.map((agent) => {
               const assigned = draft.agentIds.includes(agent.id);
 
@@ -171,17 +185,7 @@ function ProjectDialog(props: Props) {
           </p>
         )}
 
-        <div className="flex items-center gap-3 border-t border-zinc-800 pt-4">
-          <button
-            type="button"
-            className="mr-auto rounded-lg py-2 text-sm font-light text-zinc-400 hover:text-zinc-50"
-            onClick={() => {
-              props.onClose();
-              navigate("/agents");
-            }}
-          >
-            Agents
-          </button>
+        <div className="flex items-center justify-end gap-3 border-t border-zinc-800 pt-4">
           <button
             type="button"
             className="rounded-lg px-4 py-2 text-sm font-semibold text-zinc-400 hover:bg-zinc-800"

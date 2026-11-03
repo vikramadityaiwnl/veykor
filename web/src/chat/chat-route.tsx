@@ -29,18 +29,35 @@ function ChatRoute() {
 
     if (chatId === undefined) {
       if (state.pendingRoutePush !== null) {
-        state.clearRoutePush();
-        navigate(
-          `${projectId ? `/work/${encodeURIComponent(projectId)}` : ""}/chat/${encodeURIComponent(state.pendingRoutePush)}`,
-          {
-            replace: true,
-          },
+        const pushed = state.chats.find(
+          (chat) => chat.id === state.pendingRoutePush,
         );
+
+        if (pushed && pushed.projectId !== (projectId ?? "")) {
+          state.clearRoutePush();
+          state.startDraft(state.pendingSectionId);
+        } else {
+          const target = state.pendingRoutePush;
+
+          state.clearRoutePush();
+          navigate(
+            `${projectId ? `/work/${encodeURIComponent(projectId)}` : ""}/chat/${encodeURIComponent(target)}`,
+            {
+              replace: true,
+            },
+          );
+        }
       } else if (state.activeChatId !== null) {
         state.startDraft(state.pendingSectionId);
       }
     } else if (state.activeChatId !== chatId) {
-      void state.openChat(chatId);
+      void state.openChat(chatId, projectId ?? "");
+    } else {
+      const current = state.chats.find((chat) => chat.id === chatId);
+
+      if (current && current.projectId !== (projectId ?? "")) {
+        void state.openChat(chatId, projectId ?? "");
+      }
     }
   }, [chatId, projectId, navigate, pendingRoutePush, preferencesLoaded]);
 

@@ -5,6 +5,7 @@ import { workRequest } from "./work-client.ts";
 interface WorkState {
   agents: AgentDefinition[];
   projects: WorkProject[];
+  loaded: boolean;
   projectId: string;
   agentId: string;
   error: string;
@@ -16,6 +17,7 @@ interface WorkState {
 export const useWorkStore = create<WorkState>((set) => ({
   agents: [],
   projects: [],
+  loaded: false,
   projectId: "",
   agentId: "",
   error: "",
@@ -25,9 +27,10 @@ export const useWorkStore = create<WorkState>((set) => ({
         workRequest<AgentDefinition[]>("agents"),
         workRequest<WorkProject[]>("projects"),
       ]);
-      set({ agents, projects, error: "" });
+      set({ agents, projects, loaded: true, error: "" });
     } catch (cause) {
       set({
+        loaded: true,
         error: cause instanceof Error ? cause.message : "Unable to load work.",
       });
     }

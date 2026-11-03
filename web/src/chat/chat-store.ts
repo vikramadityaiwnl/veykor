@@ -95,7 +95,7 @@ interface ChatState {
   startDraft: (sectionId: string) => void;
   syncDraftPreferences: () => void;
   syncChat: (detail: ChatDetail) => void;
-  openChat: (id: string) => Promise<void>;
+  openChat: (id: string, expectedProjectId?: string) => Promise<void>;
   hydrateAttachments: (chatId: string) => Promise<void>;
   send: (text: string) => Promise<void>;
   steerQueuedMessage: (id: string) => Promise<void>;
@@ -593,6 +593,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       return;
     }
 
+    if (detail.chat.projectId !== useWorkStore.getState().projectId) {
+      return;
+    }
+
     clearApprovalTimers();
     set((state) => {
       const previous = state.chats.find((chat) => chat.id === detail.chat.id);
@@ -629,7 +633,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     });
   },
 
-  openChat: async (id) => {
+  openChat: async (id, expectedProjectId = "") => {
     if (openingChatId === id && get().activeChatId === id) {
       return;
     }
@@ -667,6 +671,19 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           const detail = await fetchChat(id);
 
           if (get().activeChatId !== id) {
+            return;
+          }
+
+          if (detail.chat.projectId !== expectedProjectId) {
+            set({
+              historyLoading: false,
+              chatNotFound: true,
+              error: "",
+              items: [],
+              pendingApprovals: [],
+              todos: [],
+            });
+
             return;
           }
 
@@ -856,6 +873,31 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       return;
     }
 
+    const work = useWorkStore.getState();
+
+    if (
+      work.projectId !== "" &&
+      work.loaded &&
+      work.projects.every((project) => project.id !== work.projectId)
+    ) {
+      set({ error: "That project no longer exists. Choose another project." });
+
+      return;
+    }
+
+    const active =
+      get().activeChatId === null
+        ? undefined
+        : get().chats.find((chat) => chat.id === get().activeChatId);
+
+    if (active && active.projectId !== work.projectId) {
+      set({
+        error: "That session belongs to another project. Reopen it there.",
+      });
+
+      return;
+    }
+
     const startedAt = Date.now();
 
     set({
@@ -877,7 +919,6 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     try {
       if (chatId === null) {
-        const work = useWorkStore.getState();
         const detail = await createChat(
           get().pendingSectionId,
           work.projectId,

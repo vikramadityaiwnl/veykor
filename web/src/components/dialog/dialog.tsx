@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 interface Props {
   children: ReactNode;
@@ -26,7 +27,7 @@ function Dialog(props: Props) {
     };
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div
       aria-label={props.title}
       aria-modal="true"
@@ -41,7 +42,7 @@ function Dialog(props: Props) {
       />
 
       <div
-        className={`relative w-full space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 ${props.size === "wide" ? "max-w-2xl p-6" : "max-w-sm p-4"}`}
+        className={`relative w-full space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 text-left ${props.size === "wide" ? "max-w-2xl p-6" : "max-w-sm p-4"}`}
       >
         <div className="space-y-1.5">
           <h2 className="text-lg font-semibold text-zinc-50">{props.title}</h2>
@@ -55,7 +56,8 @@ function Dialog(props: Props) {
 
         {props.children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

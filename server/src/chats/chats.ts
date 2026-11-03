@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { statSync } from "node:fs";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -236,6 +237,22 @@ chatRoute.post("/", requireAuth, async (c) => {
     );
   }
 
+  if (project) {
+    try {
+      if (!statSync(project.folder).isDirectory()) {
+        throw new Error("missing");
+      }
+    } catch {
+      return c.json(
+        {
+          error:
+            "The project folder is unavailable. Check that it still exists on the host computer, then try again.",
+        },
+        400,
+      );
+    }
+  }
+
   let museSessionId: string;
 
   try {
@@ -464,9 +481,12 @@ chatRoute.post("/:id/turns", requireAuth, async (c) => {
         .where(and(eq(chats.id, row.id), eq(chats.userId, row.userId)))
         .run();
 
+      const modelText = agentTurnText(row, text);
+
       await runMuseTurn({
         museSessionId: summary.museSessionId,
-        text: agentTurnText(row, text),
+        text: modelText,
+        displayText: modelText === text || text === "" ? undefined : text,
         images,
         onEvent: async (event) => {
           if (!stream.aborted) {

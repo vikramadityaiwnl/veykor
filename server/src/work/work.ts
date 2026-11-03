@@ -20,6 +20,7 @@ import type { AuthEnv } from "../auth/auth.js";
 import { isHostRequest } from "../auth/host-access.js";
 import { db } from "../db/client.js";
 import { agents, projects, chats } from "../db/schema.js";
+import { leaveMuseSession } from "../muse/chat-service.js";
 
 export function readAgent(
   userId: number,
@@ -353,13 +354,23 @@ for (const method of ["post", "put"] as const) {
   });
 }
 
-projectRoute.delete("/:id", (c) => {
+projectRoute.delete("/:id", async (c) => {
   const userId = c.get("user").id;
   const id = c.req.param("id");
 
   if (!readProject(userId, id)) {
     return c.json({ error: "Project not found." }, 404);
   }
+
+  const doomed = db
+    .select()
+    .from(chats)
+    .where(and(eq(chats.projectId, id), eq(chats.userId, userId)))
+    .all();
+
+  await Promise.allSettled(
+    doomed.map((chat) => leaveMuseSession(chat.museSessionId)),
+  );
 
   db.transaction((tx) => {
     tx.delete(chats)

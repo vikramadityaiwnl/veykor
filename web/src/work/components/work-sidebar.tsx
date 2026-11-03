@@ -6,19 +6,16 @@ import type { MouseEvent } from "react";
 import { defaultProjectSectionId } from "@veykor/shared";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import {
-  FolderIcon,
-  FolderOpenIcon,
-  ChevronRightIcon,
-  PencilIcon,
-  PlusIcon,
-} from "@heroicons/react/24/outline";
+import { FolderIcon, PencilIcon, PlusIcon } from "@heroicons/react/24/outline";
+import { FolderOpenIcon } from "@heroicons/react/24/solid";
 import { fetchStatus } from "../../auth/auth-client.ts";
 import CollapsibleSection from "../../components/collapsible-section/collapsible-section.tsx";
+import EmptyState from "../../components/empty-state/empty-state.tsx";
 import { usePreferencesStore } from "../../workspace/preferences-store.ts";
 import { useChatStore } from "../../chat/chat-store.ts";
 import { useWorkStore } from "../work-store.ts";
 import ProjectDialog from "./project-dialog.tsx";
+import ProjectSessions from "./project-sessions.tsx";
 import type { WorkProject } from "@veykor/shared";
 
 interface Props {
@@ -38,7 +35,6 @@ function WorkSidebar(props: Props) {
   const sections = usePreferencesStore((state) => state.workSections);
   const setSectionOpen = usePreferencesStore((state) => state.setSectionOpen);
   const chats = useChatStore((state) => state.chats);
-  const activeChatId = useChatStore((state) => state.activeChatId);
   const navigate = useNavigate();
   const [menu, setMenu] = useState<{
     x: number;
@@ -79,138 +75,124 @@ function WorkSidebar(props: Props) {
           {error}
         </p>
       )}
-      {sections.map((section) => (
-        <CollapsibleSection
-          key={section.id}
-          title={section.title}
-          onTitleContextMenu={(event) => props.onSectionMenu(event, section.id)}
-          open={section.open}
-          onToggle={() => setSectionOpen(section.id, !section.open)}
-          action={
-            canCreate ? (
-              <button
-                aria-label={`Add project to ${section.title}`}
-                title="Add project"
-                className="pointer-events-none grid size-7 place-items-center text-zinc-500 opacity-0 hover:text-zinc-50 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/section:pointer-events-auto group-hover/section:opacity-100"
-                onClick={() =>
-                  setDialog({ project: null, sectionId: section.id })
-                }
-              >
-                <PlusIcon className="size-4" />
-              </button>
-            ) : undefined
-          }
-        >
-          <div className="space-y-2">
-            {projects
-              .filter(
-                (project) =>
-                  (project.sectionId === section.id ||
-                    (section.id === defaultProjectSectionId &&
-                      !sections.some(
-                        (entry) => entry.id === project.sectionId,
-                      ))) &&
-                  (project.name
-                    .toLowerCase()
-                    .includes(props.query.toLowerCase()) ||
-                    chats.some(
-                      (chat) =>
-                        chat.projectId === project.id &&
-                        chat.title
-                          .toLowerCase()
-                          .includes(props.query.toLowerCase()),
-                    )),
-              )
-              .map((project) => (
-                <div
-                  key={project.id}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setMenu({ x: event.clientX, y: event.clientY, project });
-                  }}
+      {sections.map((section) => {
+        const visible = projects.filter(
+          (project) =>
+            (project.sectionId === section.id ||
+              (section.id === defaultProjectSectionId &&
+                !sections.some((entry) => entry.id === project.sectionId))) &&
+            (project.name.toLowerCase().includes(props.query.toLowerCase()) ||
+              chats.some(
+                (chat) =>
+                  chat.projectId === project.id &&
+                  chat.title.toLowerCase().includes(props.query.toLowerCase()),
+              )),
+        );
+
+        return (
+          <CollapsibleSection
+            key={section.id}
+            title={section.title}
+            onTitleContextMenu={(event) =>
+              props.onSectionMenu(event, section.id)
+            }
+            open={section.open}
+            onToggle={() => setSectionOpen(section.id, !section.open)}
+            action={
+              canCreate ? (
+                <button
+                  aria-label={`Add project to ${section.title}`}
+                  title="Add project"
+                  className="pointer-events-none grid size-7 place-items-center text-zinc-500 opacity-0 hover:text-zinc-50 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/header:pointer-events-auto group-hover/header:opacity-100"
+                  onClick={() =>
+                    setDialog({ project: null, sectionId: section.id })
+                  }
                 >
-                  <div className="group/project flex items-center gap-1 rounded-lg hover:bg-zinc-900">
-                    <button
-                      className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left text-sm text-zinc-300"
-                      aria-expanded={
-                        !collapsedProjects[project.id] ||
-                        props.query.trim() !== ""
-                      }
-                      onClick={() => {
-                        if (activeProjectId === project.id) {
-                          setCollapsedProjects((current) => ({
-                            ...current,
-                            [project.id]: !current[project.id],
-                          }));
-                        } else {
-                          openProject(project.id);
-                        }
+                  <PlusIcon className="size-4" />
+                </button>
+              ) : undefined
+            }
+          >
+            {visible.length === 0 ? (
+              <EmptyState title="Nothing here" />
+            ) : (
+              <div className="space-y-2">
+                {visible.map((project) => {
+                  const expanded =
+                    !collapsedProjects[project.id] || props.query.trim() !== "";
+
+                  return (
+                    <div
+                      key={project.id}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setMenu({
+                          x: event.clientX,
+                          y: event.clientY,
+                          project,
+                        });
                       }}
                     >
-                      <ChevronRightIcon
-                        className={`size-3 shrink-0 ${!collapsedProjects[project.id] || props.query.trim() !== "" ? "rotate-90" : ""}`}
-                      />
-                      {activeProjectId === project.id ? (
-                        <FolderOpenIcon className="size-4 shrink-0" />
-                      ) : (
-                        <FolderIcon className="size-4 shrink-0" />
-                      )}
-                      <span className="truncate">{project.name}</span>
-                    </button>
-                    <button
-                      aria-label={`Edit ${project.name}`}
-                      className="pointer-events-none p-1 text-zinc-500 opacity-0 hover:text-zinc-50 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/project:pointer-events-auto group-hover/project:opacity-100"
-                      onClick={() =>
-                        setDialog({ project, sectionId: section.id })
-                      }
-                    >
-                      <PencilIcon className="size-3.5" />
-                    </button>
-                    <button
-                      aria-label={`New session in ${project.name}`}
-                      className="pointer-events-none p-1 text-zinc-500 opacity-0 hover:text-zinc-50 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/project:pointer-events-auto group-hover/project:opacity-100"
-                      onClick={() => openProject(project.id)}
-                    >
-                      <PlusIcon className="size-4" />
-                    </button>
-                  </div>
-                  {(!collapsedProjects[project.id] ||
-                    props.query.trim() !== "") && (
-                    <div className="ml-7 space-y-1 border-l border-zinc-800 pl-3">
-                      {chats
-                        .filter(
-                          (chat) =>
-                            chat.projectId === project.id &&
-                            chat.title
-                              .toLowerCase()
-                              .includes(props.query.toLowerCase()),
-                        )
-                        .map((chat) => (
-                          <button
-                            key={chat.id}
-                            className={`block w-full truncate rounded-lg px-2 py-1.5 text-left text-xs ${activeChatId === chat.id ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"}`}
-                            onClick={() =>
-                              navigate(`/work/${project.id}/chat/${chat.id}`)
+                      <div className="group/project flex items-center gap-1 rounded-lg hover:bg-zinc-900">
+                        <button
+                          className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left text-sm text-zinc-300"
+                          aria-expanded={expanded}
+                          onClick={() => {
+                            if (activeProjectId === project.id) {
+                              setCollapsedProjects((current) => ({
+                                ...current,
+                                [project.id]: !current[project.id],
+                              }));
+                            } else {
+                              openProject(project.id);
                             }
-                          >
-                            {chat.title}
-                          </button>
-                        ))}
+                          }}
+                        >
+                          {expanded ? (
+                            <FolderOpenIcon className="size-4 shrink-0" />
+                          ) : (
+                            <FolderIcon className="size-4 shrink-0" />
+                          )}
+                          <span className="truncate">{project.name}</span>
+                        </button>
+
+                        <button
+                          aria-label={`Edit ${project.name}`}
+                          className="pointer-events-none p-1 text-zinc-500 opacity-0 hover:text-zinc-50 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/project:pointer-events-auto group-hover/project:opacity-100"
+                          onClick={() =>
+                            setDialog({
+                              project,
+                              sectionId: project.sectionId,
+                            })
+                          }
+                        >
+                          <PencilIcon className="size-3.5" />
+                        </button>
+
+                        <button
+                          aria-label={`New session in ${project.name}`}
+                          className="pointer-events-none p-1 text-zinc-500 opacity-0 hover:text-zinc-50 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/project:pointer-events-auto group-hover/project:opacity-100"
+                          onClick={() => openProject(project.id)}
+                        >
+                          <PlusIcon className="size-4" />
+                        </button>
+                      </div>
+
+                      {expanded && (
+                        <ProjectSessions
+                          projectId={project.id}
+                          query={props.query}
+                        />
+                      )}
                     </div>
-                  )}
-                </div>
-              ))}
-          </div>
-        </CollapsibleSection>
-      ))}
-      {projects.length === 0 && (
-        <p className="px-2 text-xs font-light text-zinc-500">
-          {canCreate
-            ? "Add a project folder to start working."
-            : "Add project folders from the host computer."}
-        </p>
-      )}
+                  );
+                })}
+              </div>
+            )}
+          </CollapsibleSection>
+        );
+      })}
       {menu && (
         <ContextMenu
           x={menu.x}

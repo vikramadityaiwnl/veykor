@@ -33,9 +33,15 @@ interface Props {
 function ChatComposer(props: Props) {
   const projectId = useWorkStore((state) => state.projectId);
   const agentId = useWorkStore((state) => state.agentId);
+  const workLoaded = useWorkStore((state) => state.loaded);
+  const projects = useWorkStore((state) => state.projects);
+  const projectMissing =
+    projectId !== "" &&
+    workLoaded &&
+    projects.every((project) => project.id !== projectId);
   const activeChatId = useChatStore((state) => state.activeChatId);
   const agentMode = props.workMode === true || projectId !== "";
-  const projectRequired = agentMode && projectId === "";
+  const projectRequired = (agentMode && projectId === "") || projectMissing;
   const send = useChatStore((s) => s.send);
   const cancelTurn = useChatStore((s) => s.cancelTurn);
   const streaming = useChatStore((s) => s.streaming);
@@ -67,7 +73,8 @@ function ChatComposer(props: Props) {
     queuedMessages.length > 0;
   const canSend =
     (draft.trim() !== "" || composerImages.length > 0) &&
-    (!agentMode || (projectId !== "" && (!!agentId || activeChatId !== null)));
+    !projectRequired &&
+    (!agentMode || !!agentId || activeChatId !== null);
   const showStop = streaming && !canSend;
   const sendTitle = streaming
     ? interruptionBehavior === "steer"
@@ -278,8 +285,9 @@ function ChatComposer(props: Props) {
     }
 
     if (
+      projectRequired ||
       (text.trim() === "" && composerImages.length === 0) ||
-      (agentMode && (!projectId || (!agentId && activeChatId === null)))
+      (agentMode && !agentId && activeChatId === null)
     ) {
       return;
     }
