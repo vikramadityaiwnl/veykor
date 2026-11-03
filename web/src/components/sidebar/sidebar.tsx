@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent, MouseEvent } from "react";
 import {
   ArrowsPointingInIcon,
-  ChatBubbleLeftIcon,
   FolderIcon,
   PencilIcon,
   PlusIcon,
@@ -10,7 +9,6 @@ import {
 } from "@heroicons/react/24/outline";
 import type { AuthUser } from "@veykor/shared";
 import { recentSectionId } from "@veykor/shared";
-import { themeColors } from "../../theme/colors.ts";
 import { semanticColors } from "../../theme/semantic-colors.ts";
 import AlertDialog from "../../components/alert-dialog/alert-dialog.tsx";
 import CollapsibleSection from "../../components/collapsible-section/collapsible-section.tsx";
@@ -25,6 +23,7 @@ import EmptyState from "../../components/empty-state/empty-state.tsx";
 import ProfileCard from "../../components/profile-card/profile-card.tsx";
 import SearchInput from "../../components/search-input/search-input.tsx";
 import SegmentedControl from "../../components/segmented-control/segmented-control.tsx";
+import SectionChatList from "./components/section-chat-list.tsx";
 import { useChatStore } from "../../chat/chat-store.ts";
 import { usePreferencesStore } from "../../workspace/preferences-store.ts";
 import { useProfileStore } from "../../profile/profile-store.ts";
@@ -86,6 +85,7 @@ function Sidebar(props: Props) {
   const searchRef = useRef<HTMLInputElement | null>(null);
 
   const searching = debouncedQuery.trim() !== "";
+  const anyRunning = chats.some((chat) => chat.running);
   const knownSections = new Set(sections.map((section) => section.id));
 
   function sectionOf(chatSectionId: string): string {
@@ -372,6 +372,20 @@ function Sidebar(props: Props) {
   }, [loadChats]);
 
   useEffect(() => {
+    if (!anyRunning) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void loadChats();
+    }, 4000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [anyRunning, loadChats]);
+
+  useEffect(() => {
     void loadProfile();
   }, [loadProfile]);
 
@@ -483,43 +497,13 @@ function Sidebar(props: Props) {
                   open={section.open}
                   title={section.title}
                 >
-                  {visible.length === 0 ? (
-                    <EmptyState title="Nothing here" />
-                  ) : (
-                    <ul className="max-h-64 space-y-1 overflow-y-auto">
-                      {visible.map((chat) => {
-                        const active = chat.id === activeChatId;
-
-                        return (
-                          <li key={chat.id}>
-                            <button
-                              className={
-                                active
-                                  ? `flex w-full items-center gap-2.5 rounded-lg bg-zinc-800 px-3 py-2 text-left text-sm font-light ${themeColors.primary}`
-                                  : `group/chat flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-light transition hover:bg-zinc-900 hover:text-zinc-100 ${themeColors.dimmed}`
-                              }
-                              onClick={() => handleOpenChat(chat.id)}
-                              onContextMenu={(event) =>
-                                handleChatMenu(event, chat.id)
-                              }
-                              type="button"
-                            >
-                              <ChatBubbleLeftIcon
-                                aria-hidden="true"
-                                className={
-                                  active
-                                    ? `size-4 shrink-0 ${themeColors.primary}`
-                                    : `size-4 shrink-0 transition group-hover/chat:text-zinc-100 ${themeColors.dimmed}`
-                                }
-                              />
-
-                              <span className="truncate">{chat.title}</span>
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
+                  <SectionChatList
+                    activeChatId={activeChatId}
+                    chats={visible}
+                    onChatMenu={handleChatMenu}
+                    onOpenChat={handleOpenChat}
+                    searching={searching}
+                  />
                 </CollapsibleSection>
               </div>
             );

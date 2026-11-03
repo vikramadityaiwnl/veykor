@@ -226,6 +226,10 @@ export async function startMuseSession(
 
 const activeTurns = new Map<string, { turnId: string; startedAt: number }>();
 
+export function isMuseTurnRunning(museSessionId: string): boolean {
+  return activeTurns.has(museSessionId);
+}
+
 export async function readMuseChat(
   chat: ChatSummary,
 ): Promise<Omit<ChatDetail, "chat">> {

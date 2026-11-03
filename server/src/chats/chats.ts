@@ -26,6 +26,7 @@ import {
   cancelMuseTurn,
   decideMuseApproval,
   isMuseHostMissing,
+  isMuseTurnRunning,
   leaveMuseSession,
   listMuseModels,
   listPendingApprovals,
@@ -76,11 +77,14 @@ function cleanSection(value: unknown): string {
 }
 
 function toSummary(row: ChatRow): ChatSummary {
+  const museSessionId = row.museSessionId ?? "";
+
   return {
     id: row.id,
     title: row.title ?? defaultChatTitle(),
     sectionId: row.sectionId ?? "recent",
-    museSessionId: row.museSessionId ?? "",
+    museSessionId,
+    running: isMuseTurnRunning(museSessionId),
     createdAt: row.createdAt ?? "",
     updatedAt: row.updatedAt ?? "",
   };
@@ -403,6 +407,11 @@ chatRoute.post("/:id/turns", requireAuth, async (c) => {
 
   return streamSSE(c, async (stream) => {
     try {
+      db.update(chats)
+        .set({ updatedAt: nowIso() })
+        .where(and(eq(chats.id, row.id), eq(chats.userId, row.userId)))
+        .run();
+
       await runMuseTurn({
         museSessionId: summary.museSessionId,
         text,

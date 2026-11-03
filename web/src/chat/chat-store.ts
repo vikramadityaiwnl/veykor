@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { preferredEffortKey } from "@veykor/shared";
+import { defaultChatTitle, preferredEffortKey } from "@veykor/shared";
 import type {
   ChatDetail,
   ChatApprovalRequest,
@@ -63,6 +63,7 @@ export interface ComposerRestore {
 interface ChatState {
   chats: Array<ChatSummary>;
   chatsLoaded: boolean;
+  finishedChatIds: Array<string>;
   activeChatId: string | null;
   pendingRoutePush: string | null;
   clearRoutePush: () => void;
@@ -113,6 +114,12 @@ interface ChatState {
   removeImage: (id: string) => void;
   renameChat: (id: string, title: string) => Promise<void>;
   moveChat: (id: string, sectionId: string) => Promise<void>;
+  reorderChat: (draggedId: string, targetId: string, before: boolean) => void;
+  reorderQueuedMessage: (
+    draggedId: string,
+    targetId: string,
+    before: boolean,
+  ) => void;
   deleteChat: (id: string) => Promise<void>;
   clearError: () => void;
 }
@@ -122,6 +129,38 @@ let chatsLoading = false;
 const localTurns = new Set<string>();
 
 let openingChatId: string | null = null;
+
+let optimisticItemId: string | null = null;
+
+const finishedChatsKey = "veykor:finished-chats";
+
+function readFinishedChatIds(): Array<string> {
+  try {
+    const raw = window.localStorage.getItem(finishedChatsKey);
+
+    if (raw === null) {
+      return [];
+    }
+
+    const parsed: unknown = JSON.parse(raw);
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter((entry): entry is string => typeof entry === "string");
+  } catch {
+    return [];
+  }
+}
+
+function writeFinishedChatIds(ids: Array<string>): void {
+  try {
+    window.localStorage.setItem(finishedChatsKey, JSON.stringify(ids));
+  } catch {
+    // Best effort; the dots reset on reload.
+  }
+}
 
 const approvalGraceMs = 600;
 
@@ -156,6 +195,110 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
+}
+
+function reorderEntries<T extends { id: string }>(
+  entries: Array<T>,
+  draggedId: string,
+  targetId: string,
+  before: boolean,
+): Array<T> {
+  if (draggedId === targetId) {
+    return entries;
+  }
+
+  const from = entries.findIndex((entry) => entry.id === draggedId);
+  const to = entries.findIndex((entry) => entry.id === targetId);
+
+  if (from === -1 || to === -1) {
+    return entries;
+  }
+
+  const next = [...entries];
+  const moved = next.splice(from, 1)[0];
+
+  if (moved === undefined) {
+    return entries;
+  }
+
+  let insertAt = next.findIndex((entry) => entry.id === targetId);
+
+  if (!before) {
+    insertAt += 1;
+  }
+
+  next.splice(insertAt, 0, moved);
+
+  return next;
+}
+
+function titleFromText(text: string): string {
+  const firstLine = text.split("\n")[0].trim().replace(/\s+/g, " ");
+
+  if (firstLine === "") {
+    return defaultChatTitle();
+  }
+
+  return firstLine.slice(0, 60);
+}
+
+function moveToSectionTop(
+  chats: Array<ChatSummary>,
+  chatId: string,
+  running: boolean,
+): Array<ChatSummary> {
+  const index = chats.findIndex((chat) => chat.id === chatId);
+  const target = chats[index];
+
+  if (index === -1 || target === undefined) {
+    return chats;
+  }
+
+  const rest = chats.filter((chat) => chat.id !== chatId);
+  const moved = { ...target, running };
+  const firstOfSection = rest.findIndex(
+    (chat) => chat.sectionId === target.sectionId,
+  );
+
+  const next = [...rest];
+
+  next.splice(
+    firstOfSection === -1 ? Math.min(index, next.length) : firstOfSection,
+    0,
+    moved,
+  );
+
+  return next;
+}
+
+function markFinished(
+  finishedChatIds: Array<string>,
+  chatId: string,
+): Array<string> {
+  if (finishedChatIds.includes(chatId)) {
+    return finishedChatIds;
+  }
+
+  return [...finishedChatIds, chatId];
+}
+
+function settleItem(
+  items: Array<ChatHistoryItem>,
+  next: ChatHistoryItem,
+): Array<ChatHistoryItem> {
+  const pendingId = optimisticItemId;
+
+  if (
+    next.kind === "userMessage" &&
+    pendingId !== null &&
+    items.some((item) => item.itemId === pendingId)
+  ) {
+    optimisticItemId = null;
+
+    return items.map((item) => (item.itemId === pendingId ? next : item));
+  }
+
+  return upsertItem(items, next);
 }
 
 function upsertItem(
@@ -300,6 +443,7 @@ async function persistSentImages(
 export const useChatStore = create<ChatState>()((set, get) => ({
   chats: [],
   chatsLoaded: false,
+  finishedChatIds: readFinishedChatIds(),
   activeChatId: null,
   pendingRoutePush: null,
   pendingSectionId: "recent",
@@ -336,7 +480,50 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     try {
       const chats = await fetchChats();
 
-      set({ chats, chatsLoaded: true });
+      set((current) => {
+        if (current.chats.length === 0) {
+          return { chats, chatsLoaded: true };
+        }
+
+        const fetched = new Map(chats.map((chat) => [chat.id, chat]));
+        const kept: Array<ChatSummary> = [];
+        const justFinished: Array<string> = [];
+        let finishedChatIds = current.finishedChatIds;
+
+        for (const existing of current.chats) {
+          const updated = fetched.get(existing.id);
+
+          if (updated === undefined) {
+            continue;
+          }
+
+          if (existing.id === current.activeChatId) {
+            kept.push({ ...updated, running: existing.running });
+          } else {
+            if (existing.running && !updated.running) {
+              finishedChatIds = markFinished(finishedChatIds, existing.id);
+              justFinished.push(existing.id);
+            }
+
+            kept.push(updated);
+          }
+
+          fetched.delete(existing.id);
+        }
+
+        let ordered = [...fetched.values(), ...kept];
+        const alive = new Set(ordered.map((chat) => chat.id));
+
+        for (const id of justFinished) {
+          ordered = moveToSectionTop(ordered, id, false);
+        }
+
+        return {
+          chats: ordered,
+          chatsLoaded: true,
+          finishedChatIds: finishedChatIds.filter((id) => alive.has(id)),
+        };
+      });
     } catch (cause) {
       set({ error: errorMessage(cause, "Unable to load chats.") });
     } finally {
@@ -353,6 +540,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     revokeImages(state.composerImages);
     clearApprovalTimers();
+    optimisticItemId = null;
 
     set({
       activeChatId: null,
@@ -405,24 +593,39 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
 
     clearApprovalTimers();
-    set((state) => ({
-      items: detail.items,
-      turnDurations: detail.turnDurations,
-      pendingApprovals: detail.pendingApprovals,
-      streaming: detail.running,
-      streamingTurnId: detail.activeTurnId,
-      streamingStartedAt: detail.activeTurnStartedAt,
-      modelId: detail.modelId,
-      providerId: detail.providerId,
-      reasoningEffort: detail.reasoningEffort,
-      permission: detail.permission,
-      historyLoading: false,
-      chatNotFound: false,
-      chats: [
-        detail.chat,
-        ...state.chats.filter((chat) => chat.id !== detail.chat.id),
-      ],
-    }));
+    set((state) => {
+      const previous = state.chats.find((chat) => chat.id === detail.chat.id);
+      const finished =
+        previous?.running === true && detail.chat.running === false;
+
+      const chats =
+        previous === undefined
+          ? [detail.chat, ...state.chats]
+          : state.chats.map((chat) =>
+              chat.id === detail.chat.id ? detail.chat : chat,
+            );
+
+      return {
+        items: detail.items,
+        turnDurations: detail.turnDurations,
+        pendingApprovals: detail.pendingApprovals,
+        streaming: detail.running,
+        streamingTurnId: detail.activeTurnId,
+        streamingStartedAt: detail.activeTurnStartedAt,
+        modelId: detail.modelId,
+        providerId: detail.providerId,
+        reasoningEffort: detail.reasoningEffort,
+        permission: detail.permission,
+        historyLoading: false,
+        chatNotFound: false,
+        chats: finished
+          ? moveToSectionTop(chats, detail.chat.id, false)
+          : chats,
+        finishedChatIds: finished
+          ? markFinished(state.finishedChatIds, detail.chat.id)
+          : state.finishedChatIds,
+      };
+    });
   },
 
   openChat: async (id) => {
@@ -432,8 +635,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     openingChatId = id;
     clearApprovalTimers();
+    optimisticItemId = null;
 
-    set({
+    set((current) => ({
       activeChatId: id,
       pendingRoutePush: null,
       streaming: false,
@@ -447,7 +651,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       error: "",
       queuedMessages: [],
       composerRestore: { seq: 0, text: "" },
-    });
+      finishedChatIds: current.finishedChatIds.filter(
+        (finishedId) => finishedId !== id,
+      ),
+    }));
 
     try {
       for (let attempt = 1; ; attempt += 1) {
@@ -485,6 +692,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           }
 
           set(patch);
+
+          set((current) => ({
+            chats: current.chats.map((chat) =>
+              chat.id === id ? { ...chat, running: detail.running } : chat,
+            ),
+          }));
 
           void get().hydrateAttachments(id);
 
@@ -679,6 +892,22 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
       localTurns.add(chatId);
 
+      const turnChatId = chatId;
+      const title = trimmed === "" ? null : titleFromText(trimmed);
+
+      set((current) => ({
+        chats: moveToSectionTop(current.chats, turnChatId, true).map((chat) =>
+          title !== null &&
+          chat.id === turnChatId &&
+          (chat.title === defaultChatTitle() || chat.title === "")
+            ? { ...chat, title }
+            : chat,
+        ),
+        finishedChatIds: current.finishedChatIds.filter(
+          (finishedId) => finishedId !== turnChatId,
+        ),
+      }));
+
       const settings: UpdateChatSettingsRequest = {};
       const current = get();
 
@@ -703,6 +932,31 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         await updateSettings(chatId, settings);
       }
 
+      optimisticItemId = `local-${crypto.randomUUID()}`;
+
+      const optimisticItem: ChatHistoryItem = {
+        itemId: optimisticItemId,
+        kind: "userMessage",
+        status: "completed",
+        turnId: null,
+        text: trimmed,
+        summary: [],
+        tool: "",
+        displayLabel: "",
+        visibleOutput: "",
+        args: "",
+        recordedAt: new Date().toISOString(),
+        attachments: payload.map((image) => ({
+          mediaType: image.mediaType,
+        })),
+      };
+
+      set((current) =>
+        current.activeChatId === chatId
+          ? { items: [...current.items, optimisticItem] }
+          : current,
+      );
+
       await streamTurn(chatId, trimmed, payload, (event) => {
         if (get().activeChatId !== chatId) {
           return;
@@ -710,12 +964,22 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
         switch (event.type) {
           case "turn-started":
-            set({ streamingTurnId: event.turnId });
+            set((current) => ({
+              streamingTurnId: event.turnId,
+              items:
+                optimisticItemId === null
+                  ? current.items
+                  : current.items.map((item) =>
+                      item.itemId === optimisticItemId
+                        ? { ...item, turnId: event.turnId }
+                        : item,
+                    ),
+            }));
             break;
 
           case "item":
             set((currentItems) => {
-              const items = upsertItem(currentItems.items, event.item);
+              const items = settleItem(currentItems.items, event.item);
 
               if (event.item.kind !== "reasoning") {
                 return { items };
@@ -818,6 +1082,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             break;
 
           case "turn-completed":
+            optimisticItemId = null;
+
             set((current) => ({
               streaming: false,
               streamingTurnId: "",
@@ -829,6 +1095,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
                     ? event.durationMs
                     : Math.max(1, Date.now() - startedAt),
               },
+              chats: moveToSectionTop(current.chats, turnChatId, false),
+              finishedChatIds: markFinished(
+                current.finishedChatIds,
+                turnChatId,
+              ),
             }));
             void get().loadChats();
             break;
@@ -839,18 +1110,34 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       });
 
       if (get().activeChatId === chatId) {
-        set({ streaming: false, streamingTurnId: "" });
+        set((current) => ({
+          streaming: false,
+          streamingTurnId: "",
+          chats: current.chats.map((chat) =>
+            chat.id === turnChatId ? { ...chat, running: false } : chat,
+          ),
+        }));
       }
     } catch (cause) {
       failed = true;
 
+      const failedId = optimisticItemId;
+      optimisticItemId = null;
+
       if (get().activeChatId === chatId) {
-        set({
+        set((current) => ({
           streaming: false,
           streamingTurnId: "",
           streamingStartedAt: 0,
           error: errorMessage(cause, "Unable to send message."),
-        });
+          items:
+            failedId === null
+              ? current.items
+              : current.items.filter((item) => item.itemId !== failedId),
+          chats: current.chats.map((chat) =>
+            chat.id === chatId ? { ...chat, running: false } : chat,
+          ),
+        }));
       }
     }
 
@@ -958,10 +1245,19 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       return;
     }
 
+    const cancelledChatId = state.activeChatId;
+
     try {
       await cancelTurnRequest(state.activeChatId, state.streamingTurnId);
 
-      set({ streaming: false, streamingTurnId: "", error: "" });
+      set((current) => ({
+        streaming: false,
+        streamingTurnId: "",
+        error: "",
+        chats: current.chats.map((chat) =>
+          chat.id === cancelledChatId ? { ...chat, running: false } : chat,
+        ),
+      }));
     } catch (cause) {
       set({ error: errorMessage(cause, "Unable to cancel turn.") });
     }
@@ -1194,6 +1490,36 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
   },
 
+  reorderChat: (draggedId, targetId, before) => {
+    set((current) => {
+      const dragged = current.chats.find((chat) => chat.id === draggedId);
+      const target = current.chats.find((chat) => chat.id === targetId);
+
+      if (
+        dragged === undefined ||
+        target === undefined ||
+        dragged.sectionId !== target.sectionId
+      ) {
+        return current;
+      }
+
+      return {
+        chats: reorderEntries(current.chats, draggedId, targetId, before),
+      };
+    });
+  },
+
+  reorderQueuedMessage: (draggedId, targetId, before) => {
+    set((current) => ({
+      queuedMessages: reorderEntries(
+        current.queuedMessages,
+        draggedId,
+        targetId,
+        before,
+      ),
+    }));
+  },
+
   deleteChat: async (id) => {
     try {
       await deleteChatRequest(id);
@@ -1221,6 +1547,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
         set({
           chats: state.chats.filter((chat) => chat.id !== id),
+          finishedChatIds: state.finishedChatIds.filter(
+            (finishedId) => finishedId !== id,
+          ),
           activeChatId: null,
           pendingRoutePush: null,
           items: [],
@@ -1238,6 +1567,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       } else {
         set({
           chats: state.chats.filter((chat) => chat.id !== id),
+          finishedChatIds: state.finishedChatIds.filter(
+            (finishedId) => finishedId !== id,
+          ),
           error: "",
         });
       }
@@ -1250,3 +1582,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     set({ error: "" });
   },
 }));
+
+useChatStore.subscribe((state, previous) => {
+  if (state.finishedChatIds !== previous.finishedChatIds) {
+    writeFinishedChatIds(state.finishedChatIds);
+  }
+});

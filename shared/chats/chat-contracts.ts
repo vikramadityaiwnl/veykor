@@ -7,6 +7,7 @@ export interface ChatSummary {
   title: string;
   sectionId: string;
   museSessionId: string;
+  running: boolean;
   createdAt: string;
   updatedAt: string;
 }
