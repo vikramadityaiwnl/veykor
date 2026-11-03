@@ -7,7 +7,7 @@ interface Props {
 }
 
 function ToolCallBlock(props: Props) {
-  const [open, setOpen] = useState(() => props.item.status === "inProgress");
+  const [open, setOpen] = useState(false);
 
   function handleToggle() {
     setOpen((current) => !current);
