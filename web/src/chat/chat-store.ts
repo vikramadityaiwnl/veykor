@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { preferredEffortKey } from "@veykor/shared";
 import type {
+  ChatDetail,
   ChatApprovalRequest,
   ChatHistoryItem,
   ChatModelCatalog,
@@ -71,6 +72,7 @@ interface ChatState {
   chatNotFound: boolean;
   streaming: boolean;
   streamingTurnId: string;
+  streamingStartedAt: number;
   error: string;
   pendingApprovals: Array<ChatApprovalRequest>;
   turnDurations: Record<string, number>;
@@ -90,6 +92,7 @@ interface ChatState {
   loadChats: () => Promise<void>;
   startDraft: (sectionId: string) => void;
   syncDraftPreferences: () => void;
+  syncChat: (detail: ChatDetail) => void;
   openChat: (id: string) => Promise<void>;
   hydrateAttachments: (chatId: string) => Promise<void>;
   send: (text: string) => Promise<void>;
@@ -115,6 +118,8 @@ interface ChatState {
 }
 
 let chatsLoading = false;
+
+const localTurns = new Set<string>();
 
 let openingChatId: string | null = null;
 
@@ -303,6 +308,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   chatNotFound: false,
   streaming: false,
   streamingTurnId: "",
+  streamingStartedAt: 0,
   error: "",
   pendingApprovals: [],
   turnDurations: {},
@@ -358,6 +364,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       chatNotFound: false,
       streaming: false,
       streamingTurnId: "",
+      streamingStartedAt: 0,
       error: "",
       pendingApprovals: [],
       todos: [],
@@ -389,6 +396,35 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     });
   },
 
+  syncChat: (detail) => {
+    if (
+      get().activeChatId !== detail.chat.id ||
+      localTurns.has(detail.chat.id)
+    ) {
+      return;
+    }
+
+    clearApprovalTimers();
+    set((state) => ({
+      items: detail.items,
+      turnDurations: detail.turnDurations,
+      pendingApprovals: detail.pendingApprovals,
+      streaming: detail.running,
+      streamingTurnId: detail.activeTurnId,
+      streamingStartedAt: detail.activeTurnStartedAt,
+      modelId: detail.modelId,
+      providerId: detail.providerId,
+      reasoningEffort: detail.reasoningEffort,
+      permission: detail.permission,
+      historyLoading: false,
+      chatNotFound: false,
+      chats: [
+        detail.chat,
+        ...state.chats.filter((chat) => chat.id !== detail.chat.id),
+      ],
+    }));
+  },
+
   openChat: async (id) => {
     if (openingChatId === id && get().activeChatId === id) {
       return;
@@ -402,6 +438,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       pendingRoutePush: null,
       streaming: false,
       streamingTurnId: "",
+      streamingStartedAt: 0,
       historyLoading: true,
       chatNotFound: false,
       items: [],
@@ -426,6 +463,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           }
 
           const patch: Partial<ChatState> = {
+            streaming: detail.running,
+            streamingTurnId: detail.activeTurnId,
+            streamingStartedAt: detail.activeTurnStartedAt,
             items: detail.items,
             turnDurations: detail.turnDurations,
             pendingApprovals: detail.pendingApprovals,
@@ -604,7 +644,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     const startedAt = Date.now();
 
-    set({ streaming: true, streamingTurnId: "", error: "" });
+    set({
+      streaming: true,
+      streamingTurnId: "",
+      streamingStartedAt: startedAt,
+      error: "",
+    });
 
     set({ composerImages: [] });
 
@@ -632,6 +677,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         }));
       }
 
+      localTurns.add(chatId);
+
       const settings: UpdateChatSettingsRequest = {};
       const current = get();
 
@@ -653,11 +700,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         settings.reasoningEffort !== undefined ||
         settings.permission !== undefined
       ) {
-        try {
-          await updateSettings(chatId, settings);
-        } catch {
-          // Best effort; the turn still goes ahead.
-        }
+        await updateSettings(chatId, settings);
       }
 
       await streamTurn(chatId, trimmed, payload, (event) => {
@@ -778,6 +821,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             set((current) => ({
               streaming: false,
               streamingTurnId: "",
+              streamingStartedAt: 0,
               turnDurations: {
                 ...current.turnDurations,
                 [event.turnId]:
@@ -804,9 +848,14 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         set({
           streaming: false,
           streamingTurnId: "",
+          streamingStartedAt: 0,
           error: errorMessage(cause, "Unable to send message."),
         });
       }
+    }
+
+    if (chatId !== null) {
+      localTurns.delete(chatId);
     }
 
     if (!failed) {
@@ -1179,6 +1228,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           chatNotFound: false,
           streaming: false,
           streamingTurnId: "",
+          streamingStartedAt: 0,
           pendingApprovals: [],
           todos: [],
           composerImages: [],

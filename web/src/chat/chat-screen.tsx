@@ -14,6 +14,7 @@ function ChatScreen() {
   const historyLoading = useChatStore((state) => state.historyLoading);
   const chatNotFound = useChatStore((state) => state.chatNotFound);
   const streaming = useChatStore((state) => state.streaming);
+  const streamingStartedAt = useChatStore((state) => state.streamingStartedAt);
   const streamingTurnId = useChatStore((state) => state.streamingTurnId);
   const sentAttachments = useChatStore((state) => state.sentAttachments);
   const thinkingSnapshots = useChatStore((state) => state.thinkingSnapshots);
@@ -65,6 +66,7 @@ function ChatScreen() {
           streamingTurnId={streamingTurnId}
           thinkingSnapshots={thinkingSnapshots}
           turnDurations={turnDurations}
+          streamingStartedAt={streamingStartedAt}
         />
       )}
 

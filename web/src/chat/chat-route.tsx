@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
+import { subscribeChat } from "./chat-client.ts";
 import ChatScreen from "./chat-screen.tsx";
 import { useChatStore } from "./chat-store.ts";
 
@@ -24,6 +25,16 @@ function ChatRoute() {
       void state.openChat(chatId);
     }
   }, [chatId, navigate, pendingRoutePush]);
+
+  useEffect(() => {
+    if (chatId === undefined) {
+      return;
+    }
+
+    return subscribeChat(chatId, (detail) => {
+      useChatStore.getState().syncChat(detail);
+    });
+  }, [chatId]);
 
   return <ChatScreen />;
 }

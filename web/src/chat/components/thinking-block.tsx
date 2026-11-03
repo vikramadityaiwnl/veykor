@@ -4,28 +4,32 @@ import Divider from "../../components/divider/divider.tsx";
 interface Props {
   durationMs: number;
   running: boolean;
+  startedAt: number;
   summaries: Array<string>;
 }
 
 function ThinkingBlock(props: Props) {
   const [open, setOpen] = useState(() => props.running);
-  const [elapsed, setElapsed] = useState(0);
+  const [now, setNow] = useState(Date.now);
 
   useEffect(() => {
     if (!props.running) {
       return;
     }
 
-    const started = Date.now();
-
     const timer = window.setInterval(() => {
-      setElapsed(Math.floor((Date.now() - started) / 1000));
+      setNow(Date.now());
     }, 500);
 
     return () => {
       window.clearInterval(timer);
     };
   }, [props.running]);
+
+  const elapsed =
+    props.startedAt > 0
+      ? Math.max(0, Math.floor((now - props.startedAt) / 1000))
+      : 0;
 
   const nativeSeconds =
     props.durationMs > 0 ? Math.round(props.durationMs / 1000) : 0;

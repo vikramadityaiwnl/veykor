@@ -224,6 +224,8 @@ export async function startMuseSession(
   return { sessionId };
 }
 
+const activeTurns = new Map<string, { turnId: string; startedAt: number }>();
+
 export async function readMuseChat(
   chat: ChatSummary,
 ): Promise<Omit<ChatDetail, "chat">> {
@@ -259,8 +261,16 @@ export async function readMuseChat(
   const approvals = list(pending["approvals"]).map(toApproval);
 
   const approvalMode = record(session["approvalMode"]);
+  const activeTurn = activeTurns.get(chat.museSessionId);
+
+  if (activeTurn && Object.hasOwn(turnDurations, activeTurn.turnId)) {
+    activeTurns.delete(chat.museSessionId);
+  }
 
   return {
+    activeTurnId: activeTurns.get(chat.museSessionId)?.turnId ?? "",
+    activeTurnStartedAt: activeTurns.get(chat.museSessionId)?.startedAt ?? 0,
+    running: activeTurns.has(chat.museSessionId),
     items,
     turnDurations,
     pendingApprovals: approvals,
@@ -480,6 +490,14 @@ export async function runMuseTurn(input: {
 
   let turnId = "";
 
+  if (activeTurns.has(input.museSessionId)) {
+    throw new Error("A turn is already running in this chat.");
+  }
+
+  const activeTurn = { turnId: "", startedAt: Date.now() };
+
+  activeTurns.set(input.museSessionId, activeTurn);
+
   const completion = new Promise<{
     terminal: string;
     error: string;
@@ -586,6 +604,7 @@ export async function runMuseTurn(input: {
       .command("turn/start", params)
       .then(async (ack) => {
         turnId = text(ack["turnId"]);
+        activeTurn.turnId = turnId;
 
         await input.onEvent({ type: "turn-started", turnId });
       })
@@ -595,7 +614,11 @@ export async function runMuseTurn(input: {
       });
   });
 
-  const outcome = await completion;
+  const outcome = await completion.finally(() => {
+    if (activeTurns.get(input.museSessionId) === activeTurn) {
+      activeTurns.delete(input.museSessionId);
+    }
+  });
 
   if (outcome.error !== "") {
     await input.onEvent({

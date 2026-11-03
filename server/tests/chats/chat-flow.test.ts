@@ -154,6 +154,69 @@ test("chat listing links to a Muse session", async () => {
     assert.equal(listed.length, 1);
     assert.equal(listed[0].id, chatId);
 
+    assert.equal((await request(chatPaths.events(chatId))).status, 401);
+
+    const subscription = new AbortController();
+    const events = await fetch(baseUrl + chatPaths.events(chatId), {
+      headers: { Cookie: cookie },
+      signal: AbortSignal.any([
+        subscription.signal,
+        AbortSignal.timeout(15000),
+      ]),
+    });
+
+    assert.equal(events.status, 200);
+    assert.match(
+      events.headers.get("content-type") ?? "",
+      /text\/event-stream/,
+    );
+
+    assert.notEqual(events.body, null);
+
+    const reader = events.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffered = "";
+
+    async function nextSnapshot() {
+      while (true) {
+        const boundary = buffered.indexOf("\n\n");
+
+        if (boundary !== -1) {
+          const block = buffered.slice(0, boundary);
+          buffered = buffered.slice(boundary + 2);
+
+          if (block.includes("event: snapshot")) {
+            return JSON.parse(block.split("data: ")[1].split("\n")[0]);
+          }
+
+          continue;
+        }
+
+        const chunk = await reader.read();
+
+        assert.equal(chunk.done, false);
+        buffered += decoder.decode(chunk.value, { stream: true });
+      }
+    }
+
+    const payload = await nextSnapshot();
+
+    assert.equal(payload.chat.id, chatId);
+    assert.equal(payload.running, false);
+    assert.equal(payload.activeTurnId, "");
+    assert.equal(payload.activeTurnStartedAt, 0);
+
+    await request(chatPaths.chat(chatId), {
+      method: "PATCH",
+      cookie,
+      body: { title: "Live subscription update" },
+    });
+
+    const updatedSnapshot = await nextSnapshot();
+
+    assert.equal(updatedSnapshot.chat.title, "Live subscription update");
+    subscription.abort();
+
     const models = await request(chatPaths.models, { cookie });
 
     assert.equal(models.status, 200);

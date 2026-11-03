@@ -53,6 +53,9 @@ export interface ChatApprovalRequest {
 }
 
 export interface ChatDetail {
+  activeTurnId: string;
+  activeTurnStartedAt: number;
+  running: boolean;
   turnDurations: Record<string, number>;
   chat: ChatSummary;
   items: Array<ChatHistoryItem>;

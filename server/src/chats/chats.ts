@@ -16,6 +16,7 @@ import type {
   UpdateChatRequest,
   UpdateChatSettingsRequest,
 } from "@veykor/shared";
+import { museHost } from "../muse/muse-host.js";
 import { requireAuth } from "../auth/auth.js";
 import type { AuthEnv } from "../auth/auth.js";
 import { db } from "../db/client.js";
@@ -224,6 +225,9 @@ chatRoute.post("/", requireAuth, async (c) => {
 
   const response: ChatDetail = {
     chat: toSummary(row),
+    activeTurnId: "",
+    activeTurnStartedAt: 0,
+    running: false,
     items: [],
     turnDurations: {},
     pendingApprovals: [],
@@ -255,6 +259,66 @@ chatRoute.get("/:id", requireAuth, async (c) => {
   } catch (cause) {
     return museFailure(c, cause);
   }
+});
+
+chatRoute.get("/:id/events", requireAuth, async (c) => {
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row) {
+    return c.json({ error: "Chat not found" }, 404);
+  }
+
+  c.header("X-Accel-Buffering", "no");
+
+  return streamSSE(c, async (stream) => {
+    let dirty = true;
+    let stopped = false;
+    const unsubscribe = museHost.subscribe(row.museSessionId, () => {
+      dirty = true;
+    });
+
+    stream.onAbort(() => {
+      stopped = true;
+      unsubscribe();
+    });
+
+    try {
+      let lastSnapshot = "";
+      let lastRefresh = 0;
+
+      while (!stopped) {
+        const refreshDue = Date.now() - lastRefresh > 5000;
+
+        if (dirty || refreshDue) {
+          dirty = false;
+          const current = readChat(row.userId, row.id);
+
+          if (!current) {
+            break;
+          }
+
+          const detail: ChatDetail = {
+            chat: toSummary(current),
+            ...(await readMuseChat(toSummary(current))),
+          };
+          const snapshot = JSON.stringify(detail);
+
+          if (snapshot !== lastSnapshot || refreshDue) {
+            await stream.writeSSE({ event: "snapshot", data: snapshot });
+            lastSnapshot = snapshot;
+          } else {
+            await stream.writeSSE({ event: "heartbeat", data: "{}" });
+          }
+
+          lastRefresh = Date.now();
+        }
+
+        await stream.sleep(250);
+      }
+    } finally {
+      unsubscribe();
+    }
+  });
 });
 
 chatRoute.patch("/:id", requireAuth, async (c) => {
@@ -344,10 +408,16 @@ chatRoute.post("/:id/turns", requireAuth, async (c) => {
         text,
         images,
         onEvent: async (event) => {
-          await stream.writeSSE({
-            event: event.type,
-            data: JSON.stringify(event),
-          });
+          if (!stream.aborted) {
+            try {
+              await stream.writeSSE({
+                event: event.type,
+                data: JSON.stringify(event),
+              });
+            } catch {
+              return;
+            }
+          }
         },
       });
 

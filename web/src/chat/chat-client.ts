@@ -454,3 +454,34 @@ export async function streamTurn(
     throwIfFailed(tail);
   }
 }
+
+export function subscribeChat(
+  id: string,
+  onSnapshot: (detail: ChatDetail) => void,
+): () => void {
+  let source: EventSource;
+
+  const connect = () => {
+    source = new EventSource(chatPaths.events(id));
+    source.addEventListener("snapshot", (event: MessageEvent<string>) => {
+      onSnapshot(JSON.parse(event.data) as ChatDetail);
+    });
+  };
+
+  const reconnect = () => {
+    if (document.visibilityState === "visible") {
+      source.close();
+      connect();
+    }
+  };
+
+  connect();
+  window.addEventListener("online", reconnect);
+  document.addEventListener("visibilitychange", reconnect);
+
+  return () => {
+    window.removeEventListener("online", reconnect);
+    document.removeEventListener("visibilitychange", reconnect);
+    source.close();
+  };
+}

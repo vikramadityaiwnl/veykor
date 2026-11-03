@@ -12,6 +12,7 @@ interface Props {
   items: Array<ChatHistoryItem>;
   streaming: boolean;
   streamingTurnId: string;
+  streamingStartedAt: number;
   thinkingSnapshots: Record<string, Array<string>>;
   turnDurations: Record<string, number>;
 }
@@ -158,6 +159,7 @@ function MessageList(props: Props) {
         durationMs={props.turnDurations[turnKey] ?? 0}
         key={`thinking-${turnKey}`}
         running={live}
+        startedAt={props.streamingStartedAt}
         summaries={summaries}
       />
     );
