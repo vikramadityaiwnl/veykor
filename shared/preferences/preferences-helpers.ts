@@ -1,6 +1,7 @@
 import type { ChatPermission } from "../chats/chat-contracts.js";
 import type {
   CustomChat,
+  InterruptionBehavior,
   PreferredModel,
   SidebarSection,
   SidebarTab,
@@ -35,7 +36,34 @@ export function defaultPreferences(): UserPreferences {
     preferredModels: { chat: null, work: null },
     preferredEfforts: { chat: {}, work: {} },
     preferredPermission: "read-only",
+    interruptionBehavior: "queue",
   };
+}
+
+export const interruptionBehaviors: Array<{
+  value: InterruptionBehavior;
+  title: string;
+  description: string;
+}> = [
+  {
+    value: "queue",
+    title: "Queue",
+    description: "New messages wait in a queue until the agent is done.",
+  },
+  {
+    value: "steer",
+    title: "Steer",
+    description: "New messages steer the running turn right away.",
+  },
+];
+
+export function interruptionBehaviorTitle(
+  behavior: InterruptionBehavior,
+): string {
+  return (
+    interruptionBehaviors.find((entry) => entry.value === behavior)?.title ??
+    "Queue"
+  );
 }
 
 function sanitizePreferredModel(value: unknown): PreferredModel | null {
@@ -92,6 +120,14 @@ function sanitizePermission(value: unknown): ChatPermission {
   return "read-only";
 }
 
+function sanitizeInterruptionBehavior(value: unknown): InterruptionBehavior {
+  if (value === "queue" || value === "steer") {
+    return value;
+  }
+
+  return "queue";
+}
+
 function sanitizeId(value: unknown): string {
   if (typeof value !== "string") {
     return "";
@@ -137,6 +173,7 @@ export function sanitizePreferences(input: unknown): UserPreferences {
     preferredModels?: unknown;
     preferredEfforts?: unknown;
     preferredPermission?: unknown;
+    interruptionBehavior?: unknown;
   };
 
   const lastTab: SidebarTab = record.lastTab === "work" ? "work" : "chat";
@@ -252,5 +289,8 @@ export function sanitizePreferences(input: unknown): UserPreferences {
       work: sanitizeEffortMap(preferredEffortsInput.work),
     },
     preferredPermission: sanitizePermission(record.preferredPermission),
+    interruptionBehavior: sanitizeInterruptionBehavior(
+      record.interruptionBehavior,
+    ),
   };
 }

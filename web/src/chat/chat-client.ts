@@ -10,6 +10,7 @@ import type {
   ChatModelCatalog,
   ChatSummary,
   DecideApprovalRequest,
+  SteerTurnRequest,
   UpdateChatSettingsRequest,
 } from "@veykor/shared";
 
@@ -32,6 +33,15 @@ export type TurnEvent =
 export interface TurnImageInput {
   mediaType: string;
   base64Data: string;
+}
+
+export class HttpError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
 }
 
 async function readError(response: Response): Promise<string> {
@@ -72,7 +82,7 @@ async function requestJson<T>(
   }
 
   if (!response.ok) {
-    throw new Error(await readError(response));
+    throw new HttpError(response.status, await readError(response));
   }
 
   if (!parseBody) {
@@ -94,7 +104,7 @@ async function fetchJson<T>(url: string): Promise<T> {
   }
 
   if (!response.ok) {
-    throw new Error(await readError(response));
+    throw new HttpError(response.status, await readError(response));
   }
 
   return (await response.json()) as T;
@@ -337,6 +347,20 @@ export async function cancelTurn(id: string, turnId: string): Promise<void> {
     chatPaths.cancelTurn(id, turnId),
     {
       method: "POST",
+    },
+    false,
+  );
+}
+
+export async function steerTurn(
+  id: string,
+  req: SteerTurnRequest,
+): Promise<void> {
+  await requestJson<void>(
+    chatPaths.steer(id),
+    {
+      method: "POST",
+      body: JSON.stringify(req),
     },
     false,
   );

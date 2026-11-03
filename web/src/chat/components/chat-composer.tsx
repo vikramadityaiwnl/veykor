@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpIcon,
   MicrophoneIcon,
@@ -6,6 +6,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { StopIcon } from "@heroicons/react/24/solid";
+import { usePreferencesStore } from "../../workspace/preferences-store.ts";
 import ComposerPanel from "./composer-panel.tsx";
 import EffortPicker from "./effort-picker.tsx";
 import ModelPicker from "./model-picker.tsx";
@@ -18,17 +19,31 @@ function ChatComposer() {
   const streaming = useChatStore((s) => s.streaming);
   const pendingApprovals = useChatStore((s) => s.pendingApprovals);
   const todos = useChatStore((s) => s.todos);
+  const queuedMessages = useChatStore((s) => s.queuedMessages);
+  const composerRestore = useChatStore((s) => s.composerRestore);
   const composerImages = useChatStore((s) => s.composerImages);
   const addImages = useChatStore((s) => s.addImages);
   const removeImage = useChatStore((s) => s.removeImage);
+  const interruptionBehavior = usePreferencesStore(
+    (s) => s.interruptionBehavior,
+  );
 
   const [draft, setDraft] = useState("");
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
-  const panelOpen = pendingApprovals.length > 0 || todos.length > 0;
+  const panelOpen =
+    pendingApprovals.length > 0 ||
+    todos.length > 0 ||
+    queuedMessages.length > 0;
   const canSend = draft.trim() !== "" || composerImages.length > 0;
+  const showStop = streaming && !canSend;
+  const sendTitle = streaming
+    ? interruptionBehavior === "steer"
+      ? "Steer the running turn"
+      : "Queue message"
+    : "Send";
 
   function autoresize() {
     const textarea = textareaRef.current;
@@ -40,6 +55,21 @@ function ChatComposer() {
     textarea.style.height = "auto";
     textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
   }
+
+  useEffect(() => {
+    if (composerRestore.seq === 0) {
+      return;
+    }
+
+    setDraft(composerRestore.text);
+
+    const frame = window.requestAnimationFrame(() => {
+      autoresize();
+      textareaRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [composerRestore]);
 
   function handleSend() {
     if (draft.trim() === "" && composerImages.length === 0) {
@@ -53,6 +83,7 @@ function ChatComposer() {
 
     if (textarea !== null) {
       textarea.style.height = "auto";
+      textarea.focus();
     }
   }
 
@@ -159,7 +190,7 @@ function ChatComposer() {
               <MicrophoneIcon className="size-4" />
             </button>
 
-            {streaming ? (
+            {showStop ? (
               <button
                 className="grid place-items-center rounded-full bg-red-600 p-2 text-white transition hover:bg-red-500"
                 onClick={() => cancelTurn()}
@@ -173,7 +204,7 @@ function ChatComposer() {
                 className="grid place-items-center rounded-full bg-zinc-100 p-2 text-zinc-950 transition hover:bg-white disabled:opacity-40 light:hover:bg-zinc-200"
                 disabled={!canSend}
                 onClick={handleSend}
-                title="Send"
+                title={sendTitle}
                 type="button"
               >
                 <ArrowUpIcon className="size-4" />

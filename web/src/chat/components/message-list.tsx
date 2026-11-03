@@ -92,8 +92,9 @@ function summarySize(summary: Array<string>): number {
 
 function MessageList(props: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const stickToBottomRef = useRef(true);
 
-  useEffect(() => {
+  function handleScroll() {
     const container = containerRef.current;
 
     if (container === null) {
@@ -103,9 +104,17 @@ function MessageList(props: Props) {
     const distanceFromBottom =
       container.scrollHeight - container.scrollTop - container.clientHeight;
 
-    if (distanceFromBottom < 120 || props.streaming) {
-      container.scrollTop = container.scrollHeight;
+    stickToBottomRef.current = distanceFromBottom <= 4;
+  }
+
+  useEffect(() => {
+    const container = containerRef.current;
+
+    if (container === null || !stickToBottomRef.current) {
+      return;
     }
+
+    container.scrollTop = container.scrollHeight;
   }, [props.items, props.streaming]);
 
   const imageByItem = allocateImages(props.items, props.imageUrls);
@@ -214,8 +223,12 @@ function MessageList(props: Props) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto" ref={containerRef}>
-      <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6">
+    <div
+      className="flex-1 overflow-y-auto"
+      onScroll={handleScroll}
+      ref={containerRef}
+    >
+      <div className="mx-auto w-full max-w-3xl space-y-6 px-4 pb-24 pt-6">
         {props.items.map((item) => renderItem(item))}
 
         {props.streaming && !liveAnchored && !liveHasThinking

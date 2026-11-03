@@ -108,6 +108,12 @@ export interface StartTurnRequest {
   images?: Array<ChatImageInput>;
 }
 
+export interface SteerTurnRequest {
+  text: string;
+  expectedTurnId: string;
+  images?: Array<ChatImageInput>;
+}
+
 export interface DecideApprovalRequest {
   approvalId: string;
   choiceId: string;

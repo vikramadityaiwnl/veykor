@@ -162,6 +162,7 @@ test("preferences default, update, and survive restart", async () => {
         work: {},
       },
       preferredPermission: "approved",
+      interruptionBehavior: "steer",
     };
 
     const saved = await request(preferencesPaths.preferences, {
@@ -193,6 +194,7 @@ test("preferences default, update, and survive restart", async () => {
           { id: "", title: "dropped" },
         ],
         removedChatIds: ["", "gone"],
+        interruptionBehavior: "evil",
       },
       cookie,
     });
@@ -208,6 +210,7 @@ test("preferences default, update, and survive restart", async () => {
       preferredModels: { chat: null, work: null },
       preferredEfforts: { chat: {}, work: {} },
       preferredPermission: "read-only",
+      interruptionBehavior: "queue",
     });
 
     await stopServer(child);

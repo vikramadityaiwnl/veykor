@@ -2,6 +2,8 @@ import type { ChatPermission } from "../chats/chat-contracts.js";
 
 export type SidebarTab = "chat" | "work";
 
+export type InterruptionBehavior = "queue" | "steer";
+
 export interface SidebarSection {
   id: string;
   title: string;
@@ -28,4 +30,5 @@ export interface UserPreferences {
   preferredModels: Record<SidebarTab, PreferredModel | null>;
   preferredEfforts: Record<SidebarTab, Record<string, string>>;
   preferredPermission: ChatPermission;
+  interruptionBehavior: InterruptionBehavior;
 }

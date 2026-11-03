@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { defaultPreferences, recentSectionId } from "@veykor/shared";
 import type {
   ChatPermission,
+  InterruptionBehavior,
   PreferredModel,
   SidebarSection,
   SidebarTab,
@@ -32,6 +33,7 @@ interface PreferencesState extends UserPreferences {
     effort: string,
   ) => void;
   setPreferredPermission: (permission: ChatPermission) => void;
+  setInterruptionBehavior: (behavior: InterruptionBehavior) => void;
 }
 
 const initialSections = defaultPreferences().sections.map((section) => ({
@@ -54,6 +56,7 @@ function persist(): void {
     preferredModels: state.preferredModels,
     preferredEfforts: state.preferredEfforts,
     preferredPermission: state.preferredPermission,
+    interruptionBehavior: state.interruptionBehavior,
   };
 
   saveQueue = saveQueue.then(async () => {
@@ -289,6 +292,11 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
 
   setPreferredPermission: (permission) => {
     set({ preferredPermission: permission, error: "" });
+    persist();
+  },
+
+  setInterruptionBehavior: (behavior) => {
+    set({ interruptionBehavior: behavior, error: "" });
     persist();
   },
 }));

@@ -402,6 +402,46 @@ export async function cancelMuseTurn(
   });
 }
 
+export async function steerMuseTurn(input: {
+  museSessionId: string;
+  expectedTurnId: string;
+  text: string;
+  images: Array<{ mediaType: string; base64Data: string }>;
+  reasoningEffort?: string;
+}): Promise<void> {
+  const connection = await museHost.connection();
+
+  const parts: Array<Record<string, unknown>> = [];
+
+  if (input.text.trim() !== "") {
+    parts.push({ type: "text", text: input.text });
+  }
+
+  for (const image of input.images) {
+    parts.push({
+      type: "image",
+      mediaType: image.mediaType,
+      base64Data: image.base64Data,
+    });
+  }
+
+  if (parts.length === 0) {
+    throw new Error("Write a message or attach an image first.");
+  }
+
+  const params: Record<string, unknown> = {
+    sessionId: input.museSessionId,
+    expectedTurnId: input.expectedTurnId,
+    input: parts,
+  };
+
+  if (input.reasoningEffort !== undefined && input.reasoningEffort !== "") {
+    params["reasoningEffort"] = input.reasoningEffort;
+  }
+
+  await connection.command("turn/steer", params);
+}
+
 export async function runMuseTurn(input: {
   museSessionId: string;
   text: string;

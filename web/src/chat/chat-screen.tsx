@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { usePreferencesStore } from "../workspace/preferences-store.ts";
 import { useChatStore } from "./chat-store.ts";
 import ChatComposer from "./components/chat-composer.tsx";
+import ChatNotFound from "./components/chat-not-found.tsx";
 import GreetingHeader from "./components/greeting-header.tsx";
 import MessageList from "./components/message-list.tsx";
 import SessionLoader from "./components/session-loader.tsx";
@@ -11,6 +12,7 @@ function ChatScreen() {
   const draftSeq = useChatStore((state) => state.draftSeq);
   const items = useChatStore((state) => state.items);
   const historyLoading = useChatStore((state) => state.historyLoading);
+  const chatNotFound = useChatStore((state) => state.chatNotFound);
   const streaming = useChatStore((state) => state.streaming);
   const streamingTurnId = useChatStore((state) => state.streamingTurnId);
   const sentAttachments = useChatStore((state) => state.sentAttachments);
@@ -37,6 +39,14 @@ function ChatScreen() {
   const imageUrls =
     activeChatId === null ? [] : (sentAttachments[activeChatId] ?? []);
 
+  if (chatNotFound && activeChatId !== null) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <ChatNotFound />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {!activeChatId ? (
@@ -58,7 +68,7 @@ function ChatScreen() {
         />
       )}
 
-      {error !== "" && (
+      {error !== "" && !historyLoading && (
         <div
           className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 pb-2"
           role="alert"

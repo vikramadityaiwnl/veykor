@@ -6,6 +6,7 @@ import {
   ChevronUpIcon,
 } from "@heroicons/react/24/outline";
 import ApprovalCard from "./approval-card.tsx";
+import QueuedMessages from "./queued-messages.tsx";
 import { useChatStore } from "../chat-store.ts";
 
 function todoTitle(todo: unknown): string {
@@ -52,6 +53,7 @@ function todoActive(todo: unknown): boolean {
 function ComposerPanel() {
   const pendingApprovals = useChatStore((s) => s.pendingApprovals);
   const todos = useChatStore((s) => s.todos);
+  const queuedMessages = useChatStore((s) => s.queuedMessages);
 
   const [collapsed, setCollapsed] = useState(false);
   const [index, setIndex] = useState(0);
@@ -64,7 +66,11 @@ function ComposerPanel() {
     setIndex(0);
   }
 
-  if (pendingApprovals.length === 0 && todos.length === 0) {
+  if (
+    pendingApprovals.length === 0 &&
+    todos.length === 0 &&
+    queuedMessages.length === 0
+  ) {
     return null;
   }
 
@@ -83,6 +89,14 @@ function ComposerPanel() {
 
             <span className="rounded-full bg-zinc-700 px-2 py-0.5 text-[11px] text-zinc-100">
               {pendingApprovals.length}
+            </span>
+          </>
+        ) : queuedMessages.length > 0 ? (
+          <>
+            <p className="text-sm font-medium text-zinc-200">Queued messages</p>
+
+            <span className="rounded-full bg-zinc-700 px-2 py-0.5 text-[11px] text-zinc-100">
+              {queuedMessages.length}
             </span>
           </>
         ) : (
@@ -136,7 +150,9 @@ function ComposerPanel() {
       {collapsed ? null : (
         <>
           {current !== null && current !== undefined ? (
-            <ApprovalCard approval={current} />
+            <div className="border-t border-zinc-800 pt-3">
+              <ApprovalCard approval={current} />
+            </div>
           ) : null}
 
           {todos.length > 0 ? (
@@ -167,6 +183,8 @@ function ComposerPanel() {
               </ul>
             </div>
           ) : null}
+
+          <QueuedMessages />
         </>
       )}
     </div>

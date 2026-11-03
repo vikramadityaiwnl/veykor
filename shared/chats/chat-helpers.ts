@@ -6,6 +6,7 @@ export const chatPaths = {
   turns: (id: string) => `/api/chats/${id}/turns`,
   cancelTurn: (id: string, turnId: string) =>
     `/api/chats/${id}/turns/${turnId}/cancel`,
+  steer: (id: string) => `/api/chats/${id}/steer`,
   approvals: (id: string) => `/api/chats/${id}/approvals`,
   settings: (id: string) => `/api/chats/${id}/settings`,
   models: "/api/models",

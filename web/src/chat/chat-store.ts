@@ -11,6 +11,7 @@ import type {
 } from "@veykor/shared";
 import { usePreferencesStore } from "../workspace/preferences-store.ts";
 import {
+  HttpError,
   cancelTurn as cancelTurnRequest,
   createChat,
   decideApproval as decideApprovalRequest,
@@ -20,6 +21,7 @@ import {
   fetchModels,
   moveChat as moveChatRequest,
   renameChat as renameChatRequest,
+  steerTurn as steerTurnRequest,
   streamTurn,
   updateSettings,
 } from "./chat-client.ts";
@@ -46,6 +48,17 @@ export interface SentAttachment {
   url: string;
 }
 
+export interface QueuedMessage {
+  id: string;
+  text: string;
+  images: Array<TurnImageInput>;
+}
+
+export interface ComposerRestore {
+  seq: number;
+  text: string;
+}
+
 interface ChatState {
   chats: Array<ChatSummary>;
   chatsLoaded: boolean;
@@ -55,6 +68,7 @@ interface ChatState {
   pendingSectionId: string;
   items: Array<ChatHistoryItem>;
   historyLoading: boolean;
+  chatNotFound: boolean;
   streaming: boolean;
   streamingTurnId: string;
   error: string;
@@ -69,6 +83,8 @@ interface ChatState {
   draftSeq: number;
   composerImages: Array<ComposerImage>;
   sentAttachments: Record<string, Array<SentAttachment>>;
+  queuedMessages: Array<QueuedMessage>;
+  composerRestore: ComposerRestore;
   catalog: ChatModelCatalog | null;
   catalogLoading: boolean;
   loadChats: () => Promise<void>;
@@ -77,6 +93,9 @@ interface ChatState {
   openChat: (id: string) => Promise<void>;
   hydrateAttachments: (chatId: string) => Promise<void>;
   send: (text: string) => Promise<void>;
+  steerQueuedMessage: (id: string) => Promise<void>;
+  editQueuedMessage: (id: string) => void;
+  removeQueuedMessage: (id: string) => void;
   cancelTurn: () => Promise<void>;
   decideApproval: (
     approvalId: string,
@@ -122,8 +141,16 @@ const maxComposerImages = 4;
 
 const maxImageBytes = 6 * 1024 * 1024;
 
+const maxOpenAttempts = 3;
+
 function errorMessage(cause: unknown, fallback: string): string {
   return cause instanceof Error ? cause.message : fallback;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 function upsertItem(
@@ -198,6 +225,73 @@ function revokeImages(images: Array<ComposerImage>): void {
   }
 }
 
+function rehydrateQueuedImages(
+  images: Array<TurnImageInput>,
+): Array<ComposerImage> {
+  return images.map((image) => ({
+    id: crypto.randomUUID(),
+    name: "queued-image",
+    mediaType: image.mediaType,
+    base64Data: image.base64Data,
+    previewUrl: URL.createObjectURL(
+      blobFromBase64(image.base64Data, image.mediaType),
+    ),
+  }));
+}
+
+function mergeComposerImages(
+  current: Array<ComposerImage>,
+  incoming: Array<ComposerImage>,
+): Array<ComposerImage> {
+  const merged = [...incoming, ...current];
+  const kept = merged.slice(0, maxComposerImages);
+
+  for (const extra of merged.slice(maxComposerImages)) {
+    URL.revokeObjectURL(extra.previewUrl);
+  }
+
+  return kept;
+}
+
+async function persistSentImages(
+  chatId: string,
+  images: Array<ComposerImage>,
+): Promise<void> {
+  if (images.length === 0) {
+    return;
+  }
+
+  const entries: Array<SentAttachment> = images.map((image) => ({
+    id: image.id,
+    url: image.previewUrl,
+  }));
+
+  try {
+    for (const image of images) {
+      await saveAttachment({
+        blob: blobFromBase64(image.base64Data, image.mediaType),
+        id: image.id,
+        mediaType: image.mediaType,
+        name: image.name,
+      });
+    }
+
+    await appendChatAttachmentIds(
+      chatId,
+      images.map((image) => image.id),
+    );
+  } catch {
+    // Best effort; the turn still goes ahead with live previews.
+  }
+
+  useChatStore.setState((stored) => ({
+    sentAttachments: {
+      ...stored.sentAttachments,
+      [chatId]: [...(stored.sentAttachments[chatId] ?? []), ...entries],
+    },
+  }));
+}
+
 export const useChatStore = create<ChatState>()((set, get) => ({
   chats: [],
   chatsLoaded: false,
@@ -206,6 +300,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   pendingSectionId: "recent",
   items: [],
   historyLoading: false,
+  chatNotFound: false,
   streaming: false,
   streamingTurnId: "",
   error: "",
@@ -220,6 +315,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   draftSeq: 0,
   composerImages: [],
   sentAttachments: {},
+  queuedMessages: [],
+  composerRestore: { seq: 0, text: "" },
   catalog: null,
   catalogLoading: false,
 
@@ -258,12 +355,15 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       draftSeq: state.draftSeq + 1,
       items: [],
       historyLoading: false,
+      chatNotFound: false,
       streaming: false,
       streamingTurnId: "",
       error: "",
       pendingApprovals: [],
       todos: [],
       composerImages: [],
+      queuedMessages: [],
+      composerRestore: { seq: 0, text: "" },
     });
 
     get().syncDraftPreferences();
@@ -303,46 +403,76 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       streaming: false,
       streamingTurnId: "",
       historyLoading: true,
+      chatNotFound: false,
       items: [],
       pendingApprovals: [],
       todos: [],
       error: "",
+      queuedMessages: [],
+      composerRestore: { seq: 0, text: "" },
     });
 
     try {
-      const detail = await fetchChat(id);
+      for (let attempt = 1; ; attempt += 1) {
+        if (get().activeChatId !== id) {
+          return;
+        }
 
-      if (get().activeChatId !== id) {
-        return;
-      }
+        try {
+          const detail = await fetchChat(id);
 
-      const patch: Partial<ChatState> = {
-        items: detail.items,
-        turnDurations: detail.turnDurations,
-        pendingApprovals: detail.pendingApprovals,
-        permission: detail.permission,
-        historyLoading: false,
-        error: "",
-      };
+          if (get().activeChatId !== id) {
+            return;
+          }
 
-      if (detail.modelId !== "") {
-        patch.modelId = detail.modelId;
-        patch.providerId = detail.providerId;
-      }
+          const patch: Partial<ChatState> = {
+            items: detail.items,
+            turnDurations: detail.turnDurations,
+            pendingApprovals: detail.pendingApprovals,
+            permission: detail.permission,
+            historyLoading: false,
+            chatNotFound: false,
+            error: "",
+          };
 
-      if (detail.reasoningEffort !== "") {
-        patch.reasoningEffort = detail.reasoningEffort;
-      }
+          if (detail.modelId !== "") {
+            patch.modelId = detail.modelId;
+            patch.providerId = detail.providerId;
+          }
 
-      set(patch);
+          if (detail.reasoningEffort !== "") {
+            patch.reasoningEffort = detail.reasoningEffort;
+          }
 
-      void get().hydrateAttachments(id);
-    } catch (cause) {
-      if (get().activeChatId === id) {
-        set({
-          historyLoading: false,
-          error: errorMessage(cause, "Unable to open chat."),
-        });
+          set(patch);
+
+          void get().hydrateAttachments(id);
+
+          return;
+        } catch (cause) {
+          const confirmedMissing =
+            cause instanceof HttpError && cause.status === 404;
+
+          if (
+            confirmedMissing ||
+            attempt >= maxOpenAttempts ||
+            get().activeChatId !== id
+          ) {
+            if (get().activeChatId === id) {
+              set({
+                historyLoading: false,
+                chatNotFound: confirmedMissing,
+                error: confirmedMissing
+                  ? ""
+                  : errorMessage(cause, "Unable to open chat."),
+              });
+            }
+
+            return;
+          }
+
+          await delay(1000 * attempt);
+        }
       }
     } finally {
       if (openingChatId === id) {
@@ -402,6 +532,66 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     const state = get();
 
     if (state.streaming) {
+      const running = get();
+
+      const queuedText = text.trim();
+      const queuedImages = running.composerImages;
+
+      if (queuedText === "" && queuedImages.length === 0) {
+        return;
+      }
+
+      const behavior = usePreferencesStore.getState().interruptionBehavior;
+
+      if (
+        behavior === "steer" &&
+        running.activeChatId !== null &&
+        running.streamingTurnId !== ""
+      ) {
+        const steerChatId = running.activeChatId;
+        const expectedTurnId = running.streamingTurnId;
+
+        const payload: Array<TurnImageInput> = queuedImages.map((image) => ({
+          mediaType: image.mediaType,
+          base64Data: image.base64Data,
+        }));
+
+        set({ composerImages: [] });
+
+        try {
+          await persistSentImages(steerChatId, queuedImages);
+
+          await steerTurnRequest(steerChatId, {
+            text: queuedText,
+            expectedTurnId,
+            images: payload,
+          });
+
+          set({ error: "" });
+        } catch (cause) {
+          set({ error: errorMessage(cause, "Unable to steer the turn.") });
+        }
+
+        return;
+      }
+
+      const entry: QueuedMessage = {
+        id: crypto.randomUUID(),
+        text: queuedText,
+        images: queuedImages.map((image) => ({
+          mediaType: image.mediaType,
+          base64Data: image.base64Data,
+        })),
+      };
+
+      revokeImages(queuedImages);
+
+      set((current) => ({
+        composerImages: [],
+        queuedMessages: [...current.queuedMessages, entry],
+        error: "",
+      }));
+
       return;
     }
 
@@ -424,6 +614,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }));
 
     let chatId = get().activeChatId;
+    let failed = false;
 
     try {
       if (chatId === null) {
@@ -455,42 +646,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
       settings.permission = current.permission;
 
-      if (images.length > 0) {
-        const entries: Array<SentAttachment> = images.map((image) => ({
-          id: image.id,
-          url: image.previewUrl,
-        }));
-
-        try {
-          for (const image of images) {
-            await saveAttachment({
-              blob: blobFromBase64(image.base64Data, image.mediaType),
-              id: image.id,
-              mediaType: image.mediaType,
-              name: image.name,
-            });
-          }
-
-          await appendChatAttachmentIds(
-            chatId,
-            images.map((image) => image.id),
-          );
-        } catch {
-          // Best effort; the turn still goes ahead with live previews.
-        }
-
-        const attachmentChatId = chatId;
-
-        set((stored) => ({
-          sentAttachments: {
-            ...stored.sentAttachments,
-            [attachmentChatId]: [
-              ...(stored.sentAttachments[attachmentChatId] ?? []),
-              ...entries,
-            ],
-          },
-        }));
-      }
+      await persistSentImages(chatId, images);
 
       if (
         settings.modelId !== undefined ||
@@ -642,6 +798,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         set({ streaming: false, streamingTurnId: "" });
       }
     } catch (cause) {
+      failed = true;
+
       if (get().activeChatId === chatId) {
         set({
           streaming: false,
@@ -650,6 +808,98 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         });
       }
     }
+
+    if (!failed) {
+      const next = get().queuedMessages[0];
+
+      if (
+        next !== undefined &&
+        get().activeChatId === chatId &&
+        !get().streaming
+      ) {
+        set((current) => ({
+          queuedMessages: current.queuedMessages.filter(
+            (entry) => entry.id !== next.id,
+          ),
+          composerImages: mergeComposerImages(
+            current.composerImages,
+            rehydrateQueuedImages(next.images),
+          ),
+        }));
+
+        await get().send(next.text);
+      }
+    }
+  },
+
+  steerQueuedMessage: async (id) => {
+    const state = get();
+    const entry = state.queuedMessages.find((item) => item.id === id);
+
+    if (entry === undefined || state.activeChatId === null) {
+      return;
+    }
+
+    if (!state.streaming || state.streamingTurnId === "") {
+      set((current) => ({
+        queuedMessages: current.queuedMessages.filter((item) => item.id !== id),
+        composerImages: mergeComposerImages(
+          current.composerImages,
+          rehydrateQueuedImages(entry.images),
+        ),
+      }));
+
+      await get().send(entry.text);
+
+      return;
+    }
+
+    const steerChatId = state.activeChatId;
+    const expectedTurnId = state.streamingTurnId;
+
+    try {
+      await persistSentImages(steerChatId, rehydrateQueuedImages(entry.images));
+
+      await steerTurnRequest(steerChatId, {
+        text: entry.text,
+        expectedTurnId,
+        images: entry.images,
+      });
+
+      set((current) => ({
+        queuedMessages: current.queuedMessages.filter((item) => item.id !== id),
+        error: "",
+      }));
+    } catch (cause) {
+      set({ error: errorMessage(cause, "Unable to steer the turn.") });
+    }
+  },
+
+  editQueuedMessage: (id) => {
+    const state = get();
+    const entry = state.queuedMessages.find((item) => item.id === id);
+
+    if (entry === undefined) {
+      return;
+    }
+
+    set((current) => ({
+      queuedMessages: current.queuedMessages.filter((item) => item.id !== id),
+      composerRestore: {
+        seq: current.composerRestore.seq + 1,
+        text: entry.text,
+      },
+      composerImages: mergeComposerImages(
+        current.composerImages,
+        rehydrateQueuedImages(entry.images),
+      ),
+    }));
+  },
+
+  removeQueuedMessage: (id) => {
+    set((current) => ({
+      queuedMessages: current.queuedMessages.filter((item) => item.id !== id),
+    }));
   },
 
   cancelTurn: async () => {
@@ -926,11 +1176,13 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           pendingRoutePush: null,
           items: [],
           historyLoading: false,
+          chatNotFound: false,
           streaming: false,
           streamingTurnId: "",
           pendingApprovals: [],
           todos: [],
           composerImages: [],
+          queuedMessages: [],
           error: "",
         });
       } else {

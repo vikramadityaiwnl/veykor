@@ -12,6 +12,7 @@ import type {
   CreateChatRequest,
   DecideApprovalRequest,
   StartTurnRequest,
+  SteerTurnRequest,
   UpdateChatRequest,
   UpdateChatSettingsRequest,
 } from "@veykor/shared";
@@ -31,6 +32,7 @@ import {
   readMuseChat,
   runMuseTurn,
   startMuseSession,
+  steerMuseTurn,
 } from "../muse/chat-service.js";
 
 type ChatRow = typeof chats.$inferSelect;
@@ -113,6 +115,51 @@ function titleFromText(text: string): string {
   }
 
   return firstLine.slice(0, 60);
+}
+
+function readTurnImages(
+  rawImages: Array<unknown>,
+):
+  | { images: Array<{ mediaType: string; base64Data: string }>; error: "" }
+  | { images: []; error: string } {
+  if (rawImages.length > maxImages) {
+    return { images: [], error: "Attach at most four images." };
+  }
+
+  const images: Array<{ mediaType: string; base64Data: string }> = [];
+
+  for (const raw of rawImages) {
+    if (typeof raw !== "object" || raw === null) {
+      return { images: [], error: "That attachment is invalid." };
+    }
+
+    const entry = raw as { mediaType?: unknown; base64Data?: unknown };
+
+    if (
+      typeof entry.mediaType !== "string" ||
+      !imageTypes.has(entry.mediaType) ||
+      typeof entry.base64Data !== "string" ||
+      entry.base64Data === ""
+    ) {
+      return { images: [], error: "That attachment is invalid." };
+    }
+
+    let size = 0;
+
+    try {
+      size = Buffer.from(entry.base64Data, "base64").length;
+    } catch {
+      return { images: [], error: "That attachment is invalid." };
+    }
+
+    if (size === 0 || size > maxImageBytes) {
+      return { images: [], error: "Each image must be under 6 MB." };
+    }
+
+    images.push({ mediaType: entry.mediaType, base64Data: entry.base64Data });
+  }
+
+  return { images, error: "" };
 }
 
 function museFailure(c: Context, cause: unknown) {
@@ -276,43 +323,13 @@ chatRoute.post("/:id/turns", requireAuth, async (c) => {
   }
 
   const rawImages = Array.isArray(body.images) ? body.images : [];
+  const parsedImages = readTurnImages(rawImages);
 
-  if (rawImages.length > maxImages) {
-    return c.json({ error: "Attach at most four images." }, 400);
+  if (parsedImages.error !== "") {
+    return c.json({ error: parsedImages.error }, 400);
   }
 
-  const images: Array<{ mediaType: string; base64Data: string }> = [];
-
-  for (const raw of rawImages) {
-    if (typeof raw !== "object" || raw === null) {
-      return c.json({ error: "That attachment is invalid." }, 400);
-    }
-
-    const entry = raw as { mediaType?: unknown; base64Data?: unknown };
-
-    if (
-      typeof entry.mediaType !== "string" ||
-      !imageTypes.has(entry.mediaType) ||
-      typeof entry.base64Data !== "string" ||
-      entry.base64Data === ""
-    ) {
-      return c.json({ error: "That attachment is invalid." }, 400);
-    }
-
-    let size = 0;
-
-    try {
-      size = Buffer.from(entry.base64Data, "base64").length;
-    } catch {
-      return c.json({ error: "That attachment is invalid." }, 400);
-    }
-
-    if (size === 0 || size > maxImageBytes) {
-      return c.json({ error: "Each image must be under 6 MB." }, 400);
-    }
-
-    images.push({ mediaType: entry.mediaType, base64Data: entry.base64Data });
-  }
+  const images = parsedImages.images;
 
   if (text.trim() === "" && images.length === 0) {
     return c.json({ error: "Write a message or attach an image first." }, 400);
@@ -369,6 +386,52 @@ chatRoute.post("/:id/turns/:turnId/cancel", requireAuth, async (c) => {
     await cancelMuseTurn(toSummary(row).museSessionId, c.req.param("turnId"));
 
     return c.json({ cancelled: true });
+  } catch (cause) {
+    return museFailure(c, cause);
+  }
+});
+
+chatRoute.post("/:id/steer", requireAuth, async (c) => {
+  const body = (await readJson(c)) as Partial<SteerTurnRequest>;
+
+  const text = typeof body.text === "string" ? body.text : "";
+
+  if (text.length > maxTextLength) {
+    return c.json({ error: "That message is too long." }, 400);
+  }
+
+  if (typeof body.expectedTurnId !== "string" || body.expectedTurnId === "") {
+    return c.json({ error: "That turn is no longer running." }, 400);
+  }
+
+  const rawImages = Array.isArray(body.images) ? body.images : [];
+  const parsedImages = readTurnImages(rawImages);
+
+  if (parsedImages.error !== "") {
+    return c.json({ error: parsedImages.error }, 400);
+  }
+
+  const images = parsedImages.images;
+
+  if (text.trim() === "" && images.length === 0) {
+    return c.json({ error: "Write a message or attach an image first." }, 400);
+  }
+
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row) {
+    return c.json({ error: "Chat not found" }, 404);
+  }
+
+  try {
+    await steerMuseTurn({
+      museSessionId: toSummary(row).museSessionId,
+      expectedTurnId: body.expectedTurnId,
+      text,
+      images,
+    });
+
+    return c.json({ steered: true });
   } catch (cause) {
     return museFailure(c, cause);
   }
