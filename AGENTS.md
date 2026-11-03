@@ -2,41 +2,6 @@
 
 Project-specific guidance for AI coding agents.
 
-<!-- ASTRYX:START -->
-
-Astryx v0.7.4 · 173 components
-CLI: for frontend work, run every command as `npm run astryx --prefix web -- <cmd>` (shown below as `astryx ...`).
-
-SETUP (once, in app entry e.g. main.tsx) — without these, components render unstyled:
-import "@astryxdesign/core/reset.css";
-import "@astryxdesign/core/astryx.css";
-
-WORKFLOW — start every page from a template, never from scratch:
-
-1. `astryx build "<idea>"` — names the template to scaffold from and the parts it lacks.
-2. `astryx template <name> <path>` — scaffold it; keep its frame, gap and padding; replace the content.
-3. `astryx template <Block>` for parts it lacks; `astryx component <Name>` to read props before using one.
-   Changing an existing page? Keep it: skip step 2 and add blocks/components inside its sections.
-
-RULES:
-
-- No <div> — components handle all layout and spacing.
-- Read `astryx docs layout` before changing a template's frame.
-- Dense data = rows (Table, List/Item), not Card-wrapped lists. Badge = counts only.
-- Style with component props first, then tokens (var(--color-_|--spacing-_|--radius-\*)). No raw hex/px. Tailwind is compiled through the Vite plugin; use inline className utilities for custom styling. Do not use xstyle directly. Some templates use StyleX and need a compiler plugin; see `astryx docs styling-overview`.
-- Palettes and custom colors go through the theme, never :root overrides. Run `astryx theme add <slug>` to import; `theme eject <slug>` only forks source. See `astryx docs theme`.
-- SELF-CHECK: re-read the file; replace any raw <div>/<span>, @apply, or hardcoded #hex/px with the component or a token.
-
-`astryx help` lists every command. Key ones beyond the workflow:
-search "<query>" find any component / hook / doc / template
-discover <words> integrations you could add
-docs <topic> getting-started, principles, tokens, theme … (`astryx docs` lists all)
-docs cli commands and API reference
-docs authoring build an integration package, and every field it holds
-upgrade --from <old version> --apply run after a dependency bump
-
-<!-- ASTRYX:END -->
-
 ## Project conventions
 
 ### Naming
@@ -60,8 +25,6 @@ upgrade --from <old version> --apply run after a dependency bump
 - Give a component its own `Props` interface and accept one explicitly typed `props` object. If a module holds multiple components, use a distinct `<ComponentName>Props` interface for each. Read values as `props.x` and `props.y`; do not destructure the props parameter.
 
 ```tsx
-import { Text } from "@astryxdesign/core/Text";
-
 interface Props {
   x: string;
   y: number;
@@ -69,9 +32,9 @@ interface Props {
 
 function App(props: Props) {
   return (
-    <Text>
+    <p>
       {props.x} {props.y}
-    </Text>
+    </p>
   );
 }
 ```
