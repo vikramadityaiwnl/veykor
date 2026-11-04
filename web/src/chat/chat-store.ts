@@ -116,7 +116,7 @@ interface ChatState {
   memoryReceipts: Array<MemoryReceipt>;
   dismissMemoryReceipt: (memoryId: string) => void;
   livePreview: LivePreview | null;
-  liveScreenshots: Record<string, LivePreview>;
+  livePreviews: Record<string, LivePreview>;
   dismissLivePreview: () => void;
   setLivePreviewActive: (active: boolean) => void;
   loadChats: () => Promise<void>;
@@ -517,7 +517,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   catalogLoading: false,
   memoryReceipts: [],
   livePreview: null,
-  liveScreenshots: {},
+  livePreviews: {},
 
   dismissLivePreview: () => {
     set({ livePreview: null });
@@ -637,7 +637,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       queuePaused: false,
       composerRestore: { seq: 0, text: "" },
       livePreview: null,
-      liveScreenshots: {},
+      livePreviews: {},
     });
 
     get().syncDraftPreferences();
@@ -780,7 +780,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       queuePaused: false,
       composerRestore: { seq: 0, text: "" },
       livePreview: null,
-      liveScreenshots: {},
+      livePreviews: {},
       finishedChatIds: current.finishedChatIds.filter(
         (finishedId) => finishedId !== id,
       ),
@@ -1321,9 +1321,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             }));
             break;
 
-          case "screenshot":
+          case "preview":
             if (event.base64Data !== "" && event.mediaType !== "") {
-              const screenshot = {
+              const preview = {
                 itemId: event.itemId,
                 mediaType: event.mediaType,
                 base64Data: event.base64Data,
@@ -1332,11 +1332,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
               set((current) => ({
                 livePreview: {
-                  ...screenshot,
+                  ...preview,
                 },
-                liveScreenshots: {
-                  ...current.liveScreenshots,
-                  [event.itemId]: screenshot,
+                livePreviews: {
+                  ...current.livePreviews,
+                  [event.itemId]: preview,
                 },
               }));
             }

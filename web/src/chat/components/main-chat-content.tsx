@@ -24,7 +24,7 @@ function MainChatContent() {
   const draftSeq = useChatStore((state) => state.draftSeq);
   const items = useChatStore((state) => state.items);
   const generatedImages = useChatStore((state) => state.generatedImages);
-  const liveScreenshots = useChatStore((state) => state.liveScreenshots);
+  const livePreviews = useChatStore((state) => state.livePreviews);
   const recentQuestions = useChatStore((state) => state.recentQuestions);
   const historyLoading = useChatStore((state) => state.historyLoading);
   const chatNotFound = useChatStore((state) => state.chatNotFound);
@@ -96,7 +96,7 @@ function MainChatContent() {
           generatedImages={generatedImages}
           imageUrls={imageUrls}
           items={items}
-          liveScreenshots={liveScreenshots}
+          livePreviews={livePreviews}
           questions={recentQuestions}
           streaming={streaming}
           streamingTurnId={streamingTurnId}

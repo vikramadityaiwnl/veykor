@@ -57,10 +57,10 @@ function MemberSession(props: Props) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [pending, setPending] = useState(false);
   const [sentImages, setSentImages] = useState<SentAttachment[]>([]);
-  const [liveScreenshots, setLiveScreenshots] = useState<{
+  const [livePreviews, setLivePreviews] = useState<{
     memberId: string;
-    screenshots: Record<string, LivePreview>;
-  }>({ memberId: props.member.id, screenshots: {} });
+    previews: Record<string, LivePreview>;
+  }>({ memberId: props.member.id, previews: {} });
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
   const liveRef = useRef(true);
@@ -356,21 +356,21 @@ function MemberSession(props: Props) {
                     }
                   : current,
               );
-            } else if (event.type === "screenshot") {
-              const screenshot = {
+            } else if (event.type === "preview") {
+              const preview = {
                 itemId: event.itemId,
                 mediaType: event.mediaType,
                 base64Data: event.base64Data,
                 active: false,
               };
 
-              setLiveScreenshots((current) => ({
+              setLivePreviews((current) => ({
                 memberId: props.member.id,
-                screenshots: {
+                previews: {
                   ...(current.memberId === props.member.id
-                    ? current.screenshots
+                    ? current.previews
                     : {}),
-                  [event.itemId]: screenshot,
+                  [event.itemId]: preview,
                 },
               }));
             }
@@ -543,9 +543,9 @@ function MemberSession(props: Props) {
           generatedImages={detail.generatedImages}
           imageUrls={sentImages}
           items={detail.items}
-          liveScreenshots={
-            liveScreenshots.memberId === props.member.id
-              ? liveScreenshots.screenshots
+          livePreviews={
+            livePreviews.memberId === props.member.id
+              ? livePreviews.previews
               : {}
           }
           questions={detail.recentQuestions}

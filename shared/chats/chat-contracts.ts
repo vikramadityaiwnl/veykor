@@ -160,7 +160,7 @@ export type ChatTurnEvent =
   | { type: "error"; message: string }
   | { type: "memory-saved"; receipt: MemoryReceipt }
   | {
-      type: "screenshot";
+      type: "preview";
       itemId: string;
       mediaType: string;
       base64Data: string;

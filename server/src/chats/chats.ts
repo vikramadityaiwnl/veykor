@@ -63,7 +63,7 @@ import {
   listMuseModels,
   listPendingApprovals,
   museErrorMessage,
-  readScreenshotForItem,
+  readPreviewForItem,
   startMuseSession,
   steerMuseTurn,
 } from "../muse/chat-service.js";
@@ -437,7 +437,7 @@ chatRoute.get("/:id", requireAuth, async (c) => {
   }
 });
 
-chatRoute.get("/:id/screenshots/:itemId", requireAuth, async (c) => {
+chatRoute.get("/:id/previews/:itemId", requireAuth, async (c) => {
   const row = readChat(c.get("user").id, c.req.param("id"));
 
   if (!row) {
@@ -449,21 +449,21 @@ chatRoute.get("/:id/screenshots/:itemId", requireAuth, async (c) => {
     const item = detail.items.find(
       (candidate) => candidate.itemId === c.req.param("itemId"),
     );
-    const screenshot = item
-      ? await readScreenshotForItem(
+    const preview = item
+      ? await readPreviewForItem(
           item,
           join(workspaceFor(row.userId), ".veykor", "previews"),
         )
       : null;
 
-    if (screenshot === null) {
-      return c.json({ error: "Screenshot not found" }, 404);
+    if (preview === null) {
+      return c.json({ error: "Preview not found" }, 404);
     }
 
-    return new Response(Buffer.from(screenshot.base64Data, "base64"), {
+    return new Response(Buffer.from(preview.base64Data, "base64"), {
       headers: {
         "Cache-Control": "private, max-age=3600",
-        "Content-Type": screenshot.mediaType,
+        "Content-Type": preview.mediaType,
         "X-Content-Type-Options": "nosniff",
       },
     });

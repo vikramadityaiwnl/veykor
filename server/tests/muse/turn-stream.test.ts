@@ -9,7 +9,7 @@ import type { MuseNotification } from "../../src/muse/muse-host.ts";
 
 const folder = mkdtempSync(join(tmpdir(), "veykor-stream-test-"));
 process.env["DATABASE_URL"] = join(folder, "test.db");
-const { runMuseTurn, toHistoryItem } =
+const { readPreviewForItem, runMuseTurn, toHistoryItem } =
   await import("../../src/muse/chat-service.ts");
 
 test("turn projection hides raw user context, ignores old turns and uses durable measured timing", async () => {
@@ -76,7 +76,7 @@ test("turn projection hides raw user context, ignores old turns and uses durable
   try {
     await runMuseTurn({
       museSessionId: "test",
-      screenshotRoot: folder,
+      previewRoot: folder,
       text: raw,
       displayText: "hello",
       images: [],
@@ -138,7 +138,7 @@ test("a delayed start acknowledgement cannot restart a turn after its terminal e
   try {
     await runMuseTurn({
       museSessionId: "late-test",
-      screenshotRoot: folder,
+      previewRoot: folder,
       text: "hello",
       images: [],
       onEvent: (event) => {
@@ -209,7 +209,7 @@ test("durable terminal history releases a turn when its live completion was miss
   try {
     const pending = runMuseTurn({
       museSessionId: "recovery",
-      screenshotRoot: folder,
+      previewRoot: folder,
       text: "hello",
       images: [],
       onEvent: (event) => {
@@ -247,7 +247,7 @@ test("durable terminal history releases a turn when its live completion was miss
   }
 });
 
-test("tool screenshots forward as events before the terminal event", async () => {
+test("tool image outputs forward as previews before the terminal event", async () => {
   const connection = museHost.connection;
   const subscribe = museHost.subscribe;
   const events: Array<Record<string, unknown>> = [];
@@ -264,7 +264,7 @@ test("tool screenshots forward as events before the terminal event", async () =>
     kind: "toolCall",
     itemId: "shot",
     turnId: "current",
-    tool: "mcp__browser__take_screenshot",
+    tool: "mcp__camera__capture_frame",
     status: "completed",
     outputRef: {
       id: "ref-shot",
@@ -301,8 +301,27 @@ test("tool screenshots forward as events before the terminal event", async () =>
                   {
                     type: "image",
                     mediaType: "image/webp",
-                    sourceToolName: "mcp__browser__take_screenshot",
+                    sourceToolName: "mcp__camera__capture_frame",
                     path: "output://shot",
+                  },
+                ],
+              },
+            },
+          });
+          notify({
+            method: "item/completed",
+            params: {
+              item: {
+                kind: "toolCall",
+                itemId: "inline-image",
+                turnId: "current",
+                tool: "mcp__vision__capture_frame",
+                status: "completed",
+                modelVisibleContent: [
+                  {
+                    type: "image",
+                    mediaType: "image/png",
+                    base64Data: "iVBORw==",
                   },
                 ],
               },
@@ -315,7 +334,7 @@ test("tool screenshots forward as events before the terminal event", async () =>
                 kind: "toolCall",
                 itemId: "outside-shot",
                 turnId: "current",
-                tool: "mcp__chrome_devtools__take_screenshot",
+                tool: "mcp__agent_device__capture_frame",
                 status: "completed",
                 args: JSON.stringify({ filePath: outsideScreenshotPath }),
               },
@@ -328,7 +347,7 @@ test("tool screenshots forward as events before the terminal event", async () =>
                 kind: "toolCall",
                 itemId: "shot-from-file",
                 turnId: "current",
-                tool: "mcp__chrome_devtools__take_screenshot",
+                tool: "mcp__agent_device__capture_frame",
                 status: "completed",
                 args: JSON.stringify({ filePath: screenshotPath }),
               },
@@ -341,7 +360,7 @@ test("tool screenshots forward as events before the terminal event", async () =>
                 kind: "toolCall",
                 itemId: "shot-from-visible-output",
                 turnId: "current",
-                tool: "mcp__chrome_devtools__take_screenshot",
+                tool: "mcp__device__read_frame",
                 status: "completed",
                 visibleOutput: `Took a screenshot.\nSaved screenshot to ${screenshotPath}.`,
               },
@@ -380,7 +399,7 @@ test("tool screenshots forward as events before the terminal event", async () =>
       request: async (method: string) => {
         if (method === "item/readOutput") {
           return {
-            content: "aGVsbG8=",
+            content: "iVBORw==",
             encoding: "base64",
             mediaType: "image/png",
             byteLen: 5,
@@ -396,7 +415,7 @@ test("tool screenshots forward as events before the terminal event", async () =>
   try {
     await runMuseTurn({
       museSessionId: "screenshot-test",
-      screenshotRoot: previewDirectory,
+      previewRoot: previewDirectory,
       text: "go",
       images: [],
       onEvent: (event) => {
@@ -404,39 +423,60 @@ test("tool screenshots forward as events before the terminal event", async () =>
       },
     });
 
-    const screenshots = events.filter((event) => event.type === "screenshot");
-    assert.equal(screenshots.length, 4);
-    const screenshotsByItemId = new Map(
-      screenshots.map((event) => [(event as { itemId: string }).itemId, event]),
+    const previews = events.filter((event) => event.type === "preview");
+    assert.equal(previews.length, 5);
+    const previewsByItemId = new Map(
+      previews.map((event) => [(event as { itemId: string }).itemId, event]),
     );
-    assert.deepEqual(screenshotsByItemId.get("shot"), {
-      type: "screenshot",
+    assert.deepEqual(previewsByItemId.get("shot"), {
+      type: "preview",
       itemId: "shot",
       mediaType: "image/png",
-      base64Data: "aGVsbG8=",
+      base64Data: "iVBORw==",
     });
-    assert.deepEqual(screenshotsByItemId.get("shot-with-content-metadata"), {
-      type: "screenshot",
+    assert.deepEqual(previewsByItemId.get("shot-with-content-metadata"), {
+      type: "preview",
       itemId: "shot-with-content-metadata",
       mediaType: "image/webp",
-      base64Data: "aGVsbG8=",
+      base64Data: "iVBORw==",
     });
-    assert.deepEqual(screenshotsByItemId.get("shot-from-file"), {
-      type: "screenshot",
+    assert.deepEqual(previewsByItemId.get("inline-image"), {
+      type: "preview",
+      itemId: "inline-image",
+      mediaType: "image/png",
+      base64Data: "iVBORw==",
+    });
+    assert.deepEqual(previewsByItemId.get("shot-from-file"), {
+      type: "preview",
       itemId: "shot-from-file",
       mediaType: "image/png",
       base64Data: "iVBORw==",
     });
-    assert.deepEqual(screenshotsByItemId.get("shot-from-visible-output"), {
-      type: "screenshot",
+    assert.deepEqual(previewsByItemId.get("shot-from-visible-output"), {
+      type: "preview",
       itemId: "shot-from-visible-output",
       mediaType: "image/png",
       base64Data: "iVBORw==",
     });
 
     const order = events.map((event) => String(event.type));
-    assert.ok(order.indexOf("screenshot") !== -1);
-    assert.ok(order.indexOf("screenshot") < order.indexOf("turn-completed"));
+    assert.ok(order.indexOf("preview") !== -1);
+    assert.ok(order.indexOf("preview") < order.indexOf("turn-completed"));
+
+    const savedPreview = await readPreviewForItem(
+      toHistoryItem({
+        kind: "toolCall",
+        itemId: "shot",
+        tool: "mcp__camera__capture_frame",
+        args: "{}",
+      }),
+      previewDirectory,
+    );
+
+    assert.deepEqual(savedPreview, {
+      mediaType: "image/png",
+      base64Data: "iVBORw==",
+    });
   } finally {
     museHost.connection = connection;
     museHost.subscribe = subscribe;

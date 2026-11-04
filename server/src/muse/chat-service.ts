@@ -1,6 +1,7 @@
 import { userMessageText } from "./user-message-text.js";
-import { readFile, realpath } from "node:fs/promises";
-import { isAbsolute, relative } from "node:path";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { isAbsolute, relative, resolve } from "node:path";
 import type { SessionMcpServerConfig } from "@muse-code/sdk/dist/src/msp.js";
 import type {
   ChatApprovalRequest,
@@ -259,7 +260,7 @@ function nativeTodos(value: Record<string, unknown>): NativeTodoSnapshot {
   };
 }
 
-function screenshotRef(
+function previewOutputRef(
   payload: unknown,
   item: ChatHistoryItem,
 ): { refId: string; mediaType: string } | null {
@@ -273,7 +274,10 @@ function screenshotRef(
   const imageContent = list(raw["modelVisibleContent"])
     .map(record)
     .find((content) => content["type"] === "image");
-  const mediaType = text(ref["mediaType"]) || text(imageContent?.["mediaType"]);
+  const mediaType =
+    text(ref["mediaType"]) ||
+    text(imageContent?.["mediaType"]) ||
+    text(imageContent?.["mimeType"]);
   const availability = text(ref["availability"]);
 
   if (refId === "" || !mediaType.startsWith("image/")) {
@@ -287,46 +291,177 @@ function screenshotRef(
   return { refId, mediaType };
 }
 
-function screenshotFilePath(payload: unknown, item: ChatHistoryItem): string {
-  const raw = record(payload);
-  const rawArgs = raw["args"] ?? raw["arguments"];
-  let args: Record<string, unknown> = {};
+function inlinePreview(
+  payload: unknown,
+): { mediaType: string; base64Data: string } | null {
+  const image = list(record(payload)["modelVisibleContent"])
+    .map(record)
+    .find((content) => content["type"] === "image");
 
-  if (typeof rawArgs !== "string") {
-    args = record(rawArgs);
-  } else {
-    try {
-      args = record(JSON.parse(rawArgs));
-    } catch {
-      args = {};
+  if (image === undefined) {
+    return null;
+  }
+
+  let mediaType = text(image["mediaType"]) || text(image["mimeType"]);
+  let base64Data = text(image["base64Data"]) || text(image["data"]);
+
+  if (base64Data.startsWith("data:")) {
+    const match = base64Data.match(/^data:(image\/[\w.+-]+);base64,(.*)$/s);
+
+    if (match === null) {
+      return null;
+    }
+
+    mediaType = mediaType || match[1] || "";
+    base64Data = match[2] || "";
+  }
+
+  return mediaType.startsWith("image/") && base64Data !== ""
+    ? { mediaType, base64Data }
+    : null;
+}
+
+function parseArgs(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return value;
+  }
+}
+
+function addFilePathCandidates(
+  value: unknown,
+  paths: Set<string>,
+  depth = 0,
+): void {
+  if (paths.size >= 32 || depth > 8) {
+    return;
+  }
+
+  if (typeof value === "string") {
+    const direct = value.trim();
+
+    if (direct.startsWith("/") && !direct.includes("\n")) {
+      paths.add(direct);
+    }
+
+    for (const match of value.matchAll(/(["'])(\/[^"']+)\1/g)) {
+      if (match[2]) {
+        paths.add(match[2]);
+      }
+    }
+
+    for (const match of value.matchAll(/(?:^|\s)(\/[^\s"'<>]+)/g)) {
+      const candidate = match[1]?.replace(/[),.;]+$/, "");
+
+      if (candidate) {
+        paths.add(candidate);
+      }
+    }
+
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      addFilePathCandidates(entry, paths, depth + 1);
+    }
+
+    return;
+  }
+
+  if (typeof value === "object" && value !== null) {
+    for (const entry of Object.values(value)) {
+      addFilePathCandidates(entry, paths, depth + 1);
     }
   }
+}
 
-  const filePath =
-    text(args["filePath"]) ||
-    (item.kind === "toolCall" && item.tool.includes("screenshot")
-      ? text(args["path"])
-      : "");
+function previewFilePaths(payload: unknown, item: ChatHistoryItem): string[] {
+  const raw = record(payload);
+  const paths = new Set<string>();
 
-  if (filePath !== "") {
-    return filePath;
-  }
+  addFilePathCandidates(
+    parseArgs(raw["args"] ?? raw["arguments"] ?? item.args),
+    paths,
+  );
+  addFilePathCandidates(item.visibleOutput, paths);
+  addFilePathCandidates(raw["visibleOutput"], paths);
 
-  return (
-    item.visibleOutput.match(
-      /Saved screenshot to\s+(\/[^\n"]+?\.(?:png|jpe?g|webp))\.?(?=\s|$)/i,
-    )?.[1] ?? ""
+  return [...paths].slice(0, 32);
+}
+
+function previewAssetPaths(itemId: string, previewRoot: string): string[] {
+  const key = createHash("sha256").update(itemId).digest("hex");
+
+  return ["png", "jpg", "webp", "gif", "bmp", "avif"].map((extension) =>
+    resolve(previewRoot, "tool-preview-" + key + "." + extension),
   );
 }
 
-async function readScreenshotFile(
+function previewExtension(mediaType: string): string {
+  switch (mediaType) {
+    case "image/png":
+      return "png";
+    case "image/jpeg":
+      return "jpg";
+    case "image/webp":
+      return "webp";
+    case "image/gif":
+      return "gif";
+    case "image/bmp":
+      return "bmp";
+    case "image/avif":
+      return "avif";
+    default:
+      return "";
+  }
+}
+
+async function persistPreviewOutput(
+  itemId: string,
+  mediaType: string,
+  base64Data: string,
+  previewRoot: string,
+): Promise<void> {
+  const extension = previewExtension(mediaType);
+  const bytes = Buffer.from(base64Data, "base64");
+
+  if (
+    extension === "" ||
+    bytes.byteLength === 0 ||
+    bytes.byteLength > 6 * 1024 * 1024
+  ) {
+    return;
+  }
+
+  const key = createHash("sha256").update(itemId).digest("hex");
+
+  try {
+    await mkdir(previewRoot, { recursive: true });
+    await writeFile(
+      resolve(previewRoot, "tool-preview-" + key + "." + extension),
+      bytes,
+    );
+  } catch {
+    return;
+  }
+}
+
+async function readPreviewFile(
   filePath: string,
-  workspaceRoot: string,
+  previewRoot: string,
 ): Promise<{ mediaType: string; base64Data: string } | null> {
   try {
     const [root, resolvedPath] = await Promise.all([
-      realpath(workspaceRoot),
-      realpath(filePath),
+      realpath(previewRoot),
+      realpath(
+        isAbsolute(filePath) ? filePath : resolve(previewRoot, filePath),
+      ),
     ]);
     const relativePath = relative(root, resolvedPath);
 
@@ -360,6 +495,15 @@ async function readScreenshotFile(
       bytes.toString("ascii", 8, 12) === "WEBP"
     ) {
       mediaType = "image/webp";
+    } else if (/^GIF8[79]a$/.test(bytes.toString("ascii", 0, 6))) {
+      mediaType = "image/gif";
+    } else if (bytes.toString("ascii", 0, 2) === "BM") {
+      mediaType = "image/bmp";
+    } else if (
+      bytes.toString("ascii", 4, 8) === "ftyp" &&
+      ["avif", "avis"].includes(bytes.toString("ascii", 8, 12))
+    ) {
+      mediaType = "image/avif";
     }
 
     if (mediaType === "") {
@@ -372,21 +516,28 @@ async function readScreenshotFile(
   }
 }
 
-export async function readScreenshotForItem(
+export async function readPreviewForItem(
   item: ChatHistoryItem,
-  screenshotRoot: string,
+  previewRoot: string,
 ): Promise<{ mediaType: string; base64Data: string } | null> {
-  if (item.kind !== "toolCall" || !item.tool.includes("screenshot")) {
+  if (item.kind !== "toolCall") {
     return null;
   }
 
-  const filePath = screenshotFilePath({ args: item.args }, item);
+  const candidates = [
+    ...previewAssetPaths(item.itemId, previewRoot),
+    ...previewFilePaths({ args: item.args }, item),
+  ];
 
-  if (filePath === "") {
-    return null;
+  for (const filePath of candidates) {
+    const preview = await readPreviewFile(filePath, previewRoot);
+
+    if (preview !== null) {
+      return preview;
+    }
   }
 
-  return readScreenshotFile(filePath, screenshotRoot);
+  return null;
 }
 
 const activeTurns = new Map<string, ActiveTurn>();
@@ -684,7 +835,7 @@ export async function steerMuseTurn(input: {
 
 export async function runMuseTurn(input: {
   museSessionId: string;
-  screenshotRoot: string;
+  previewRoot: string;
   text: string;
   images: Array<{ mediaType: string; base64Data: string }>;
   displayText?: string;
@@ -731,16 +882,20 @@ export async function runMuseTurn(input: {
   const turnItemIds = new Set<string>();
   const pendingMedia = new Set<Promise<void>>();
 
-  async function emitScreenshot(
+  async function emitPreview(
     ref: { refId: string; mediaType: string } | null,
+    direct: { mediaType: string; base64Data: string } | null,
     itemId: string,
-    filePath = "",
+    filePaths: string[],
   ): Promise<void> {
     try {
       let mediaType = "";
       let base64Data = "";
 
-      if (ref !== null) {
+      if (direct !== null) {
+        mediaType = direct.mediaType;
+        base64Data = direct.base64Data;
+      } else if (ref !== null) {
         let offset = 0;
 
         for (;;) {
@@ -778,7 +933,15 @@ export async function runMuseTurn(input: {
 
         mediaType = ref.mediaType;
       } else {
-        const file = await readScreenshotFile(filePath, input.screenshotRoot);
+        let file: { mediaType: string; base64Data: string } | null = null;
+
+        for (const filePath of filePaths) {
+          file = await readPreviewFile(filePath, input.previewRoot);
+
+          if (file !== null) {
+            break;
+          }
+        }
 
         if (file === null) {
           return;
@@ -788,8 +951,14 @@ export async function runMuseTurn(input: {
         base64Data = file.base64Data;
       }
 
+      await persistPreviewOutput(
+        itemId,
+        mediaType,
+        base64Data,
+        input.previewRoot,
+      );
       await input.onEvent({
-        type: "screenshot",
+        type: "preview",
         itemId,
         mediaType,
         base64Data,
@@ -879,21 +1048,25 @@ export async function runMuseTurn(input: {
               }
 
               if (notification.method === "item/completed") {
-                const ref = screenshotRef(payload, item);
-                const filePath =
-                  item.kind === "toolCall" && item.tool.includes("screenshot")
-                    ? screenshotFilePath(payload, item)
-                    : "";
+                if (
+                  item.kind === "toolCall" &&
+                  !isGenerateImageTool(item.tool)
+                ) {
+                  const ref = previewOutputRef(payload, item);
+                  const direct = inlinePreview(payload);
+                  const filePaths = previewFilePaths(payload, item);
 
-                if (ref !== null || filePath !== "") {
-                  const job = emitScreenshot(
-                    ref,
-                    item.itemId,
-                    filePath,
-                  ).finally(() => {
-                    pendingMedia.delete(job);
-                  });
-                  pendingMedia.add(job);
+                  if (ref !== null || direct !== null || filePaths.length > 0) {
+                    const job = emitPreview(
+                      ref,
+                      direct,
+                      item.itemId,
+                      filePaths,
+                    ).finally(() => {
+                      pendingMedia.delete(job);
+                    });
+                    pendingMedia.add(job);
+                  }
                 }
               }
 

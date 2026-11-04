@@ -23,7 +23,7 @@ interface Props {
   generatedImages: Array<GeneratedImageArtifact>;
   imageUrls: Array<SentAttachment>;
   items: Array<ChatHistoryItem>;
-  liveScreenshots: Record<string, LivePreview>;
+  livePreviews: Record<string, LivePreview>;
   questions: Array<QuestionRequest>;
   streaming: boolean;
   streamingTurnId: string;
@@ -324,10 +324,10 @@ function MessageList(props: Props) {
           <ToolCallBlock
             item={item}
             key={item.itemId}
-            screenshot={props.liveScreenshots[item.itemId] ?? null}
-            screenshotSrc={
-              props.chatId !== "" && item.tool.includes("screenshot")
-                ? chatPaths.screenshot(props.chatId, item.itemId)
+            preview={props.livePreviews[item.itemId] ?? null}
+            previewSrc={
+              props.chatId !== ""
+                ? chatPaths.preview(props.chatId, item.itemId)
                 : undefined
             }
           />
@@ -402,10 +402,10 @@ function MessageList(props: Props) {
           <ToolCallBlock
             item={item}
             key={item.itemId}
-            screenshot={props.liveScreenshots[item.itemId] ?? null}
-            screenshotSrc={
-              props.chatId !== "" && item.tool.includes("screenshot")
-                ? chatPaths.screenshot(props.chatId, item.itemId)
+            preview={props.livePreviews[item.itemId] ?? null}
+            previewSrc={
+              props.chatId !== ""
+                ? chatPaths.preview(props.chatId, item.itemId)
                 : undefined
             }
           />
