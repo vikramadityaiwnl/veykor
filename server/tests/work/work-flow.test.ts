@@ -278,7 +278,7 @@ test("host folder selection, project assignments, agent CRUD, and ownership", as
         (await request("/api/agents", { cookie: second.cookie }))
           .body as unknown as Array<{ name: string }>
       ).map((entry) => entry.name),
-      ["Team Lead", "Coder", "Reviewer", "GitHub Manager"],
+      ["Plan & Code", "Reviewer", "GitHub Manager"],
     );
     assert.deepEqual(
       (await request("/api/projects", { cookie: second.cookie })).body,
@@ -328,7 +328,7 @@ test("host folder selection, project assignments, agent CRUD, and ownership", as
           name: string;
         }>
       ).map((entry) => entry.name),
-      ["Team Lead", "Coder", "Reviewer", "GitHub Manager"],
+      ["Plan & Code", "Reviewer", "GitHub Manager"],
     );
 
     await stopServer(child);

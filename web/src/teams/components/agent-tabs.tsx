@@ -1,5 +1,7 @@
 import { useEffect } from "react";
+import type { KeyboardEvent } from "react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
+import { changesTabId, isChangesTab } from "../changes-tab.ts";
 import { useTeamStore } from "../team-store.ts";
 
 function AgentTabs() {
@@ -8,12 +10,38 @@ function AgentTabs() {
   const selectedId = useTeamStore((state) => state.selectedId);
   const select = useTeamStore((state) => state.select);
   const close = useTeamStore((state) => state.close);
-
   useEffect(() => {
     document
       .getElementById(`agent-tab-${selectedId}`)
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [selectedId]);
+
+  function handleKeyDown(id: string, event: KeyboardEvent<HTMLButtonElement>) {
+    if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) {
+      return;
+    }
+
+    event.preventDefault();
+
+    let index = tabs.indexOf(id);
+
+    if (event.key === "Home") {
+      index = 0;
+    } else if (event.key === "End") {
+      index = tabs.length - 1;
+    } else {
+      index =
+        (index + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) %
+        tabs.length;
+    }
+
+    const next = tabs[index];
+
+    if (next !== undefined) {
+      select(next);
+      document.getElementById(`agent-tab-${next}`)?.focus();
+    }
+  }
 
   return (
     <div
@@ -39,30 +67,7 @@ function AgentTabs() {
               title={member.name}
               type="button"
               onClick={() => select(id)}
-              onKeyDown={(event) => {
-                if (
-                  ["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)
-                ) {
-                  event.preventDefault();
-                  let index = tabs.indexOf(id);
-
-                  if (event.key === "Home") {
-                    index = 0;
-                  } else if (event.key === "End") {
-                    index = tabs.length - 1;
-                  } else {
-                    index =
-                      (index +
-                        (event.key === "ArrowRight" ? 1 : tabs.length - 1)) %
-                      tabs.length;
-                  }
-
-                  const next = tabs[index];
-
-                  select(next);
-                  document.getElementById(`agent-tab-${next}`)?.focus();
-                }
-              }}
+              onKeyDown={(event) => handleKeyDown(id, event)}
             >
               {member.name}
               {member.pendingQuestions > 0 ? (
@@ -86,6 +91,36 @@ function AgentTabs() {
           </div>
         ) : null;
       })}
+
+      {tabs.some((id) => isChangesTab(id)) && (
+        <div
+          className={`flex shrink-0 items-center rounded-lg ${selectedId === changesTabId ? "bg-zinc-800" : "hover:bg-zinc-900"}`}
+        >
+          <button
+            id={`agent-tab-${changesTabId}`}
+            role="tab"
+            aria-selected={selectedId === changesTabId}
+            aria-controls={`agent-panel-${changesTabId}`}
+            tabIndex={selectedId === changesTabId ? 0 : -1}
+            className="max-w-48 truncate px-3 py-2 text-xs font-light text-zinc-300"
+            title="Working tree changes"
+            type="button"
+            onClick={() => select(changesTabId)}
+            onKeyDown={(event) => handleKeyDown(changesTabId, event)}
+          >
+            Changes
+          </button>
+          <button
+            aria-label="Close Changes tab"
+            title="Close tab"
+            className="mr-1 rounded-md p-1 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-100"
+            type="button"
+            onClick={() => close(changesTabId)}
+          >
+            <XMarkIcon aria-hidden="true" className="size-3" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

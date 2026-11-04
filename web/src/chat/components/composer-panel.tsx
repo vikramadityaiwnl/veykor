@@ -20,6 +20,7 @@ function ComposerPanel(props: Props) {
   const recentQuestions = useChatStore((s) => s.recentQuestions);
   const dismissedQuestions = useChatStore((s) => s.dismissedQuestions);
   const activeChatId = useChatStore((state) => state.activeChatId);
+  const decideApproval = useChatStore((state) => state.decideApproval);
   const hasTeammates = useTeamStore((state) =>
     state.snapshot.members.some((member) => !member.isMain),
   );
@@ -117,7 +118,12 @@ function ComposerPanel(props: Props) {
           title="Needs your approval"
         >
           {current !== null && current !== undefined ? (
-            <ApprovalCard approval={current} />
+            <ApprovalCard
+              approval={current}
+              decide={(choice, feedback) =>
+                decideApproval(current.approvalId, choice.choiceId, feedback)
+              }
+            />
           ) : null}
         </ComposerActivityPanel>
       ) : null}

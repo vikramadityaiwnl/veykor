@@ -113,7 +113,7 @@ interface AgentRow {
   autoAddToNewProjects: boolean;
 }
 
-const defaultNames = ["Team Lead", "Coder", "Reviewer", "GitHub Manager"];
+const defaultNames = ["Plan & Code", "Reviewer", "GitHub Manager"];
 
 const defaultConfigs: Record<
   string,
@@ -124,28 +124,22 @@ const defaultConfigs: Record<
     permission: string;
   }
 > = {
-  "Team Lead": {
-    modelId: "muse-wonder-1.0",
-    providerId: "meta",
-    reasoningEffort: "high",
-    permission: "full-access",
-  },
-  Coder: {
+  "Plan & Code": {
     modelId: "muse-spark-1.3-contributor",
     providerId: "meta",
     reasoningEffort: "max",
-    permission: "full-access",
+    permission: "approved",
   },
   Reviewer: {
-    modelId: "muse-wonder-1.0",
+    modelId: "muse-spark-1.3-contributor",
     providerId: "meta",
-    reasoningEffort: "high",
-    permission: "full-access",
+    reasoningEffort: "max",
+    permission: "approved",
   },
   "GitHub Manager": {
-    modelId: "muse-wonder-1.0",
+    modelId: "muse-spark-1.3-contributor",
     providerId: "meta",
-    reasoningEffort: "high",
+    reasoningEffort: "max",
     permission: "approved",
   },
 };
@@ -180,14 +174,35 @@ test("default agents seed once and auto-add to new projects", async () => {
       assert.notEqual(agent.instructions, "");
       assert.match(agent.instructions, /\n\n/);
 
+      if (agent.name === "Plan & Code") {
+        assert.match(agent.instructions, /concrete plan/);
+        assert.match(agent.instructions, /code tests/);
+        assert.match(
+          agent.instructions,
+          /subagents within your own Plan & Code session/,
+        );
+        assert.match(
+          agent.instructions,
+          /Do not delegate implementation work to other team agents or teammates/,
+        );
+        assert.match(
+          agent.instructions,
+          /current branch and in the shared working tree/,
+        );
+        assert.match(
+          agent.instructions,
+          /do not create or switch to another worktree/,
+        );
+      }
+
       if (agent.name === "GitHub Manager") {
-        assert.match(agent.instructions, /## Commits/);
         assert.match(agent.instructions, /Conventional Commits/);
+        assert.match(agent.instructions, /72 characters/);
       }
 
       if (agent.name === "Reviewer") {
-        assert.match(agent.instructions, /browser MCP/);
-        assert.match(agent.instructions, /agent device MCP/);
+        assert.match(agent.instructions, /security/);
+        assert.match(agent.instructions, /consistent with the existing UI/);
       }
 
       assert.equal(agent.modelId, config.modelId);

@@ -85,7 +85,7 @@ test("seeds separate defaults and migrates legacy chat sections without losing c
           .prepare("SELECT data FROM agents WHERE user_id = 2")
           .all() as Array<{ data: string }>
       ).map((row) => JSON.parse(row.data).name),
-      ["Team Lead", "Coder", "Reviewer", "GitHub Manager"],
+      ["Plan & Code", "Reviewer", "GitHub Manager"],
     );
   } finally {
     sqlite.close();
@@ -103,8 +103,18 @@ test("upgrades untouched default agents without touching customized ones", () =>
 
     const lead = defaultAgentDefinitions[0];
     const coder = defaultAgentDefinitions[1];
-    const manager = defaultAgentDefinitions[3];
+    const manager = defaultAgentDefinitions[2];
 
+    sqlite
+      .prepare(
+        "INSERT INTO agents (id, user_id, data) VALUES ('legacy-plan', 1, ?)",
+      )
+      .run(
+        JSON.stringify({
+          ...lead,
+          instructions: legacyDefaultInstructions["Plan & Code"]?.[0] ?? "",
+        }),
+      );
     sqlite
       .prepare("INSERT INTO agents (id, user_id, data) VALUES ('legacy', 1, ?)")
       .run(
@@ -136,6 +146,15 @@ test("upgrades untouched default agents without touching customized ones", () =>
 
     runMigrations(sqlite);
 
+    const refreshedPlan = JSON.parse(
+      (
+        sqlite
+          .prepare("SELECT data FROM agents WHERE id = 'legacy-plan'")
+          .get() as { data: string }
+      ).data,
+    );
+    assert.equal(refreshedPlan.instructions, lead.instructions);
+
     const upgraded = JSON.parse(
       (
         sqlite.prepare("SELECT data FROM agents WHERE id = 'legacy'").get() as {
@@ -143,10 +162,10 @@ test("upgrades untouched default agents without touching customized ones", () =>
         }
       ).data,
     );
-    assert.equal(upgraded.modelId, "muse-wonder-1.0");
+    assert.equal(upgraded.modelId, "muse-spark-1.3-contributor");
     assert.equal(upgraded.providerId, "meta");
-    assert.equal(upgraded.reasoningEffort, "high");
-    assert.equal(upgraded.permission, "full-access");
+    assert.equal(upgraded.reasoningEffort, "max");
+    assert.equal(upgraded.permission, "approved");
     assert.equal(upgraded.instructions, lead.instructions);
 
     const custom = JSON.parse(
@@ -168,8 +187,8 @@ test("upgrades untouched default agents without touching customized ones", () =>
     );
     assert.equal(refreshed.description, manager.description);
     assert.equal(refreshed.instructions, manager.instructions);
-    assert.match(refreshed.instructions, /## Commits/);
-    assert.equal(refreshed.modelId, "muse-wonder-1.0");
+    assert.match(refreshed.instructions, /Conventional Commits/);
+    assert.equal(refreshed.modelId, "muse-spark-1.3-contributor");
     assert.equal(refreshed.autoAddToNewProjects, true);
   } finally {
     sqlite.close();

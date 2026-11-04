@@ -70,6 +70,9 @@ function MemberSession(props: Props) {
   const interruption = usePreferencesStore(
     (state) => state.interruptionBehavior,
   );
+  const hideThinkingByDefault = usePreferencesStore(
+    (state) => state.hideThinkingByDefault,
+  );
   const running =
     detail?.running === true &&
     !(
@@ -552,7 +555,7 @@ function MemberSession(props: Props) {
           streaming={running && props.active}
           streamingTurnId={detail.activeTurnId}
           streamingStartedAt={detail.activeTurnStartedAt}
-          thinkingSnapshots={{}}
+          hideThinkingByDefault={hideThinkingByDefault}
           turnDurations={detail.turnDurations}
         />
       ) : (

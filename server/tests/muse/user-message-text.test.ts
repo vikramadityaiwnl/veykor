@@ -1,7 +1,9 @@
-import { questionTurnReminder } from "@veykor/shared";
+import { buildMemoryContextBlock, questionTurnReminder } from "@veykor/shared";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { userMessageText } from "../../src/muse/user-message-text.ts";
+import { previewGuidanceText } from "../../src/teams/team-context.ts";
+import { compileAgentContext } from "../../src/work/agent-context.ts";
 
 test("live and restored user messages hide agent context before presentation metadata arrives", () => {
   const raw =
@@ -45,6 +47,69 @@ test("team protocol inputs stay internal in restored and live transcripts", () =
     userMessageText("Tell Planner I need Java", undefined),
     "Tell Planner I need Java",
   );
+});
+
+test("envelopes are stripped anywhere they appear", () => {
+  const message = (id: number, text: string) =>
+    `<veykor-team-message version="1">\n{"id":${id},"kind":"delegated","text":"${text}"}\n</veykor-team-message>`;
+  const context =
+    '<veykor-team-context version="1">\nroster\n</veykor-team-context>';
+
+  assert.equal(
+    userMessageText(`${message(1, "Test Java")}\n\nShip it`, undefined),
+    "Ship it",
+  );
+  assert.equal(
+    userMessageText(`Ship it\n\n${message(1, "Test Java")}`, undefined),
+    "Ship it",
+  );
+  assert.equal(
+    userMessageText(`${message(1, "One")}\n${message(2, "Two")}`, undefined),
+    "",
+  );
+  assert.equal(
+    userMessageText(
+      `${context}\n${message(1, "Test Java")}\n\nShip it`,
+      undefined,
+    ),
+    "Ship it",
+  );
+  assert.equal(
+    userMessageText(`Before\n${context}\nAfter`, undefined),
+    "Before\n\nAfter",
+  );
+  assert.equal(
+    userMessageText(
+      `Ship it\n${'<veykor-team-message version="1">\n{"id":3'}`,
+      undefined,
+    ),
+    "Ship it",
+  );
+  assert.equal(
+    userMessageText(`Hello\n${questionTurnReminder}\nWorld`, undefined),
+    "Hello\n\nWorld",
+  );
+});
+
+test("a realistic injected turn shows only the user text", () => {
+  const agentContext = compileAgentContext(
+    { id: "agent-main", name: "Main", description: "Main agent" },
+    { name: "Project", folder: "/tmp/project" },
+  );
+  const memory = buildMemoryContextBlock([
+    { id: "1", scope: "global", projectId: "", instruction: "Be brief." },
+  ]);
+  const teamContext = [
+    '<veykor-team-context version="1">',
+    "Your session ID is chat-1. Main chat: chat-1.",
+    previewGuidanceText("/tmp/project/.veykor/previews"),
+    questionTurnReminder,
+    "</veykor-team-context>",
+  ].join("\n");
+  const raw = [agentContext, memory, teamContext].join("\n") + "\n\nShip it";
+
+  assert.match(raw, /Image content returned by visual tools/);
+  assert.equal(userMessageText(raw, undefined), "Ship it");
 });
 
 test("memory and legacy question guidance stay hidden around team inputs", () => {

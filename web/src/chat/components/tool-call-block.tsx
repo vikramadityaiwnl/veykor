@@ -1,7 +1,5 @@
 import { useState } from "react";
 import { ChevronDownIcon, WrenchIcon } from "@heroicons/react/24/outline";
-import { useWorkStore } from "../../work/work-store.ts";
-import { useTeamStore } from "../../teams/team-store.ts";
 import type { ChatHistoryItem } from "@veykor/shared";
 import { extractFilePathCandidates } from "@veykor/shared";
 import type { LivePreview } from "../chat-store.ts";
@@ -17,20 +15,6 @@ interface Props {
 function ToolCallBlock(props: Props) {
   const [open, setOpen] = useState(false);
   const [failedPreviewSrc, setFailedPreviewSrc] = useState("");
-  const members = useTeamStore((state) => state.snapshot.members);
-  const projectId = useWorkStore((state) => state.projectId);
-  const member =
-    projectId !== "" &&
-    props.item.status === "completed" &&
-    props.item.tool.includes("team_delegate")
-      ? members.find(
-          (entry) =>
-            !entry.isMain &&
-            (props.item.visibleOutput.includes(entry.id) ||
-              (entry.agentId !== "" &&
-                props.item.visibleOutput.includes(entry.agentId))),
-        )
-      : undefined;
 
   function handleToggle() {
     setOpen((current) => !current);
@@ -54,8 +38,8 @@ function ToolCallBlock(props: Props) {
   }
 
   const buttonClassName = open
-    ? "flex w-full items-center gap-2.5 rounded-t-xl border border-b-0 border-zinc-800/80 bg-zinc-900/40 px-3 py-2 text-left"
-    : "flex w-full items-center gap-2.5 rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-3 py-2 text-left";
+    ? "flex w-full cursor-pointer items-center gap-2.5 rounded-t-xl border border-b-0 border-zinc-800/80 bg-zinc-900/40 px-3 py-2 text-left hover:border-zinc-700"
+    : "flex w-full cursor-pointer items-center gap-2.5 rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-3 py-2 text-left hover:border-zinc-700";
 
   const chevronClassName = open
     ? "size-4 shrink-0 rotate-180 text-zinc-500 transition-transform duration-300 ease-in-out motion-reduce:transition-none"
@@ -70,35 +54,22 @@ function ToolCallBlock(props: Props) {
 
   return (
     <div className="w-full min-w-0">
-      <div className={buttonClassName}>
-        <button
-          className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
-          aria-expanded={member ? undefined : open}
-          title={member ? `Open ${member.name}` : undefined}
-          onClick={() =>
-            member ? useTeamStore.getState().select(member.id) : handleToggle()
-          }
-          type="button"
-        >
-          <span aria-hidden="true" className={dotClassName} />
-          <WrenchIcon
-            aria-hidden="true"
-            className="size-4 shrink-0 text-zinc-500"
-          />
-          <span className="flex-1 truncate text-[13px] font-light text-zinc-300">
-            {name}
-          </span>
-        </button>
-        <button
-          aria-label="Toggle tool details"
-          aria-expanded={open}
-          onClick={handleToggle}
-          className="shrink-0 rounded p-0.5 text-zinc-500 hover:text-zinc-200"
-          type="button"
-        >
-          <ChevronDownIcon aria-hidden="true" className={chevronClassName} />
-        </button>
-      </div>
+      <button
+        aria-expanded={open}
+        className={buttonClassName}
+        onClick={handleToggle}
+        type="button"
+      >
+        <span aria-hidden="true" className={dotClassName} />
+        <WrenchIcon
+          aria-hidden="true"
+          className="size-4 shrink-0 text-zinc-500"
+        />
+        <span className="flex-1 truncate text-[13px] font-light text-zinc-300">
+          {name}
+        </span>
+        <ChevronDownIcon aria-hidden="true" className={chevronClassName} />
+      </button>
 
       <div
         className={

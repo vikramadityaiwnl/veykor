@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { TeamSnapshot } from "@veykor/shared";
+import { changesTabId } from "../src/teams/changes-tab.ts";
 import { useTeamStore } from "../src/teams/team-store.ts";
 
 function snapshot(rootId: string, name: string): TeamSnapshot {
@@ -90,6 +91,69 @@ test("a member waiting on a question opens its panel tab", async () => {
 
     assert.deepEqual(useTeamStore.getState().tabs, ["tester"]);
     assert.equal(useTeamStore.getState().selectedId, "tester");
+  } finally {
+    cleanup();
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("newly delegated members open tabs", async () => {
+  const originalFetch = globalThis.fetch;
+  const team = snapshot("delegated", "Main");
+  globalThis.fetch = async () => Response.json(team);
+  let cleanup = () => {};
+
+  try {
+    useTeamStore.setState({ tabs: [], selectedId: "" });
+    cleanup = useTeamStore.getState().watch("delegated");
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(useTeamStore.getState().tabs, []);
+
+    for (const id of ["coder", "reviewer"]) {
+      team.members.push({
+        id,
+        agentId: `agent-${id}`,
+        name: id,
+        task: "Work",
+        status: "running",
+        error: "",
+        isMain: false,
+        todos: [],
+        queuedMessages: [],
+        pendingQuestions: 0,
+      });
+    }
+
+    await useTeamStore.getState().refresh();
+
+    assert.deepEqual(useTeamStore.getState().tabs, ["coder", "reviewer"]);
+    assert.equal(useTeamStore.getState().selectedId, "coder");
+
+    await useTeamStore.getState().refresh();
+
+    assert.deepEqual(useTeamStore.getState().tabs, ["coder", "reviewer"]);
+  } finally {
+    cleanup();
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("changes tab survives refresh", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    Response.json(snapshot("chat-with-changes", "Main"));
+  let cleanup = () => {};
+
+  try {
+    useTeamStore.setState({ tabs: [], selectedId: "" });
+    cleanup = useTeamStore.getState().watch("chat-with-changes");
+    await new Promise((resolve) => setImmediate(resolve));
+    useTeamStore.getState().select(changesTabId);
+    await useTeamStore.getState().refresh();
+
+    assert.deepEqual(useTeamStore.getState().tabs, [changesTabId]);
+    assert.equal(useTeamStore.getState().selectedId, changesTabId);
   } finally {
     cleanup();
     globalThis.fetch = originalFetch;

@@ -21,6 +21,10 @@ function UserMessage(props: Props) {
     setFailed((current) => new Set(current).add(id));
   }
 
+  if (text === "" && props.images.length === 0) {
+    return null;
+  }
+
   return (
     <div className="flex justify-end">
       <div className="max-w-[75%] space-y-2">

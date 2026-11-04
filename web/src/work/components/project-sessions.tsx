@@ -9,6 +9,7 @@ import Dialog from "../../components/dialog/dialog.tsx";
 import EmptyState from "../../components/empty-state/empty-state.tsx";
 import LoadingSpinner from "../../components/loading-spinner/loading-spinner.tsx";
 import { useChatStore } from "../../chat/chat-store.ts";
+import { useWorkStore } from "../work-store.ts";
 
 interface Props {
   projectId: string;
@@ -32,6 +33,9 @@ function ProjectSessions(props: Props) {
   const [dialog, setDialog] = useState<{ chatId: string } | null>(null);
   const [dialogTitle, setDialogTitle] = useState("");
   const [deleting, setDeleting] = useState<ChatSummary | null>(null);
+
+  const projects = useWorkStore((state) => state.projects);
+  const project = projects.find((entry) => entry.id === props.projectId);
 
   const sessions = chats.filter(
     (chat) =>
@@ -87,29 +91,38 @@ function ProjectSessions(props: Props) {
       {shown.map((chat) => {
         const active = chat.id === activeChatId;
         const finished = !chat.running && finishedChatIds.includes(chat.id);
+        const showBranch = project?.hasGit === true;
 
         return (
           <button
             key={chat.id}
-            className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs ${active ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"}`}
+            className={`w-full rounded-lg px-2 py-1.5 text-left text-xs ${active ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"}`}
             onClick={() => navigate(`/work/${props.projectId}/chat/${chat.id}`)}
             onContextMenu={(event) => handleSessionMenu(event, chat)}
             title={chat.title}
             type="button"
           >
-            <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+            <span className="flex w-full items-center gap-2">
+              <span className="min-w-0 flex-1 truncate">{chat.title}</span>
 
-            {chat.running && (
-              <span className="shrink-0">
-                <LoadingSpinner size="sm" />
+              {chat.running && (
+                <span className="shrink-0">
+                  <LoadingSpinner size="sm" />
+                </span>
+              )}
+
+              {finished && (
+                <span
+                  className="size-1 shrink-0 rounded-full bg-zinc-50 light:bg-zinc-900"
+                  title="Finished"
+                />
+              )}
+            </span>
+
+            {showBranch && (
+              <span className="mt-0.5 block w-full truncate text-[11px] font-light text-zinc-600">
+                {project?.branch ?? ""}
               </span>
-            )}
-
-            {finished && (
-              <span
-                className="size-1 shrink-0 rounded-full bg-zinc-50 light:bg-zinc-900"
-                title="Finished"
-              />
             )}
           </button>
         );

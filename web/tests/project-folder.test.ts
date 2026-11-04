@@ -12,6 +12,7 @@ function project(folderExists: boolean | undefined): WorkProject {
     agentIds: [],
     branch: "No branch",
     folderExists: folderExists as boolean,
+    hasGit: true,
   };
 }
 

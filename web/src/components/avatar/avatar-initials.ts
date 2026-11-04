@@ -1,12 +1,16 @@
 export function avatarInitials(name: string): string {
-  return (
-    name
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((word) => Array.from(word)[0])
-      .join("")
-      .toLocaleUpperCase() || "?"
-  );
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(
+      (word) =>
+        Array.from(word).find((char) => /[\p{L}\p{N}]/u.test(char)) ?? "",
+    )
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toLocaleUpperCase();
+
+  return initials || "?";
 }

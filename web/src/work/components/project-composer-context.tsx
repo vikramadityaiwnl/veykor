@@ -5,6 +5,7 @@ import { defaultProjectSectionId } from "@veykor/shared";
 import { fetchStatus } from "../../auth/auth-client.ts";
 import GitTreeIcon from "../../components/icons/git-tree-icon.tsx";
 import { useChatStore } from "../../chat/chat-store.ts";
+import BranchMenu from "./branch-menu.tsx";
 import ProjectDialog from "./project-dialog.tsx";
 import { useWorkStore } from "../work-store.ts";
 
@@ -12,6 +13,7 @@ function ProjectComposerContext() {
   const { projectId, projects, load } = useWorkStore();
   const project = projects.find((entry) => entry.id === projectId);
   const [adding, setAdding] = useState(false);
+  const [branchAnchor, setBranchAnchor] = useState<DOMRect | null>(null);
   const [canCreate, setCanCreate] = useState(false);
   const navigate = useNavigate();
 
@@ -37,13 +39,27 @@ function ProjectComposerContext() {
           <FolderIcon className="size-4 shrink-0" />
           <span className="truncate">{project?.name ?? "Add Project"}</span>
         </button>
-        {project && (
-          <span className="flex min-w-0 items-center gap-2">
+        {project?.hasGit === true && (
+          <button
+            className="flex min-w-0 cursor-pointer items-center gap-2 hover:text-zinc-50"
+            onClick={(event) =>
+              setBranchAnchor(event.currentTarget.getBoundingClientRect())
+            }
+            title="Switch branches"
+            type="button"
+          >
             <GitTreeIcon className="size-4 shrink-0" />
             <span className="truncate">{project.branch}</span>
-          </span>
+          </button>
         )}
       </div>
+      {branchAnchor && project && (
+        <BranchMenu
+          anchorRect={branchAnchor}
+          projectId={project.id}
+          onClose={() => setBranchAnchor(null)}
+        />
+      )}
       {adding && (
         <ProjectDialog
           project={null}

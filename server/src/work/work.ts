@@ -19,6 +19,13 @@ import type {
 import { requireAuth } from "../auth/auth.js";
 import type { AuthEnv } from "../auth/auth.js";
 import { isHostRequest } from "../auth/host-access.js";
+import {
+  gitBranches,
+  gitChanges,
+  gitCheckout,
+  gitDiff,
+  gitHasRepo,
+} from "../git/git.js";
 import { db } from "../db/client.js";
 import { agents, projects, chats, memories } from "../db/schema.js";
 import { isMuseTurnRunning, leaveMuseSession } from "../muse/chat-service.js";
@@ -289,6 +296,7 @@ projectRoute.get("/", (c) => {
       agentIds: JSON.parse(row.agentIds),
       branch: projectBranch(row.folder),
       folderExists: projectFolderExists(row.folder),
+      hasGit: gitHasRepo(row.folder),
     }));
 
   return c.json(result);
@@ -390,6 +398,7 @@ for (const method of ["post", "put"] as const) {
         agentIds,
         branch: projectBranch(folder),
         folderExists: projectFolderExists(folder),
+        hasGit: gitHasRepo(folder),
       },
       method === "post" ? 201 : 200,
     );
@@ -472,4 +481,89 @@ projectRoute.delete("/:id", async (c) => {
   }
 
   return c.json({ deleted: true });
+});
+
+projectRoute.get("/:id/git/diff", (c) => {
+  const project = readProject(c.get("user").id, c.req.param("id"));
+
+  if (!project) {
+    return c.json({ error: "Project not found." }, 404);
+  }
+
+  return c.json(gitDiff(project.folder));
+});
+
+projectRoute.get("/:id/git/changes", (c) => {
+  const project = readProject(c.get("user").id, c.req.param("id"));
+
+  if (!project) {
+    return c.json({ error: "Project not found." }, 404);
+  }
+
+  try {
+    return c.json(gitChanges(project.folder));
+  } catch (cause) {
+    return c.json(
+      {
+        error:
+          cause instanceof Error ? cause.message : "Unable to read changes.",
+      },
+      502,
+    );
+  }
+});
+
+projectRoute.get("/:id/git/branches", (c) => {
+  const project = readProject(c.get("user").id, c.req.param("id"));
+
+  if (!project) {
+    return c.json({ error: "Project not found." }, 404);
+  }
+
+  try {
+    return c.json(gitBranches(project.folder));
+  } catch (cause) {
+    return c.json(
+      {
+        error:
+          cause instanceof Error ? cause.message : "Unable to list branches.",
+      },
+      502,
+    );
+  }
+});
+
+projectRoute.post("/:id/git/checkout", async (c) => {
+  if (!isHostRequest(c)) {
+    return c.json(
+      { error: "Branches can only be switched on the host computer." },
+      403,
+    );
+  }
+
+  const project = readProject(c.get("user").id, c.req.param("id"));
+
+  if (!project) {
+    return c.json({ error: "Project not found." }, 404);
+  }
+
+  const body = await c.req.json<{ name?: unknown; create?: unknown }>();
+
+  if (typeof body.name !== "string" || body.name.trim() === "") {
+    return c.json({ error: "Enter a branch name." }, 400);
+  }
+
+  try {
+    const branch = gitCheckout(project.folder, body.name, body.create === true);
+
+    return c.json({ branch });
+  } catch (cause) {
+    return c.json(
+      {
+        error:
+          cause instanceof Error ? cause.message : "Unable to switch branches.",
+      },
+      409,
+    );
+  }
 });
