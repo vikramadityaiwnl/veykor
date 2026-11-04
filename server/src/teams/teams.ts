@@ -75,7 +75,7 @@ const tools = [
   {
     name: "team_delegate",
     description:
-      "Start a new independent interactive agent session linked to this main chat. Returns immediately while the task runs. Use this instead of native subagents. Completion is delivered automatically to you and the main chat.",
+      "Assign concrete work to an assigned teammate. Reuses its single existing session in this chat, or creates it on first use. Returns queued status immediately; queued does not mean the work has run. Use this instead of native subagents. Completion is delivered automatically to you and the main chat.",
     inputSchema: {
       type: "object",
       properties: { agentId: { type: "string" }, task: { type: "string" } },
@@ -86,7 +86,7 @@ const tools = [
   {
     name: "team_message",
     description:
-      "Send a task, plan, feedback or result to another member of this chat. Delivery is queued durably, or steered into its running turn. Stopped members stay stopped until the user resumes them.",
+      "Send a task, plan, feedback or result to another member of this chat. Delivery is queued durably and starts a dedicated turn after current work finishes. Stopped members stay stopped until the user resumes them.",
     inputSchema: {
       type: "object",
       properties: { memberId: { type: "string" }, message: { type: "string" } },

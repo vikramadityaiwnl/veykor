@@ -13,10 +13,15 @@ function ToolCallBlock(props: Props) {
   const members = useTeamStore((state) => state.snapshot.members);
   const projectId = useWorkStore((state) => state.projectId);
   const member =
-    projectId !== "" && props.item.tool.includes("team_delegate")
+    projectId !== "" &&
+    props.item.status === "completed" &&
+    props.item.tool.includes("team_delegate")
       ? members.find(
           (entry) =>
-            !entry.isMain && props.item.visibleOutput.includes(entry.id),
+            !entry.isMain &&
+            (props.item.visibleOutput.includes(entry.id) ||
+              (entry.agentId !== "" &&
+                props.item.visibleOutput.includes(entry.agentId))),
         )
       : undefined;
 
@@ -51,34 +56,35 @@ function ToolCallBlock(props: Props) {
 
   return (
     <div className="w-full min-w-0">
-      {member && (
+      <div className={buttonClassName}>
         <button
+          className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+          aria-expanded={member ? undefined : open}
+          title={member ? `Open ${member.name}` : undefined}
+          onClick={() =>
+            member ? useTeamStore.getState().select(member.id) : handleToggle()
+          }
           type="button"
-          className="mb-2 rounded-lg border border-zinc-800 px-3 py-2 text-xs font-light text-zinc-300 hover:bg-zinc-900"
-          onClick={() => useTeamStore.getState().select(member.id)}
         >
-          Open {member.name}
+          <span aria-hidden="true" className={dotClassName} />
+          <WrenchIcon
+            aria-hidden="true"
+            className="size-4 shrink-0 text-zinc-500"
+          />
+          <span className="flex-1 truncate text-[13px] font-light text-zinc-300">
+            {name}
+          </span>
         </button>
-      )}
-      <button
-        aria-expanded={open}
-        className={buttonClassName}
-        onClick={handleToggle}
-        type="button"
-      >
-        <span aria-hidden="true" className={dotClassName} />
-
-        <WrenchIcon
-          aria-hidden="true"
-          className="size-4 shrink-0 text-zinc-500"
-        />
-
-        <span className="flex-1 truncate text-[13px] font-light text-zinc-300">
-          {name}
-        </span>
-
-        <ChevronDownIcon aria-hidden="true" className={chevronClassName} />
-      </button>
+        <button
+          aria-label="Toggle tool details"
+          aria-expanded={open}
+          onClick={handleToggle}
+          className="shrink-0 rounded p-0.5 text-zinc-500 hover:text-zinc-200"
+          type="button"
+        >
+          <ChevronDownIcon aria-hidden="true" className={chevronClassName} />
+        </button>
+      </div>
 
       <div
         className={

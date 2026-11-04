@@ -24,3 +24,24 @@ test("live and restored user messages hide agent context before presentation met
   );
   assert.equal(userMessageText("ordinary input", undefined), "ordinary input");
 });
+
+test("team protocol inputs stay internal in restored and live transcripts", () => {
+  const legacy = "Team update #15 (started) from session 1234-abcd:\nTest Java";
+  const message =
+    '<veykor-team-message version="1">\n{"id":16,"kind":"delegated","text":"Test Java"}\n</veykor-team-message>';
+  const context =
+    '<veykor-agent-context version="1">\nprofile\n</veykor-agent-context>\n<veykor-team-context version="1">\nroster\n</veykor-team-context>\n\n';
+
+  assert.equal(userMessageText(legacy, undefined), "");
+  assert.equal(userMessageText(legacy, legacy), "");
+  assert.equal(userMessageText(message, undefined), "");
+  assert.equal(userMessageText(context + message, undefined), "");
+  assert.equal(
+    userMessageText(context + "Please test Java", undefined),
+    "Please test Java",
+  );
+  assert.equal(
+    userMessageText("Tell Planner I need Java", undefined),
+    "Tell Planner I need Java",
+  );
+});

@@ -63,7 +63,40 @@ export const useTeamStore = create<TeamState>((set, get) => ({
       const snapshot = await fetchTeam(rootId);
 
       if (get().rootId === rootId && generation === watchGeneration) {
-        set({ snapshot, error: "" });
+        set((state) => {
+          const resolve = (id: string) => {
+            if (snapshot.members.some((member) => member.id === id)) {
+              return id;
+            }
+
+            const agentId = state.snapshot.members.find(
+              (member) => member.id === id,
+            )?.agentId;
+
+            return (
+              snapshot.members.find(
+                (member) => agentId && member.agentId === agentId,
+              )?.id ?? ""
+            );
+          };
+          const tabs = [
+            ...new Set(
+              state.tabs
+                .map(resolve)
+                .filter((id) => id !== "" && id !== snapshot.rootId),
+            ),
+          ];
+
+          return {
+            snapshot,
+            error: "",
+            tabs,
+            selectedId:
+              resolve(state.selectedId) === snapshot.rootId
+                ? ""
+                : resolve(state.selectedId),
+          };
+        });
       }
     } catch (cause) {
       if (get().rootId === rootId && generation === watchGeneration) {

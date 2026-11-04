@@ -15,7 +15,9 @@ interface Props {
 function ChatNavbar(props: Props) {
   return (
     <header className="flex shrink-0 flex-col border-b border-zinc-800 lg:flex-row">
-      <div className="flex h-14 min-w-0 flex-1 items-center justify-between gap-4 px-4">
+      <div
+        className={`flex h-14 min-w-0 flex-1 items-center justify-between gap-4 px-4 lg:flex-none ${props.workMode && props.selectedId ? "lg:w-1/2" : "lg:w-full"}`}
+      >
         <div className="flex min-w-0 items-center gap-3 text-sm font-light">
           {props.workMode && props.projectName && (
             <>
@@ -41,25 +43,27 @@ function ChatNavbar(props: Props) {
 
         {props.workMode && (
           <div
-            className="flex max-w-[45%] min-w-0 items-center gap-1.5 overflow-x-auto py-2"
+            className="flex max-w-[45%] min-w-0 items-center gap-1.5 overflow-x-auto px-1.5 py-2"
             aria-label="Agent avatars"
           >
-            {props.members
-              .filter((member) => !member.isMain)
-              .map((member) => (
-                <TeamAvatar
-                  key={member.id}
-                  member={member}
-                  selected={props.selectedId === member.id}
-                  onSelect={props.onSelectMember}
-                />
-              ))}
+            {props.members.map((member) => (
+              <TeamAvatar
+                key={member.id}
+                member={member}
+                selected={
+                  member.isMain
+                    ? !props.selectedId
+                    : props.selectedId === member.id
+                }
+                onSelect={(id) => props.onSelectMember(member.isMain ? "" : id)}
+              />
+            ))}
           </div>
         )}
       </div>
 
       {props.workMode && props.selectedId && (
-        <div className="h-14 min-w-0 flex-1 border-t border-zinc-800 lg:border-l lg:border-t-0">
+        <div className="h-14 min-w-0 flex-1 border-t border-zinc-800 lg:w-1/2 lg:flex-none lg:border-l lg:border-t-0">
           <AgentTabs />
         </div>
       )}

@@ -35,7 +35,7 @@ function ChatScreen() {
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <section
           aria-label="Main conversation"
-          className="min-h-0 min-w-0 flex-1"
+          className={`min-h-0 min-w-0 flex-1 lg:flex-none ${projectId !== "" && selectedId ? "lg:w-1/2" : "lg:w-full"}`}
         >
           <MainChatContent />
         </section>

@@ -6,11 +6,12 @@ import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import type { SessionMcpServerConfig } from "@muse-code/sdk/dist/src/msp.js";
 import {
   ownedChat,
+  canonicalTeamChat,
   beginTeamDeletion,
   runTeamTurn,
+  readTeamChat,
   sessionMcp as sessionMcpForChat,
   shareInterruption,
   stopTeamMember,
@@ -48,7 +49,6 @@ import {
   listMuseModels,
   listPendingApprovals,
   museErrorMessage,
-  readMuseChat,
   startMuseSession,
   steerMuseTurn,
 } from "../muse/chat-service.js";
@@ -117,11 +117,13 @@ function toSummary(row: ChatRow): ChatSummary {
 }
 
 function readChat(userId: number, id: string): ChatRow | undefined {
-  return db
+  const row = db
     .select()
     .from(chats)
     .where(and(eq(chats.id, id), eq(chats.userId, userId)))
     .get();
+
+  return row?.parentChatId ? canonicalTeamChat(row) : row;
 }
 
 async function readJson(c: Context): Promise<Record<string, unknown>> {
@@ -393,8 +395,7 @@ chatRoute.get("/:id", requireAuth, async (c) => {
   }
 
   try {
-    const mcpServers = sessionMcpForChat(row);
-    const detail = await readMuseChat(toSummary(row), { mcpServers });
+    const detail = await readTeamChat(row);
 
     const response: ChatDetail = {
       chat: toSummary(row),
@@ -414,10 +415,8 @@ chatRoute.get("/:id/events", requireAuth, async (c) => {
     return c.json({ error: "Chat not found" }, 404);
   }
 
-  let mcpServers: Record<string, SessionMcpServerConfig>;
-
   try {
-    mcpServers = sessionMcpForChat(row);
+    sessionMcpForChat(row);
   } catch (cause) {
     return museFailure(c, cause);
   }
@@ -453,7 +452,7 @@ chatRoute.get("/:id/events", requireAuth, async (c) => {
 
           const detail: ChatDetail = {
             chat: toSummary(current),
-            ...(await readMuseChat(toSummary(current), { mcpServers })),
+            ...(await readTeamChat(current)),
           };
           const snapshot = JSON.stringify(detail);
 
@@ -750,8 +749,7 @@ chatRoute.put("/:id/settings", requireAuth, async (c) => {
 
   if (row.projectId !== "") {
     try {
-      const mcpServers = sessionMcpForChat(row);
-      const detail = await readMuseChat(toSummary(row), { mcpServers });
+      const detail = await readTeamChat(row);
 
       return c.json({ chat: toSummary(row), ...detail });
     } catch (cause) {
@@ -781,8 +779,7 @@ chatRoute.put("/:id/settings", requireAuth, async (c) => {
       permission,
     });
 
-    const mcpServers = sessionMcpForChat(row);
-    const detail = await readMuseChat(toSummary(row), { mcpServers });
+    const detail = await readTeamChat(row);
 
     const response: ChatDetail = {
       chat: toSummary(row),

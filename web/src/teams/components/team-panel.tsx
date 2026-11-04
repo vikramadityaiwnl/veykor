@@ -9,7 +9,7 @@ function TeamPanel() {
   return (
     <aside
       aria-label="Team sessions"
-      className={`${selectedId ? "flex" : "hidden"} min-h-0 min-w-0 flex-1 flex-col border-t border-zinc-800 lg:border-l lg:border-t-0`}
+      className={`${selectedId ? "flex" : "hidden"} min-h-0 min-w-0 flex-1 flex-col border-t border-zinc-800 lg:w-1/2 lg:flex-none lg:border-l lg:border-t-0`}
     >
       {tabs.map((id) => {
         const member = snapshot.members.find((entry) => entry.id === id);

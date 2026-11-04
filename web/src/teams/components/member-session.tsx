@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpIcon,
+  ChevronDownIcon,
+  MicrophoneIcon,
   PaperClipIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -24,6 +26,8 @@ import type { SentAttachment } from "../../chat/chat-store.ts";
 import MessageList from "../../chat/components/message-list.tsx";
 import LoadingSpinner from "../../components/loading-spinner/loading-spinner.tsx";
 import { useTeamStore } from "../team-store.ts";
+import AgentAvatar from "../../agents/components/agent-avatar.tsx";
+import { useMemberDictation } from "../../chat/hooks/use-member-dictation.ts";
 import MemberApproval from "./member-approval.tsx";
 
 interface Props {
@@ -49,6 +53,7 @@ function MemberSession(props: Props) {
   const liveRef = useRef(true);
   const requestRunRef = useRef(0);
   const turnRequestRef = useRef<AbortController | null>(null);
+  const voice = useMemberDictation(draft, setDraft, props.active);
 
   useEffect(() => {
     let alive = true;
@@ -182,7 +187,8 @@ function MemberSession(props: Props) {
         .catch(() => {});
     }
 
-    const text = draft;
+    const dictated = voice.active ? await voice.stop() : null;
+    const text = dictated ?? draft;
     const images: ChatImageInput[] = attachments.map((attachment) => ({
       mediaType: attachment.mediaType,
       base64Data: attachment.base64Data,
@@ -351,18 +357,6 @@ function MemberSession(props: Props) {
       aria-label={`${props.member.name} conversation`}
       className="flex h-full min-h-0 flex-col"
     >
-      <div className="flex items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
-        <p
-          className="min-w-0 truncate text-xs font-light text-zinc-500"
-          title={props.member.task}
-        >
-          {props.member.task || "Team conversation"}
-        </p>
-        <span className="text-xs font-light text-zinc-400">
-          {detail?.running ? "running" : props.member.status}
-        </span>
-      </div>
-
       {detail ? (
         <MessageList
           imageUrls={sentImages}
@@ -393,9 +387,9 @@ function MemberSession(props: Props) {
       </div>
 
       <div className="shrink-0 space-y-2 p-4">
-        {(error || props.member.error) && (
+        {(error || voice.error || props.member.error) && (
           <p role="alert" className="text-xs font-light text-rose-400">
-            {error || props.member.error}
+            {error || voice.error || props.member.error}
           </p>
         )}
         <form
@@ -406,6 +400,7 @@ function MemberSession(props: Props) {
           }}
         >
           <textarea
+            disabled={voice.active}
             aria-label={`Message ${props.member.name}`}
             placeholder={`Message ${props.member.name}…`}
             className="max-h-40 w-full resize-none bg-transparent text-sm font-light text-zinc-100 outline-none placeholder:text-zinc-600"
@@ -450,16 +445,49 @@ function MemberSession(props: Props) {
                 void addAttachments(event.target.files);
               }}
             />
-            <button
-              type="button"
-              title="Attach images"
-              aria-label="Attach images to agent message"
-              className="rounded-full p-2 text-zinc-500 hover:text-zinc-100"
-              onClick={() => fileRef.current?.click()}
-            >
-              <PaperClipIcon className="size-4" />
-            </button>
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-1">
+              <button
+                type="button"
+                title="Attach images"
+                aria-label="Attach images to agent message"
+                className="rounded-full p-2 text-zinc-500 hover:text-zinc-100"
+                onClick={() => fileRef.current?.click()}
+              >
+                <PaperClipIcon className="size-4" />
+              </button>
+              <button
+                type="button"
+                disabled
+                aria-label={`Assigned agent: ${props.member.name}`}
+                title={props.member.name}
+                className="flex min-w-0 cursor-not-allowed items-center gap-2 rounded-lg px-2 py-1 text-xs font-light text-zinc-500"
+              >
+                <AgentAvatar name={props.member.name} size={24} />
+                <span className="truncate">{props.member.name}</span>
+                <ChevronDownIcon
+                  aria-hidden="true"
+                  className="size-3 shrink-0"
+                />
+              </button>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                aria-label={voice.active ? "Stop dictation" : "Voice input"}
+                title={voice.active ? "Stop dictation" : "Voice input"}
+                className={`rounded-full p-2 ${voice.active ? "text-red-400" : "text-zinc-400 hover:text-zinc-100"}`}
+                onClick={() => {
+                  void voice.toggle();
+                }}
+              >
+                {voice.phase === "connecting" || voice.phase === "stopping" ? (
+                  <LoadingSpinner />
+                ) : voice.active ? (
+                  <StopIcon className="size-4" />
+                ) : (
+                  <MicrophoneIcon className="size-4" />
+                )}
+              </button>
               {detail?.running && (
                 <button
                   type="button"

@@ -88,6 +88,7 @@ interface ChatState {
   composerImages: Array<ComposerImage>;
   sentAttachments: Record<string, Array<SentAttachment>>;
   queuedMessages: Array<QueuedMessage>;
+  queuePaused: boolean;
   composerRestore: ComposerRestore;
   catalog: ChatModelCatalog | null;
   catalogLoading: boolean;
@@ -98,6 +99,7 @@ interface ChatState {
   openChat: (id: string, expectedProjectId?: string) => Promise<void>;
   hydrateAttachments: (chatId: string) => Promise<void>;
   send: (text: string) => Promise<void>;
+  flushQueuedMessage: (chatId: string) => Promise<void>;
   steerQueuedMessage: (id: string) => Promise<void>;
   editQueuedMessage: (id: string) => void;
   removeQueuedMessage: (id: string) => void;
@@ -472,6 +474,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   composerImages: [],
   sentAttachments: {},
   queuedMessages: [],
+  queuePaused: false,
   composerRestore: { seq: 0, text: "" },
   catalog: null,
   catalogLoading: false,
@@ -568,6 +571,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       todos: [],
       composerImages: [],
       queuedMessages: [],
+      queuePaused: false,
       composerRestore: { seq: 0, text: "" },
     });
 
@@ -657,6 +661,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           : state.finishedChatIds,
       };
     });
+
+    if (!detail.running) {
+      void get().flushQueuedMessage(detail.chat.id);
+    }
   },
 
   openChat: async (id, expectedProjectId = "") => {
@@ -681,6 +689,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       todos: [],
       error: "",
       queuedMessages: [],
+      queuePaused: false,
       composerRestore: { seq: 0, text: "" },
       finishedChatIds: current.finishedChatIds.filter(
         (finishedId) => finishedId !== id,
@@ -952,6 +961,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     set({
       streaming: true,
+      queuePaused: false,
       streamingTurnId: "",
       streamingStartedAt: startedAt,
       items: [...state.items, optimisticItem],
@@ -1244,27 +1254,36 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       localTurns.delete(chatId);
     }
 
-    if (!failed) {
-      const next = get().queuedMessages[0];
-
-      if (
-        next !== undefined &&
-        get().activeChatId === chatId &&
-        !get().streaming
-      ) {
-        set((current) => ({
-          queuedMessages: current.queuedMessages.filter(
-            (entry) => entry.id !== next.id,
-          ),
-          composerImages: mergeComposerImages(
-            current.composerImages,
-            rehydrateQueuedImages(next.images),
-          ),
-        }));
-
-        await get().send(next.text);
-      }
+    if (!failed && chatId !== null) {
+      await get().flushQueuedMessage(chatId);
     }
+  },
+
+  flushQueuedMessage: async (chatId) => {
+    const state = get();
+    const next = state.queuedMessages[0];
+
+    if (
+      !next ||
+      state.activeChatId !== chatId ||
+      state.streaming ||
+      state.historyLoading ||
+      state.queuePaused
+    ) {
+      return;
+    }
+
+    set((current) => ({
+      queuedMessages: current.queuedMessages.filter(
+        (entry) => entry.id !== next.id,
+      ),
+      composerImages: mergeComposerImages(
+        current.composerImages,
+        rehydrateQueuedImages(next.images),
+      ),
+    }));
+
+    await get().send(next.text);
   },
 
   steerQueuedMessage: async (id) => {
@@ -1346,11 +1365,14 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     const cancelledChatId = state.activeChatId;
 
+    set({ queuePaused: true });
+
     try {
       await cancelTurnRequest(state.activeChatId, state.streamingTurnId);
 
       set((current) => ({
         streaming: false,
+        queuePaused: true,
         streamingTurnId: "",
         error: "",
         chats: current.chats.map((chat) =>
@@ -1661,6 +1683,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           todos: [],
           composerImages: [],
           queuedMessages: [],
+          queuePaused: false,
           error: "",
         });
       } else {

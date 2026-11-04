@@ -262,9 +262,14 @@ export async function readMuseChat(
   const history = record(resumed["history"]);
   const snapshot = record(history["snapshot"]);
   const snapshotState = record(snapshot["state"]);
-  const items = list(history["items"] ?? snapshotState["items"]).map(
-    toHistoryItem,
-  );
+  const items = list(history["items"] ?? snapshotState["items"])
+    .map(toHistoryItem)
+    .filter(
+      (item) =>
+        item.kind !== "userMessage" ||
+        item.text !== "" ||
+        item.attachments.length > 0,
+    );
   const turnDurations = await readTurnDurations(async (cursor) =>
     record(
       await connection.request("view/page", {

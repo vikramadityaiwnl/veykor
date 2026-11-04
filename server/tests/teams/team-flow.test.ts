@@ -11,6 +11,7 @@ const folder = mkdtempSync(join(tmpdir(), "veykor-team-flow-"));
 
 process.env["DATABASE_URL"] = join(folder, "team.db");
 
+const { readTeamMessage } = await import("../../src/teams/team-messages.ts");
 const { db } = await import("../../src/db/client.ts");
 const { users, sessions, chats, agents, projects, teamJobs, mcpServers } =
   await import("../../src/db/schema.ts");
@@ -30,6 +31,7 @@ const {
   sessionMcp,
   shareInterruption,
   pumpTeamJobs,
+  readTeamChat,
 } = await import("../../src/teams/team-runtime.ts");
 
 const owner = db
@@ -103,13 +105,15 @@ const listeners = new Map<
   string,
   (event: { method: string; params: Record<string, unknown> }) => void
 >();
+const loadedSessions = new Set<string>();
 const modes = new Map<string, string>([["main-session", "promptUnmatched"]]);
 const held = new Set<string>();
 const turns = new Map<string, string>();
-const inputs: { sessionId: string; text: string }[] = [];
+const histories = new Map<string, Record<string, unknown>[]>();
+const inputs: { sessionId: string; text: string; task: string }[] = [];
 const steers: { sessionId: string; text: string }[] = [];
 let sequence = 0;
-let rejectSteerOnce = false;
+
 let rejectStartFor = "";
 
 function finish(sessionId: string, terminal = "completed") {
@@ -154,6 +158,7 @@ museHost.connection = async () =>
         const id = `member-${++sequence}`;
 
         held.add(id);
+        loadedSessions.add(id);
         return { session: { sessionId: id } };
       }
 
@@ -162,15 +167,20 @@ museHost.connection = async () =>
       }
 
       if (method === "session/resume") {
+        loadedSessions.add(sessionId);
         return {
           session: {
             approvalMode: { mode: modes.get(sessionId) ?? "promptUnmatched" },
           },
-          history: { items: [] },
+          history: { items: histories.get(sessionId) ?? [] },
         };
       }
 
       if (method === "turn/start") {
+        if (!loadedSessions.has(sessionId)) {
+          throw new Error("Session is not loaded on this host");
+        }
+
         if (sessionId === rejectStartFor) {
           rejectStartFor = "";
           throw new Error("Manual turn admission failed");
@@ -180,7 +190,23 @@ museHost.connection = async () =>
         const input = params.input as { text?: string }[];
 
         turns.set(sessionId, turnId);
-        inputs.push({ sessionId, text: input[0]?.text ?? "" });
+        const text = input[0]?.text ?? "";
+        const message = readTeamMessage(
+          text.slice(text.lastIndexOf('<veykor-team-message version="1">')),
+        );
+
+        inputs.push({ sessionId, text, task: message?.text ?? text });
+        histories.set(sessionId, [
+          ...(histories.get(sessionId) ?? []),
+          {
+            kind: "userMessage",
+            itemId: `user-${turnId}`,
+            turnId,
+            text: input[0]?.text ?? "",
+            displayText: params.displayText,
+            recordedAt: new Date().toISOString(),
+          },
+        ]);
         queueMicrotask(() => {
           listeners.get(sessionId)?.({
             method: "turn/started",
@@ -195,14 +221,6 @@ museHost.connection = async () =>
       }
 
       if (method === "turn/steer") {
-        if (
-          rejectSteerOnce &&
-          JSON.stringify(params.input).includes("Retry this message")
-        ) {
-          rejectSteerOnce = false;
-          throw new Error("That turn just ended");
-        }
-
         steers.push({
           sessionId,
           text: (params.input as { text: string }[])[0]?.text ?? "",
@@ -316,6 +334,15 @@ test("linked sessions coordinate, share interruptions, isolate ownership and pre
         .find((input) => input.sessionId === plannerRow.museSessionId)
         ?.text.includes("Main chat: main"),
     );
+    const planningContext = inputs.find(
+      (input) => input.sessionId === plannerRow.museSessionId,
+    )!.text;
+
+    assert.ok(planningContext.includes('"isSelf":true'));
+    assert.ok(planningContext.includes('"name":"tester"'));
+    assert.ok(
+      planningContext.includes("delegate independent testing automatically"),
+    );
 
     const toolResponse = await teamMcpRoute.request(`/${planner.id}`, {
       method: "POST",
@@ -362,38 +389,108 @@ test("linked sessions coordinate, share interruptions, isolate ownership and pre
       409,
     );
 
-    messageTeamMember(plannerRow, tester.id, "Use these test cases");
-    await eventually(() =>
-      steers.some(
-        (entry) =>
-          entry.sessionId === testerRow.museSessionId &&
-          entry.text.includes("Use these test cases"),
-      ),
-    );
-    rejectSteerOnce = true;
-    const retry = messageTeamMember(
+    const firstTesterTurn = turns.get(testerRow.museSessionId);
+    const queued = messageTeamMember(
       plannerRow,
       tester.id,
-      "Retry this message",
+      "Use these test cases",
     );
+    const reassigned = await Promise.all([
+      delegateTeamMember(
+        plannerRow,
+        "tester",
+        "Retest the Python implementation",
+      ),
+      delegateTeamMember(
+        plannerRow,
+        "tester",
+        "Retest the Java implementation",
+      ),
+    ]);
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.ok(
+      reassigned.every(
+        (member) => member.id === tester.id && member.status === "queued",
+      ),
+    );
+    assert.equal(teamSnapshot(main).members.length, 3);
+    assert.equal(turns.get(testerRow.museSessionId), firstTesterTurn);
     assert.equal(
       db
         .select()
         .from(teamJobs)
-        .where(eq(teamJobs.id, `${retry.id}:${tester.id}`))
+        .where(eq(teamJobs.id, `${queued.id}:${tester.id}`))
         .get()?.status,
       "pending",
     );
-    await pumpTeamJobs();
-    await eventually(
-      () =>
-        db
-          .select()
-          .from(teamJobs)
-          .where(eq(teamJobs.id, `${retry.id}:${tester.id}`))
-          .get()?.status === "delivered",
+    assert.ok(
+      !steers.some((entry) => entry.text.includes("Use these test cases")),
+    );
+
+    for (const task of [
+      "Use these test cases",
+      "Retest the Python implementation",
+      "Retest the Java implementation",
+    ]) {
+      finish(testerRow.museSessionId);
+      await eventually(() =>
+        inputs.some(
+          (input) =>
+            input.sessionId === testerRow.museSessionId && input.task === task,
+        ),
+      );
+      assert.ok(turns.has(testerRow.museSessionId));
+    }
+
+    const legacy = db
+      .insert(chats)
+      .values({
+        ...testerRow,
+        id: "legacy-tester",
+        museSessionId: "legacy-tester-session",
+        createdAt: "9999-01-01T00:00:00.000Z",
+      })
+      .returning()
+      .get();
+
+    histories.set(legacy.museSessionId, [
+      {
+        kind: "userMessage",
+        itemId: "old-internal",
+        text: "Team update #15 (started) from session 1234-abcd:\nTest Java",
+      },
+      {
+        kind: "agentMessage",
+        itemId: "old-report",
+        text: "Earlier Java report",
+      },
+    ]);
+    assert.equal(teamSnapshot(main).members.length, 3);
+    const combined = await readTeamChat(testerRow);
+    const legacyRoute = await chatRoute.request("/legacy-tester", {
+      headers: cookie(),
+    });
+    const legacyDetail = await legacyRoute.json();
+
+    assert.equal(legacyDetail.chat.id, tester.id);
+    assert.ok(
+      legacyDetail.items.some(
+        (item: { text: string }) => item.text === "Earlier Java report",
+      ),
+    );
+
+    assert.ok(
+      combined.items.some((item) => item.text === "Earlier Java report"),
+    );
+    assert.ok(
+      !combined.items.some((item) => item.text.includes("Team update #")),
+    );
+    assert.ok(
+      !combined.items.some(
+        (item) =>
+          item.kind === "userMessage" &&
+          item.text.includes("veykor-team-message"),
+      ),
     );
 
     await shareInterruption(plannerRow, "The user changed the plan");

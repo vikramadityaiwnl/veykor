@@ -1,28 +1,41 @@
+import { readTeamMessage } from "../teams/team-messages.js";
+
 export function userMessageText(rawText: string, displayText: unknown): string {
   if (typeof displayText === "string") {
-    return displayText;
+    return readTeamMessage(displayText) ? "" : displayText;
   }
 
+  let text = rawText;
   const wrappers = [
     {
       prefix: '<veykor-agent-context version="1">',
-      suffix: "\n</veykor-agent-context>\n\n",
+      suffix: "</veykor-agent-context>",
+    },
+    {
+      prefix: '<veykor-team-context version="1">',
+      suffix: "</veykor-team-context>",
     },
     {
       prefix: "<agent-instructions name=",
-      suffix: "\n</agent-instructions>\n\n",
+      suffix: "</agent-instructions>",
     },
   ];
 
-  for (const wrapper of wrappers) {
-    if (!rawText.startsWith(wrapper.prefix)) {
-      continue;
+  while (true) {
+    const wrapper = wrappers.find((entry) => text.startsWith(entry.prefix));
+
+    if (!wrapper) {
+      break;
     }
 
-    const end = rawText.indexOf(wrapper.suffix);
+    const end = text.indexOf(wrapper.suffix);
 
-    return end === -1 ? "" : rawText.slice(end + wrapper.suffix.length);
+    if (end === -1) {
+      return "";
+    }
+
+    text = text.slice(end + wrapper.suffix.length).replace(/^\n+/, "");
   }
 
-  return rawText;
+  return readTeamMessage(text) ? "" : text;
 }

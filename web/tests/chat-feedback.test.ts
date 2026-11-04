@@ -379,3 +379,63 @@ test("an older response stream cannot stop or overwrite the next message", async
     globalThis.fetch = originalFetch;
   }
 });
+
+test("an idle background snapshot automatically sends the queued user message once", async () => {
+  const originalFetch = globalThis.fetch;
+  const created = detail();
+  const sent: string[] = [];
+  let stream!: ReadableStreamDefaultController<Uint8Array>;
+
+  globalThis.fetch = async (input, init) => {
+    if (String(input).endsWith("/turns")) {
+      sent.push(JSON.parse(String(init?.body)).text);
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            stream = controller;
+          },
+        }),
+      );
+    }
+
+    return Response.json(created);
+  };
+
+  try {
+    useWorkStore.setState({ projectId: "" });
+    useChatStore.setState({
+      activeChatId: "created",
+      chats: [created.chat],
+      streaming: true,
+      streamingTurnId: "background-team-turn",
+      items: [],
+      historyLoading: false,
+      queuePaused: false,
+      queuedMessages: [{ id: "queued", text: "Verify Java again", images: [] }],
+    });
+    useChatStore.getState().syncChat(created);
+    useChatStore.getState().syncChat(created);
+    await flush();
+
+    assert.deepEqual(sent, ["Verify Java again"]);
+    assert.equal(useChatStore.getState().queuedMessages.length, 0);
+    stream.close();
+    await flush();
+
+    useChatStore.setState({
+      streaming: false,
+      queuePaused: true,
+      queuedMessages: [
+        { id: "paused", text: "Do not restart after stop", images: [] },
+      ],
+    });
+    useChatStore.getState().syncChat(created);
+    await flush();
+
+    assert.deepEqual(sent, ["Verify Java again"]);
+    assert.equal(useChatStore.getState().queuedMessages.length, 1);
+  } finally {
+    useChatStore.setState({ queuedMessages: [], queuePaused: false });
+    globalThis.fetch = originalFetch;
+  }
+});
