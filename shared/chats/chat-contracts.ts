@@ -6,12 +6,6 @@ export type ChatPermission = "read-only" | "approved" | "full-access";
 
 export type ChatMode = "chat" | "agent";
 
-export interface ChatPullRequest {
-  number: number;
-  url: string;
-  merged: boolean;
-}
-
 export interface ChatSummary {
   id: string;
   title: string;
@@ -21,7 +15,6 @@ export interface ChatSummary {
   agentName: string;
   museSessionId: string;
   running: boolean;
-  pullRequests: Array<ChatPullRequest>;
   createdAt: string;
   updatedAt: string;
 }

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { TeamSnapshot } from "@veykor/shared";
 import { fetchTeam } from "./team-client.ts";
-import { parsePullRequestTab, pullRequestTabId } from "./pull-request-tabs.ts";
+import { isChangesTab } from "./changes-tab.ts";
 
 let watchGeneration = 0;
 
@@ -11,11 +11,9 @@ interface TeamState {
   selectedId: string;
   tabs: string[];
   seenIds: Array<string> | null;
-  pendingPr: { chatId: string; number: number } | null;
   error: string;
   select: (id: string) => void;
   close: (id: string) => void;
-  openPullRequest: (chatId: string, number: number) => void;
   refresh: () => Promise<void>;
   watch: (rootId: string) => () => void;
 }
@@ -68,7 +66,6 @@ export const useTeamStore = create<TeamState>((set, get) => ({
   selectedId: "",
   tabs: [],
   seenIds: null,
-  pendingPr: null,
   error: "",
   select: (id) => {
     if (!id) {
@@ -95,14 +92,6 @@ export const useTeamStore = create<TeamState>((set, get) => ({
     });
     saveView(get());
   },
-  openPullRequest: (chatId, number) => {
-    if (get().rootId === chatId) {
-      get().select(pullRequestTabId(number));
-      return;
-    }
-
-    set({ pendingPr: { chatId, number } });
-  },
   refresh: async () => {
     const rootId = get().rootId;
     const generation = watchGeneration;
@@ -117,7 +106,7 @@ export const useTeamStore = create<TeamState>((set, get) => ({
       if (get().rootId === rootId && generation === watchGeneration) {
         set((state) => {
           const resolve = (id: string) => {
-            if (parsePullRequestTab(id) > 0) {
+            if (isChangesTab(id)) {
               return id;
             }
 
@@ -192,7 +181,6 @@ export const useTeamStore = create<TeamState>((set, get) => ({
   },
   watch: (rootId) => {
     watchGeneration += 1;
-    const pending = get().pendingPr;
 
     set({
       rootId,
@@ -201,11 +189,6 @@ export const useTeamStore = create<TeamState>((set, get) => ({
       seenIds: null,
       error: "",
     });
-
-    if (pending && pending.chatId === rootId) {
-      set({ pendingPr: null });
-      get().select(pullRequestTabId(pending.number));
-    }
 
     if (!rootId) {
       return () => {};

@@ -1,7 +1,7 @@
 import { useTeamStore } from "../team-store.ts";
-import { parsePullRequestTab } from "../pull-request-tabs.ts";
+import { isChangesTab } from "../changes-tab.ts";
+import ChangesPanel from "./changes-panel.tsx";
 import MemberSession from "./member-session.tsx";
-import PullRequestPanel from "./pull-request-panel.tsx";
 
 function TeamPanel() {
   const snapshot = useTeamStore((state) => state.snapshot);
@@ -14,9 +14,7 @@ function TeamPanel() {
       className={`${selectedId ? "flex" : "hidden"} min-h-0 min-w-0 flex-1 flex-col border-t border-zinc-800 lg:w-1/2 lg:flex-none lg:border-l lg:border-t-0`}
     >
       {tabs.map((id) => {
-        const pull = parsePullRequestTab(id);
-
-        if (pull > 0) {
+        if (isChangesTab(id)) {
           return (
             <div
               key={id}
@@ -26,9 +24,7 @@ function TeamPanel() {
               hidden={selectedId !== id}
               className={selectedId === id ? "min-h-0 flex-1" : "hidden"}
             >
-              {selectedId === id && (
-                <PullRequestPanel chatId={snapshot.rootId} number={pull} />
-              )}
+              {selectedId === id && <ChangesPanel />}
             </div>
           );
         }

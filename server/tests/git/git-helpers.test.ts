@@ -7,10 +7,10 @@ import { test } from "node:test";
 import {
   cleanBranchName,
   gitBranches,
+  gitChanges,
   gitDiff,
   parseNumstat,
-  parsePrUrl,
-  toPullRequestDetail,
+  parseUnifiedDiff,
 } from "../../src/git/git.ts";
 
 function gitAvailable(): boolean {
@@ -41,20 +41,6 @@ function initRepo(): string {
   return dir;
 }
 
-test("pull request urls resolve to repo and number", () => {
-  assert.deepEqual(parsePrUrl("https://github.com/octocat/hello/pull/12"), {
-    repo: "octocat/hello",
-    number: 12,
-  });
-  assert.deepEqual(
-    parsePrUrl("https://github.com/octocat/hello/pull/12/files?x=1"),
-    { repo: "octocat/hello", number: 12 },
-  );
-  assert.equal(parsePrUrl("https://github.com/octocat/hello"), null);
-  assert.equal(parsePrUrl("not a url"), null);
-  assert.equal(parsePrUrl("https://github.com/octocat/hello/pull/0"), null);
-});
-
 test("branch names are trimmed and bounded", () => {
   assert.equal(cleanBranchName("  feature/x "), "feature/x");
   assert.equal(cleanBranchName(""), "");
@@ -68,32 +54,6 @@ test("numstat output sums additions and deletions", () => {
     { additions: 13, deletions: 4 },
   );
   assert.deepEqual(parseNumstat(""), { additions: 0, deletions: 0 });
-});
-
-test("pull request detail fills every field", () => {
-  const detail = toPullRequestDetail({
-    number: 12,
-    title: "Fix",
-    state: "MERGED",
-    author: { login: "octocat" },
-    commits: [{}, {}],
-    reviews: [{ author: { login: "reviewer" }, state: "APPROVED" }],
-    statusCheckRollup: [
-      { name: "build", status: "COMPLETED", conclusion: "SUCCESS" },
-    ],
-  });
-
-  assert.equal(detail.number, 12);
-  assert.equal(detail.title, "Fix");
-  assert.equal(detail.merged, true);
-  assert.equal(detail.draft, false);
-  assert.equal(detail.author, "octocat");
-  assert.equal(detail.commits, 2);
-  assert.equal(detail.body, "");
-  assert.deepEqual(detail.reviews, [{ author: "reviewer", state: "APPROVED" }]);
-  assert.deepEqual(detail.checks, [
-    { name: "build", status: "COMPLETED", conclusion: "SUCCESS" },
-  ]);
 });
 
 test("branch list marks the current branch", { skip: !gitAvailable() }, () => {
@@ -143,11 +103,183 @@ test(
   },
 );
 
-test("pull request detail tolerates garbage", () => {
-  const detail = toPullRequestDetail("garbage");
+test("unified diff parses files and lines", () => {
+  const changes = parseUnifiedDiff(
+    [
+      "diff --git a/src/a.ts b/src/a.ts",
+      "index 1111111..2222222 100644",
+      "--- a/src/a.ts",
+      "+++ b/src/a.ts",
+      "@@ -1,3 +1,3 @@",
+      " one",
+      "-two",
+      "+three",
+      " four",
+      "diff --git a/logo.png b/logo.png",
+      "new file mode 100644",
+      "index 0000000..3333333",
+      "Binary files /dev/null and b/logo.png differ",
+      "",
+    ].join("\n"),
+  );
 
-  assert.equal(detail.number, 0);
-  assert.equal(detail.merged, false);
-  assert.deepEqual(detail.checks, []);
-  assert.deepEqual(detail.reviews, []);
+  assert.equal(changes.files.length, 2);
+  assert.deepEqual(changes.files[0], {
+    path: "src/a.ts",
+    additions: 1,
+    deletions: 1,
+    binary: false,
+    truncated: false,
+    lines: [
+      { kind: "hunk", number: 0, text: "@@ -1,3 +1,3 @@" },
+      { kind: "context", number: 1, text: "one" },
+      { kind: "del", number: 2, text: "two" },
+      { kind: "add", number: 2, text: "three" },
+      { kind: "context", number: 3, text: "four" },
+    ],
+  });
+  assert.deepEqual(changes.files[1], {
+    path: "logo.png",
+    additions: 0,
+    deletions: 0,
+    binary: true,
+    truncated: false,
+    lines: [],
+  });
+  assert.deepEqual(parseUnifiedDiff(""), { files: [] });
+});
+
+test("unified diff numbers each hunk separately", () => {
+  const changes = parseUnifiedDiff(
+    [
+      "diff --git a/a.txt b/a.txt",
+      "index 1111111..2222222 100644",
+      "--- a/a.txt",
+      "+++ b/a.txt",
+      "@@ -1 +1 @@",
+      "-old",
+      "+new",
+      "@@ -10 +10 @@",
+      " same",
+      "",
+    ].join("\n"),
+  );
+
+  assert.deepEqual(
+    changes.files[0].lines.map((line) => [line.kind, line.number]),
+    [
+      ["hunk", 0],
+      ["del", 1],
+      ["add", 1],
+      ["hunk", 0],
+      ["context", 10],
+    ],
+  );
+});
+
+test(
+  "working tree changes list edited files",
+  { skip: !gitAvailable() },
+  () => {
+    const dir = initRepo();
+
+    try {
+      assert.deepEqual(gitChanges(dir), { files: [] });
+
+      writeFileSync(join(dir, "a.txt"), "one\nthree\n");
+
+      const changes = gitChanges(dir);
+
+      assert.equal(changes.files.length, 1);
+      assert.equal(changes.files[0].path, "a.txt");
+      assert.equal(changes.files[0].additions, 1);
+      assert.equal(changes.files[0].deletions, 1);
+      assert.equal(changes.files[0].binary, false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "working tree changes include untracked files",
+  { skip: !gitAvailable() },
+  () => {
+    const dir = initRepo();
+
+    try {
+      writeFileSync(join(dir, "new.txt"), "a\nb\n");
+
+      const changes = gitChanges(dir);
+
+      assert.equal(changes.files.length, 1);
+      assert.deepEqual(changes.files[0], {
+        path: "new.txt",
+        additions: 2,
+        deletions: 0,
+        binary: false,
+        truncated: false,
+        lines: [
+          { kind: "add", number: 1, text: "a" },
+          { kind: "add", number: 2, text: "b" },
+        ],
+      });
+      assert.deepEqual(gitDiff(dir), {
+        hasGit: true,
+        additions: 2,
+        deletions: 0,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "working tree changes work before the first commit",
+  { skip: !gitAvailable() },
+  () => {
+    const dir = mkdtempSync(join(tmpdir(), "veykor-git-"));
+
+    try {
+      execFileSync("git", ["-C", dir, "init", "-b", "main"], {
+        stdio: "ignore",
+      });
+      writeFileSync(join(dir, "new.txt"), "a\n");
+
+      const changes = gitChanges(dir);
+
+      assert.equal(changes.files.length, 1);
+      assert.equal(changes.files[0].path, "new.txt");
+      assert.deepEqual(gitDiff(dir), {
+        hasGit: true,
+        additions: 1,
+        deletions: 0,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test("untracked binaries are flagged", { skip: !gitAvailable() }, () => {
+  const dir = initRepo();
+
+  try {
+    writeFileSync(join(dir, "blob.bin"), Buffer.from([0, 1, 2, 3]));
+
+    const changes = gitChanges(dir);
+    const blob = changes.files.find((file) => file.path === "blob.bin");
+
+    assert.deepEqual(blob, {
+      path: "blob.bin",
+      additions: 0,
+      deletions: 0,
+      binary: true,
+      truncated: false,
+      lines: [],
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

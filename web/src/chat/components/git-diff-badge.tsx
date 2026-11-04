@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { GitDiff } from "@veykor/shared";
 import { semanticColors } from "../../theme/theme-colors.ts";
+import { changesTabId } from "../../teams/changes-tab.ts";
+import { useTeamStore } from "../../teams/team-store.ts";
 import { useWorkStore } from "../../work/work-store.ts";
 import { workRequest } from "../../work/work-client.ts";
 
@@ -55,13 +57,15 @@ function GitDiffBadge() {
   }
 
   return (
-    <span
-      className="flex shrink-0 items-center gap-1.5 text-xs font-light"
-      title="Uncommitted changes"
+    <button
+      className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-light transition hover:bg-zinc-800"
+      onClick={() => useTeamStore.getState().select(changesTabId)}
+      title="View uncommitted changes"
+      type="button"
     >
       <span className={semanticColors.success.text}>+{diff.additions}</span>
       <span className={semanticColors.delete.text}>-{diff.deletions}</span>
-    </span>
+    </button>
   );
 }
 

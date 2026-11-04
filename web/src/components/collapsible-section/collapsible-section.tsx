@@ -9,6 +9,7 @@ interface Props {
   onToggle: () => void;
   open: boolean;
   title: string;
+  titleNode?: ReactNode;
 }
 
 function CollapsibleSection(props: Props) {
@@ -26,7 +27,7 @@ function CollapsibleSection(props: Props) {
           onContextMenu={props.onTitleContextMenu}
           type="button"
         >
-          <span className="truncate">{props.title}</span>
+          {props.titleNode ?? <span className="truncate">{props.title}</span>}
 
           <ChevronDownIcon
             aria-hidden="true"

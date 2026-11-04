@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { TeamSnapshot } from "@veykor/shared";
+import { changesTabId } from "../src/teams/changes-tab.ts";
 import { useTeamStore } from "../src/teams/team-store.ts";
 
 function snapshot(rootId: string, name: string): TeamSnapshot {
@@ -132,6 +133,27 @@ test("newly delegated members open tabs", async () => {
     await useTeamStore.getState().refresh();
 
     assert.deepEqual(useTeamStore.getState().tabs, ["coder", "reviewer"]);
+  } finally {
+    cleanup();
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("changes tab survives refresh", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    Response.json(snapshot("chat-with-changes", "Main"));
+  let cleanup = () => {};
+
+  try {
+    useTeamStore.setState({ tabs: [], selectedId: "" });
+    cleanup = useTeamStore.getState().watch("chat-with-changes");
+    await new Promise((resolve) => setImmediate(resolve));
+    useTeamStore.getState().select(changesTabId);
+    await useTeamStore.getState().refresh();
+
+    assert.deepEqual(useTeamStore.getState().tabs, [changesTabId]);
+    assert.equal(useTeamStore.getState().selectedId, changesTabId);
   } finally {
     cleanup();
     globalThis.fetch = originalFetch;

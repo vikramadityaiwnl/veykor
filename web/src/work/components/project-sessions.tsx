@@ -8,9 +8,7 @@ import ContextMenu from "../../components/context-menu/context-menu.tsx";
 import Dialog from "../../components/dialog/dialog.tsx";
 import EmptyState from "../../components/empty-state/empty-state.tsx";
 import LoadingSpinner from "../../components/loading-spinner/loading-spinner.tsx";
-import { semanticColors, themeColors } from "../../theme/theme-colors.ts";
 import { useChatStore } from "../../chat/chat-store.ts";
-import { useTeamStore } from "../../teams/team-store.ts";
 import { useWorkStore } from "../work-store.ts";
 
 interface Props {
@@ -71,11 +69,6 @@ function ProjectSessions(props: Props) {
     setDialog(null);
   }
 
-  function openPullRequest(chatId: string, number: number) {
-    useTeamStore.getState().openPullRequest(chatId, number);
-    navigate(`/work/${props.projectId}/chat/${chatId}`);
-  }
-
   async function handleConfirmDelete() {
     if (!deleting) {
       return;
@@ -99,7 +92,6 @@ function ProjectSessions(props: Props) {
         const active = chat.id === activeChatId;
         const finished = !chat.running && finishedChatIds.includes(chat.id);
         const showBranch = project?.hasGit === true;
-        const showMeta = showBranch || chat.pullRequests.length > 0;
 
         return (
           <button
@@ -127,31 +119,9 @@ function ProjectSessions(props: Props) {
               )}
             </span>
 
-            {showMeta && (
-              <span className="mt-0.5 flex w-full items-center gap-2 text-[11px] font-light">
-                {showBranch && (
-                  <span className="min-w-0 flex-1 truncate text-zinc-600">
-                    {project?.branch ?? ""}
-                  </span>
-                )}
-
-                {chat.pullRequests.map((pull) => (
-                  <span
-                    key={pull.number}
-                    className={`shrink-0 cursor-pointer hover:underline ${
-                      pull.merged
-                        ? semanticColors.success.text
-                        : themeColors.muted
-                    }`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openPullRequest(chat.id, pull.number);
-                    }}
-                    title={`Open pull request #${pull.number}`}
-                  >
-                    PR #{pull.number}
-                  </span>
-                ))}
+            {showBranch && (
+              <span className="mt-0.5 block w-full truncate text-[11px] font-light text-zinc-600">
+                {project?.branch ?? ""}
               </span>
             )}
           </button>

@@ -286,18 +286,6 @@ export function runMigrations(sqlite: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS generated_images_chat_idx ON generated_images(chat_id, created_at);
     CREATE INDEX IF NOT EXISTS generated_images_user_idx ON generated_images(user_id);
-    CREATE TABLE IF NOT EXISTS pull_requests (
-      id TEXT PRIMARY KEY,
-      user_id INTEGER NOT NULL DEFAULT 0 REFERENCES users(id) ON DELETE CASCADE,
-      chat_id TEXT NOT NULL DEFAULT '' REFERENCES chats(id) ON DELETE CASCADE,
-      repo TEXT NOT NULL DEFAULT '',
-      number INTEGER NOT NULL DEFAULT 0,
-      url TEXT NOT NULL DEFAULT '',
-      merged INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT '',
-      updated_at TEXT NOT NULL DEFAULT ''
-    );
-    CREATE INDEX IF NOT EXISTS pull_requests_chat_idx ON pull_requests(user_id, chat_id, number);
   `);
 
   sqlite

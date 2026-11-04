@@ -1,23 +1,19 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import type {
   GitBranches,
+  GitChangeFile,
+  GitChangeLine,
+  GitChanges,
   GitDiff,
-  PullRequestCheck,
-  PullRequestDetail,
-  PullRequestReview,
 } from "@veykor/shared";
 
 export class GitError extends Error {}
 
-export class GitHubError extends Error {}
-
 const maxBranchLength = 250;
 
 const gitTimeoutMs = 5000;
-
-const ghTimeoutMs = 20000;
-
-const ghMergeTimeoutMs = 30000;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -54,34 +50,20 @@ function commandMessage(cause: unknown, missing: string): string {
   return "The command failed.";
 }
 
-function runGit(folder: string, args: Array<string>): string {
+function runGit(
+  folder: string,
+  args: Array<string>,
+  maxBuffer = 1024 * 1024,
+): string {
   try {
     return execFileSync("git", ["-C", folder, ...args], {
       encoding: "utf8",
       timeout: gitTimeoutMs,
+      maxBuffer,
       stdio: ["ignore", "pipe", "pipe"],
     }).trim();
   } catch (cause) {
     throw new GitError(commandMessage(cause, "Git is not installed."));
-  }
-}
-
-function runGh(
-  args: Array<string>,
-  timeoutMs: number,
-  folder?: string,
-): string {
-  try {
-    return execFileSync("gh", args, {
-      encoding: "utf8",
-      timeout: timeoutMs,
-      cwd: folder,
-      stdio: ["ignore", "pipe", "pipe"],
-    }).trim();
-  } catch (cause) {
-    throw new GitHubError(
-      commandMessage(cause, "gh is not installed on the server."),
-    );
   }
 }
 
@@ -91,26 +73,6 @@ export function cleanBranchName(value: unknown): string {
   }
 
   return value.trim().slice(0, maxBranchLength);
-}
-
-export function parsePrUrl(
-  value: string,
-): { repo: string; number: number } | null {
-  const match = value.match(
-    /github\.com\/([^/\s]+)\/([^/\s]+?)(?:\.git)?\/pull\/(\d+)/i,
-  );
-
-  if (!match || match[1] === undefined || match[2] === undefined) {
-    return null;
-  }
-
-  const number = Number.parseInt(match[3] ?? "", 10);
-
-  if (!Number.isInteger(number) || number <= 0) {
-    return null;
-  }
-
-  return { repo: `${match[1]}/${match[2]}`, number };
 }
 
 export function parseNumstat(output: string): {
@@ -205,196 +167,234 @@ export function gitDiff(folder: string): GitDiff {
     return { hasGit: false, additions: 0, deletions: 0 };
   }
 
+  let additions = 0;
+  let deletions = 0;
+
   try {
     const counts = parseNumstat(runGit(folder, ["diff", "--numstat", "HEAD"]));
 
-    return { hasGit: true, ...counts };
+    additions = counts.additions;
+    deletions = counts.deletions;
   } catch {
-    return { hasGit: true, additions: 0, deletions: 0 };
-  }
-}
-
-function readString(record: Record<string, unknown>, key: string): string {
-  const value = record[key];
-
-  return typeof value === "string" ? value : "";
-}
-
-function readNumber(record: Record<string, unknown>, key: string): number {
-  const value = record[key];
-
-  return typeof value === "number" && Number.isInteger(value) && value >= 0
-    ? value
-    : 0;
-}
-
-function readLogin(value: unknown): string {
-  if (typeof value === "object" && value !== null) {
-    const login = (value as Record<string, unknown>).login;
-
-    return typeof login === "string" ? login : "";
+    // No commits yet: only untracked files can exist.
   }
 
-  return "";
-}
-
-function readReviews(value: unknown): Array<PullRequestReview> {
-  if (!Array.isArray(value)) {
-    return [];
+  for (const file of untrackedChanges(folder, maxChangedFiles)) {
+    additions += file.additions;
   }
 
-  return value
-    .slice(0, 100)
-    .filter(
-      (entry): entry is Record<string, unknown> =>
-        typeof entry === "object" && entry !== null,
-    )
-    .map((entry) => ({
-      author: readLogin(entry.author),
-      state: readString(entry, "state"),
-    }));
+  return { hasGit: true, additions, deletions };
 }
 
-function readChecks(value: unknown): Array<PullRequestCheck> {
-  if (!Array.isArray(value)) {
-    return [];
-  }
+const maxChangedFiles = 200;
 
-  return value
-    .slice(0, 100)
-    .filter(
-      (entry): entry is Record<string, unknown> =>
-        typeof entry === "object" && entry !== null,
-    )
-    .map((entry) => ({
-      name: readString(entry, "name") || readString(entry, "context"),
-      status: readString(entry, "status"),
-      conclusion: readString(entry, "conclusion"),
-    }));
+const maxChangeLines = 400;
+
+function changePath(header: string): string {
+  const rest = header.replace(/^diff --git /, "");
+  const match = rest.match(/^(?:"[^"]+"|\S+) (?:"([^"]+)"|(\S+))$/);
+  const raw = match?.[1] ?? match?.[2] ?? "";
+
+  return raw.startsWith("b/") ? raw.slice(2) : raw;
 }
 
-const prViewFields = [
-  "number",
-  "title",
-  "body",
-  "state",
-  "author",
-  "url",
-  "headRefName",
-  "baseRefName",
-  "additions",
-  "deletions",
-  "changedFiles",
-  "commits",
-  "mergeable",
-  "mergeStateStatus",
-  "reviewDecision",
-  "isDraft",
-  "createdAt",
-  "updatedAt",
-  "mergedAt",
-  "reviews",
-  "statusCheckRollup",
-].join(",");
-
-export function toPullRequestDetail(data: unknown): PullRequestDetail {
-  const record =
-    typeof data === "object" && data !== null
-      ? (data as Record<string, unknown>)
-      : {};
-
-  const state = readString(record, "state");
+function hunkStarts(header: string): { oldStart: number; newStart: number } {
+  const match = header.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+  const oldStart = Number.parseInt(match?.[1] ?? "", 10);
+  const newStart = Number.parseInt(match?.[2] ?? "", 10);
 
   return {
-    number: readNumber(record, "number"),
-    title: readString(record, "title"),
-    body: readString(record, "body"),
-    state,
-    merged: state === "MERGED",
-    draft: record.isDraft === true,
-    author: readLogin(record.author),
-    url: readString(record, "url"),
-    headRef: readString(record, "headRefName"),
-    baseRef: readString(record, "baseRefName"),
-    additions: readNumber(record, "additions"),
-    deletions: readNumber(record, "deletions"),
-    changedFiles: readNumber(record, "changedFiles"),
-    commits: Array.isArray(record.commits) ? record.commits.length : 0,
-    mergeable: readString(record, "mergeable"),
-    mergeState: readString(record, "mergeStateStatus"),
-    reviewDecision: readString(record, "reviewDecision"),
-    checks: readChecks(record.statusCheckRollup),
-    reviews: readReviews(record.reviews),
-    createdAt: readString(record, "createdAt"),
-    updatedAt: readString(record, "updatedAt"),
-    mergedAt: readString(record, "mergedAt"),
+    oldStart: Number.isInteger(oldStart) && oldStart > 0 ? oldStart : 1,
+    newStart: Number.isInteger(newStart) && newStart > 0 ? newStart : 1,
   };
 }
 
-export function ghPrView(repo: string, number: number): PullRequestDetail {
-  const raw = runGh(
-    ["pr", "view", String(number), "-R", repo, "--json", prViewFields],
-    ghTimeoutMs,
-  );
+export function parseUnifiedDiff(output: string): GitChanges {
+  const files: Array<GitChangeFile> = [];
+  let current: GitChangeFile | null = null;
+  let oldLine = 1;
+  let newLine = 1;
 
-  try {
-    return toPullRequestDetail(JSON.parse(raw) as unknown);
-  } catch {
-    throw new GitHubError("GitHub returned an unreadable pull request.");
-  }
-}
-
-export function ghPrResolve(
-  folder: string,
-  number: number,
-): { repo: string; number: number; url: string; merged: boolean } {
-  const raw = runGh(
-    ["pr", "view", String(number), "--json", "number,url,state"],
-    ghTimeoutMs,
-    folder,
-  );
-
-  let data: Record<string, unknown> = {};
-
-  try {
-    const parsed: unknown = JSON.parse(raw);
-
-    if (typeof parsed === "object" && parsed !== null) {
-      data = parsed as Record<string, unknown>;
+  const pushCurrent = () => {
+    if (current && current.path !== "") {
+      files.push(current);
     }
+
+    current = null;
+  };
+
+  for (const line of output.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      pushCurrent();
+
+      current = {
+        path: changePath(line),
+        additions: 0,
+        deletions: 0,
+        binary: false,
+        truncated: false,
+        lines: [],
+      };
+      continue;
+    }
+
+    if (!current) {
+      continue;
+    }
+
+    if (line.startsWith("Binary files ")) {
+      current.binary = true;
+      continue;
+    }
+
+    if (
+      line.startsWith("index ") ||
+      line.startsWith("--- ") ||
+      line.startsWith("+++ ") ||
+      line.startsWith("new file mode") ||
+      line.startsWith("deleted file mode") ||
+      line.startsWith("rename ") ||
+      line.startsWith("similarity ") ||
+      line.startsWith("\\ ")
+    ) {
+      continue;
+    }
+
+    let entry: GitChangeLine | null = null;
+
+    if (line.startsWith("@@")) {
+      const starts = hunkStarts(line);
+
+      oldLine = starts.oldStart;
+      newLine = starts.newStart;
+      entry = { kind: "hunk", number: 0, text: line };
+    } else if (line.startsWith("+")) {
+      entry = { kind: "add", number: newLine, text: line.slice(1) };
+      newLine += 1;
+      current.additions += 1;
+    } else if (line.startsWith("-")) {
+      entry = { kind: "del", number: oldLine, text: line.slice(1) };
+      oldLine += 1;
+      current.deletions += 1;
+    } else if (line.startsWith(" ")) {
+      entry = { kind: "context", number: newLine, text: line.slice(1) };
+      oldLine += 1;
+      newLine += 1;
+    }
+
+    if (entry && current.lines.length < maxChangeLines) {
+      current.lines.push(entry);
+    } else if (entry) {
+      current.truncated = true;
+    }
+  }
+
+  pushCurrent();
+
+  return { files: files.slice(0, maxChangedFiles) };
+}
+
+export function gitChanges(folder: string): GitChanges {
+  if (!gitHasRepo(folder)) {
+    return { files: [] };
+  }
+
+  try {
+    runGit(folder, ["rev-parse", "--verify", "--quiet", "HEAD"]);
   } catch {
-    throw new GitHubError("GitHub returned an unreadable pull request.");
+    return { files: untrackedChanges(folder, maxChangedFiles) };
   }
 
-  const url = readString(data, "url");
-  const parsed = parsePrUrl(url);
-
-  if (parsed === null) {
-    throw new GitHubError("GitHub returned an unreadable pull request.");
-  }
+  const tracked = parseUnifiedDiff(
+    runGit(folder, ["diff", "HEAD", "--no-color"], 8 * 1024 * 1024),
+  ).files;
+  const rest = maxChangedFiles - tracked.length;
+  const untracked = rest > 0 ? untrackedChanges(folder, rest) : [];
 
   return {
-    repo: parsed.repo,
-    number: readNumber(data, "number") || number,
-    url,
-    merged: readString(data, "state") === "MERGED",
+    files: [...tracked, ...untracked].sort((a, b) =>
+      a.path.localeCompare(b.path),
+    ),
   };
 }
 
-export function ghPrMerge(repo: string, number: number): string {
-  const raw = runGh(
-    ["pr", "merge", String(number), "-R", repo, "--merge"],
-    ghMergeTimeoutMs,
-  );
+const maxUntrackedBytes = 8 * 1024 * 1024;
 
-  return raw === "" ? `Pull request #${number} was merged.` : raw;
+function listUntracked(folder: string, limit: number): Array<string> {
+  let raw: string;
+
+  try {
+    raw = runGit(folder, ["status", "--porcelain=v1", "-uall", "-z"]);
+  } catch {
+    return [];
+  }
+
+  const paths: Array<string> = [];
+
+  for (const entry of raw.split("\0")) {
+    if (entry.startsWith("?? ") && paths.length < limit) {
+      paths.push(entry.slice(3));
+    }
+  }
+
+  return paths;
 }
 
-export function ghPrClose(repo: string, number: number): string {
-  const raw = runGh(
-    ["pr", "close", String(number), "-R", repo],
-    ghMergeTimeoutMs,
-  );
+function untrackedEntry(folder: string, relPath: string): GitChangeFile | null {
+  let content: string;
 
-  return raw === "" ? `Pull request #${number} was closed.` : raw;
+  try {
+    const stat = statSync(join(folder, relPath));
+
+    if (!stat.isFile() || stat.size > maxUntrackedBytes) {
+      return null;
+    }
+
+    content = readFileSync(join(folder, relPath), "utf8");
+  } catch {
+    return null;
+  }
+
+  if (content.slice(0, 8192).includes("\0")) {
+    return {
+      path: relPath,
+      additions: 0,
+      deletions: 0,
+      binary: true,
+      truncated: false,
+      lines: [],
+    };
+  }
+
+  const parts = content === "" ? [] : content.split("\n");
+  const texts =
+    content !== "" && content.endsWith("\n") ? parts.slice(0, -1) : parts;
+  const lines = texts.map((text, index): GitChangeLine => ({
+    kind: "add",
+    number: index + 1,
+    text,
+  }));
+
+  return {
+    path: relPath,
+    additions: lines.length,
+    deletions: 0,
+    binary: false,
+    truncated: lines.length > maxChangeLines,
+    lines: lines.slice(0, maxChangeLines),
+  };
+}
+
+function untrackedChanges(folder: string, limit: number): Array<GitChangeFile> {
+  const entries: Array<GitChangeFile> = [];
+
+  for (const relPath of listUntracked(folder, limit)) {
+    const entry = untrackedEntry(folder, relPath);
+
+    if (entry) {
+      entries.push(entry);
+    }
+  }
+
+  return entries;
 }

@@ -19,7 +19,13 @@ import type {
 import { requireAuth } from "../auth/auth.js";
 import type { AuthEnv } from "../auth/auth.js";
 import { isHostRequest } from "../auth/host-access.js";
-import { gitBranches, gitCheckout, gitDiff, gitHasRepo } from "../git/git.js";
+import {
+  gitBranches,
+  gitChanges,
+  gitCheckout,
+  gitDiff,
+  gitHasRepo,
+} from "../git/git.js";
 import { db } from "../db/client.js";
 import { agents, projects, chats, memories } from "../db/schema.js";
 import { isMuseTurnRunning, leaveMuseSession } from "../muse/chat-service.js";
@@ -485,6 +491,26 @@ projectRoute.get("/:id/git/diff", (c) => {
   }
 
   return c.json(gitDiff(project.folder));
+});
+
+projectRoute.get("/:id/git/changes", (c) => {
+  const project = readProject(c.get("user").id, c.req.param("id"));
+
+  if (!project) {
+    return c.json({ error: "Project not found." }, 404);
+  }
+
+  try {
+    return c.json(gitChanges(project.folder));
+  } catch (cause) {
+    return c.json(
+      {
+        error:
+          cause instanceof Error ? cause.message : "Unable to read changes.",
+      },
+      502,
+    );
+  }
 });
 
 projectRoute.get("/:id/git/branches", (c) => {

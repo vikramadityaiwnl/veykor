@@ -51,38 +51,21 @@ export interface CheckoutBranchRequest {
   create?: boolean;
 }
 
-export interface PullRequestCheck {
-  name: string;
-  status: string;
-  conclusion: string;
-}
-
-export interface PullRequestReview {
-  author: string;
-  state: string;
-}
-
-export interface PullRequestDetail {
+export interface GitChangeLine {
+  kind: "add" | "del" | "context" | "hunk";
   number: number;
-  title: string;
-  body: string;
-  state: string;
-  merged: boolean;
-  draft: boolean;
-  author: string;
-  url: string;
-  headRef: string;
-  baseRef: string;
+  text: string;
+}
+
+export interface GitChangeFile {
+  path: string;
   additions: number;
   deletions: number;
-  changedFiles: number;
-  commits: number;
-  mergeable: string;
-  mergeState: string;
-  reviewDecision: string;
-  checks: Array<PullRequestCheck>;
-  reviews: Array<PullRequestReview>;
-  createdAt: string;
-  updatedAt: string;
-  mergedAt: string;
+  binary: boolean;
+  truncated: boolean;
+  lines: Array<GitChangeLine>;
+}
+
+export interface GitChanges {
+  files: Array<GitChangeFile>;
 }

@@ -1,22 +1,15 @@
 import { useEffect } from "react";
 import type { KeyboardEvent } from "react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
-import { useChatStore } from "../../chat/chat-store.ts";
-import { semanticColors, themeColors } from "../../theme/theme-colors.ts";
-import { parsePullRequestTab } from "../pull-request-tabs.ts";
+import { changesTabId, isChangesTab } from "../changes-tab.ts";
 import { useTeamStore } from "../team-store.ts";
 
 function AgentTabs() {
   const snapshot = useTeamStore((state) => state.snapshot);
-  const rootId = useTeamStore((state) => state.rootId);
   const tabs = useTeamStore((state) => state.tabs);
   const selectedId = useTeamStore((state) => state.selectedId);
   const select = useTeamStore((state) => state.select);
   const close = useTeamStore((state) => state.close);
-  const chats = useChatStore((state) => state.chats);
-
-  const chat = chats.find((entry) => entry.id === rootId);
-
   useEffect(() => {
     document
       .getElementById(`agent-tab-${selectedId}`)
@@ -99,50 +92,35 @@ function AgentTabs() {
         ) : null;
       })}
 
-      {tabs.map((id) => {
-        const number = parsePullRequestTab(id);
-
-        if (number === 0) {
-          return null;
-        }
-
-        const merged =
-          chat?.pullRequests.some(
-            (pull) => pull.number === number && pull.merged,
-          ) ?? false;
-        const label = `#${number}`;
-
-        return (
-          <div
-            className={`flex shrink-0 items-center rounded-lg ${selectedId === id ? "bg-zinc-800" : "hover:bg-zinc-900"}`}
-            key={id}
+      {tabs.some((id) => isChangesTab(id)) && (
+        <div
+          className={`flex shrink-0 items-center rounded-lg ${selectedId === changesTabId ? "bg-zinc-800" : "hover:bg-zinc-900"}`}
+        >
+          <button
+            id={`agent-tab-${changesTabId}`}
+            role="tab"
+            aria-selected={selectedId === changesTabId}
+            aria-controls={`agent-panel-${changesTabId}`}
+            tabIndex={selectedId === changesTabId ? 0 : -1}
+            className="max-w-48 truncate px-3 py-2 text-xs font-light text-zinc-300"
+            title="Working tree changes"
+            type="button"
+            onClick={() => select(changesTabId)}
+            onKeyDown={(event) => handleKeyDown(changesTabId, event)}
           >
-            <button
-              id={`agent-tab-${id}`}
-              role="tab"
-              aria-selected={selectedId === id}
-              aria-controls={`agent-panel-${id}`}
-              tabIndex={selectedId === id ? 0 : -1}
-              className={`max-w-48 truncate px-3 py-2 text-xs font-light ${merged ? semanticColors.success.text : themeColors.muted}`}
-              title={`Pull request ${label}`}
-              type="button"
-              onClick={() => select(id)}
-              onKeyDown={(event) => handleKeyDown(id, event)}
-            >
-              {label}
-            </button>
-            <button
-              aria-label={`Close pull request ${label} tab`}
-              title="Close tab"
-              className="mr-1 rounded-md p-1 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-100"
-              type="button"
-              onClick={() => close(id)}
-            >
-              <XMarkIcon aria-hidden="true" className="size-3" />
-            </button>
-          </div>
-        );
-      })}
+            Changes
+          </button>
+          <button
+            aria-label="Close Changes tab"
+            title="Close tab"
+            className="mr-1 rounded-md p-1 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-100"
+            type="button"
+            onClick={() => close(changesTabId)}
+          >
+            <XMarkIcon aria-hidden="true" className="size-3" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

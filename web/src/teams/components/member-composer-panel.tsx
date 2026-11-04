@@ -1,14 +1,17 @@
 import type {
+  ChatApprovalChoice,
   ChatApprovalRequest,
+  DecideApprovalRequest,
   QuestionRequest,
   TeamMember,
 } from "@veykor/shared";
+import ApprovalCard from "../../chat/components/approval-card.tsx";
 import ComposerActivityPanel from "../../chat/components/composer-activity-panel.tsx";
 import QuestionPanel from "../../chat/components/question-panel.tsx";
+import { decideApproval as decideApprovalRequest } from "../../chat/chat-client.ts";
 import { useChatStore } from "../../chat/chat-store.ts";
 import { visibleOrphanedQuestions } from "../../chat/question-drafts.ts";
 import { useTeamStore } from "../team-store.ts";
-import MemberApproval from "./member-approval.tsx";
 import MemberQueue from "./member-queue.tsx";
 import TeamTodos from "./team-todos.tsx";
 
@@ -32,6 +35,24 @@ function MemberComposerPanel(props: Props) {
   );
 
   const dismissed = useChatStore((state) => state.dismissedQuestions);
+
+  async function decideMemberApproval(
+    approval: ChatApprovalRequest,
+    choice: ChatApprovalChoice,
+    feedback?: string,
+  ) {
+    const req: DecideApprovalRequest = {
+      approvalId: approval.approvalId,
+      choiceId: choice.choiceId,
+    };
+
+    if (feedback !== undefined && feedback !== "") {
+      req.feedback = feedback;
+    }
+
+    await decideApprovalRequest(props.member.id, req);
+    props.onDecided();
+  }
 
   const showApprovals = props.approvals.length > 0;
   const showQueue = props.member.queuedMessages.length > 0;
@@ -64,13 +85,15 @@ function MemberComposerPanel(props: Props) {
           last={last === "approvals"}
           title="Needs your approval"
         >
-          <div className="space-y-3 px-4 pb-3">
+          <div className="space-y-3">
             {props.approvals.map((approval) => (
-              <MemberApproval
+              <ApprovalCard
                 key={approval.approvalId}
-                chatId={props.member.id}
                 approval={approval}
-                onDecided={props.onDecided}
+                decide={(choice, feedback) =>
+                  decideMemberApproval(approval, choice, feedback)
+                }
+                decideImmediately
               />
             ))}
           </div>

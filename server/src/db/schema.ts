@@ -103,24 +103,6 @@ export const projects = sqliteTable("projects", {
   agentIds: text("agent_ids").notNull().default("[]"),
 });
 
-export const pullRequests = sqliteTable("pull_requests", {
-  id: text("id").primaryKey(),
-  userId: integer("user_id")
-    .notNull()
-    .default(0)
-    .references(() => users.id, { onDelete: "cascade" }),
-  chatId: text("chat_id")
-    .notNull()
-    .default("")
-    .references(() => chats.id, { onDelete: "cascade" }),
-  repo: text("repo").notNull().default(""),
-  number: integer("number").notNull().default(0),
-  url: text("url").notNull().default(""),
-  merged: integer("merged").notNull().default(0),
-  createdAt: text("created_at").notNull().default(""),
-  updatedAt: text("updated_at").notNull().default(""),
-});
-
 export const memories = sqliteTable("memories", {
   id: text("id").primaryKey(),
   userId: integer("user_id")

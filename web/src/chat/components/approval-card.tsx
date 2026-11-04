@@ -1,10 +1,11 @@
 import { useState } from "react";
 import type { ChatApprovalChoice, ChatApprovalRequest } from "@veykor/shared";
 import { semanticColors } from "../../theme/semantic-colors.ts";
-import { useChatStore } from "../chat-store.ts";
 
 interface Props {
   approval: ChatApprovalRequest;
+  decide: (choice: ChatApprovalChoice, feedback?: string) => Promise<void>;
+  decideImmediately?: boolean;
 }
 
 function shortLabel(label: string): string {
@@ -22,21 +23,27 @@ function isApproveDecision(decision: string): boolean {
 }
 
 function ApprovalCard(props: Props) {
-  const decideApproval = useChatStore((s) => s.decideApproval);
-
   const [expanded, setExpanded] = useState(false);
   const [deciding, setDeciding] = useState(false);
   const [feedbackChoice, setFeedbackChoice] =
     useState<ChatApprovalChoice | null>(null);
   const [feedback, setFeedback] = useState("");
+  const [error, setError] = useState("");
 
   const approval = props.approval;
 
   async function handleDecide(choice: ChatApprovalChoice, comment?: string) {
     setDeciding(true);
+    setError("");
 
     try {
-      await decideApproval(approval.approvalId, choice.choiceId, comment);
+      await props.decide(choice, comment);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to record this decision.",
+      );
     } finally {
       setDeciding(false);
       setFeedbackChoice(null);
@@ -45,6 +52,11 @@ function ApprovalCard(props: Props) {
   }
 
   function handleChoice(choice: ChatApprovalChoice) {
+    if (props.decideImmediately === true) {
+      void handleDecide(choice, feedback);
+      return;
+    }
+
     if (choice.acceptsFeedback) {
       setFeedbackChoice(choice);
       return;
@@ -52,6 +64,10 @@ function ApprovalCard(props: Props) {
 
     void handleDecide(choice);
   }
+
+  const showInlineFeedback =
+    props.decideImmediately === true &&
+    approval.choices.some((choice) => choice.acceptsFeedback);
 
   return (
     <div className="px-4 pb-3">
@@ -83,6 +99,17 @@ function ApprovalCard(props: Props) {
         </pre>
       ) : null}
 
+      {showInlineFeedback ? (
+        <input
+          aria-label="Approval feedback"
+          className="mt-2.5 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-[13px] text-zinc-100 outline-none placeholder:text-zinc-600"
+          onChange={(event) => setFeedback(event.target.value)}
+          placeholder="Feedback (optional)"
+          type="text"
+          value={feedback}
+        />
+      ) : null}
+
       <div className="mt-2.5 flex flex-wrap gap-2">
         {approval.choices.map((choice) => {
           const approve = isApproveDecision(choice.decision);
@@ -112,6 +139,12 @@ function ApprovalCard(props: Props) {
           );
         })}
       </div>
+
+      {error !== "" ? (
+        <p role="alert" className="mt-2.5 text-xs text-rose-400">
+          {error}
+        </p>
+      ) : null}
 
       {feedbackChoice !== null ? (
         <div className="mt-2.5 flex gap-2">
