@@ -49,7 +49,14 @@ function BrandPanel(props: Props) {
         <div className="flex items-center gap-3">
           <Logo size={36} />
 
-          <span className="text-xl font-semibold text-zinc-50">veykor</span>
+          <div className="space-y-1">
+            <span className="text-xl font-semibold text-zinc-50">veykor</span>
+
+            <p className="text-xs font-light text-zinc-400">
+              Powered by <span className="text-info">Muse Code</span> from{" "}
+              <span className="text-info">Meta</span>
+            </p>
+          </div>
         </div>
 
         <div className="space-y-3">

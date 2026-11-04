@@ -60,7 +60,14 @@ function AuthPage(props: Props) {
           <div className="flex items-center gap-2.5 md:hidden">
             <Logo size={28} />
 
-            <span className="text-lg font-semibold text-zinc-50">veykor</span>
+            <div className="space-y-1">
+              <span className="text-lg font-semibold text-zinc-50">veykor</span>
+
+              <p className="text-xs font-light text-zinc-400">
+                Powered by <span className="text-info">Muse Code</span> from{" "}
+                <span className="text-info">Meta</span>
+              </p>
+            </div>
           </div>
 
           {activeMode === "login" && (
