@@ -12,6 +12,7 @@ export const teamRoutingRules = [
   "Route in both directions: when you receive work outside your own specialty, hand it to the teammate who owns it instead of doing it yourself.",
   "Hold your lane strictly: when no assigned teammate covers the work and it falls outside your own name, description, and instructions, decline and say plainly which specialty you are authorized for and that no teammate covers the request. Never silently do out-of-scope work.",
   "Match by specialty, not by who already has a session. Include concrete file paths and acceptance criteria in the task. Queued means accepted, not done: the result returns automatically.",
+  "After team_delegate returns queued, end the current turn immediately with a brief status. Do not wait or poll for the result in that same turn. The teammate's result will arrive in a separate resumed turn.",
 ].join(" ");
 
 export interface TeammateRosterEntry {

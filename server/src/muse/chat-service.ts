@@ -1087,6 +1087,11 @@ export async function runMuseTurn(input: {
             const eventTurnId =
               text(notification.params["turnId"]) || itemTurnId;
 
+            if (notification.method === "turn/started") {
+              await announceTurn(eventTurnId);
+              return;
+            }
+
             if (
               turnId !== "" &&
               eventTurnId !== "" &&
@@ -1095,11 +1100,6 @@ export async function runMuseTurn(input: {
               notification.method !== "approval/resolved" &&
               notification.method !== "session/todoListChanged"
             ) {
-              return;
-            }
-
-            if (notification.method === "turn/started") {
-              await announceTurn(eventTurnId);
               return;
             }
 

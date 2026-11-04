@@ -56,4 +56,6 @@ test("routing rules send specialty work to teammates", () => {
   assert.match(teamRoutingRules, /both directions/);
   assert.match(teamRoutingRules, /Hold your lane strictly/);
   assert.match(teamRoutingRules, /team_delegate/);
+  assert.match(teamRoutingRules, /end the current turn immediately/);
+  assert.match(teamRoutingRules, /separate resumed turn/);
 });

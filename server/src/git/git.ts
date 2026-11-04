@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, statSync } from "node:fs";
+import { lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
   GitBranches,
@@ -171,7 +171,15 @@ export function gitDiff(folder: string): GitDiff {
   let deletions = 0;
 
   try {
-    const counts = parseNumstat(runGit(folder, ["diff", "--numstat", "HEAD"]));
+    const counts = parseNumstat(
+      runGit(folder, [
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--numstat",
+        "HEAD",
+      ]),
+    );
 
     additions = counts.additions;
     deletions = counts.deletions;
@@ -306,7 +314,11 @@ export function gitChanges(folder: string): GitChanges {
   }
 
   const tracked = parseUnifiedDiff(
-    runGit(folder, ["diff", "HEAD", "--no-color"], 8 * 1024 * 1024),
+    runGit(
+      folder,
+      ["diff", "--no-ext-diff", "--no-textconv", "HEAD", "--no-color"],
+      8 * 1024 * 1024,
+    ),
   ).files;
   const rest = maxChangedFiles - tracked.length;
   const untracked = rest > 0 ? untrackedChanges(folder, rest) : [];
@@ -344,7 +356,18 @@ function untrackedEntry(folder: string, relPath: string): GitChangeFile | null {
   let content: string;
 
   try {
-    const stat = statSync(join(folder, relPath));
+    const stat = lstatSync(join(folder, relPath));
+
+    if (stat.isSymbolicLink()) {
+      return {
+        path: relPath,
+        additions: 0,
+        deletions: 0,
+        binary: true,
+        truncated: false,
+        lines: [],
+      };
+    }
 
     if (!stat.isFile() || stat.size > maxUntrackedBytes) {
       return null;

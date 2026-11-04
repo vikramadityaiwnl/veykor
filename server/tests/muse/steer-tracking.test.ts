@@ -156,3 +156,78 @@ test("a steered main turn completes when the replacement turn completes", async 
     museHost.subscribe = subscribe;
   }
 });
+
+test("a replacement start notification retargets the main turn when steer omits its id", async () => {
+  const connection = museHost.connection;
+  const subscribe = museHost.subscribe;
+  let notify!: (event: MuseNotification) => void;
+  let resolveInitialTurn!: () => void;
+  const initialTurnStarted = new Promise<void>((resolve) => {
+    resolveInitialTurn = resolve;
+  });
+
+  museHost.subscribe = (_id, listener) => {
+    notify = listener;
+    return () => {};
+  };
+  museHost.connection = async () =>
+    ({
+      command: async (method: string) =>
+        method === "turn/start" ? { turnId: "turn-1" } : {},
+      request: async () => ({ events: [], nextCursor: "" }),
+    }) as unknown as Connection;
+
+  try {
+    const running = runMuseTurn({
+      museSessionId: "main-session-with-acknowledgement-gap",
+      previewRoot: folder,
+      text: "Handle the delegated result.",
+      images: [],
+      onEvent: (event) => {
+        if (event.type === "turn-started" && event.turnId === "turn-1") {
+          resolveInitialTurn();
+        }
+      },
+    });
+
+    await initialTurnStarted;
+    await steerMuseTurn({
+      museSessionId: "main-session-with-acknowledgement-gap",
+      expectedTurnId: "turn-1",
+      text: "The teammate finished.",
+      images: [],
+    });
+
+    notify({ method: "turn/started", params: { turnId: "turn-2" } });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(
+      activeMuseTurn("main-session-with-acknowledgement-gap"),
+      "turn-2",
+    );
+    assert.equal(
+      isMuseTurnRunning("main-session-with-acknowledgement-gap"),
+      true,
+    );
+
+    notify({ method: "turn/completed", params: { turnId: "turn-1" } });
+    assert.equal(
+      isMuseTurnRunning("main-session-with-acknowledgement-gap"),
+      true,
+    );
+
+    notify({
+      method: "turn/completed",
+      params: { turnId: "turn-2", durationMs: 100 },
+    });
+    await running;
+
+    assert.equal(
+      isMuseTurnRunning("main-session-with-acknowledgement-gap"),
+      false,
+    );
+  } finally {
+    museHost.connection = connection;
+    museHost.subscribe = subscribe;
+  }
+});

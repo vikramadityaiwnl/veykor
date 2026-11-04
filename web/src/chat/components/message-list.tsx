@@ -234,6 +234,7 @@ function MessageList(props: Props) {
 
   const imageByItem = allocateImages(props.items, props.imageUrls);
   const userTurns = collectUserTurns(props.items);
+  const renderedThinkingTurns = new Set<string>();
   const latestAssistantMessageId = [...props.items]
     .reverse()
     .find((item) => item.kind === "agentMessage")?.itemId;
@@ -428,9 +429,11 @@ function MessageList(props: Props) {
   }
 
   function thinkingAfterUser(turnId: string | null): ReactNode {
-    if (turnId === null) {
+    if (turnId === null || renderedThinkingTurns.has(turnId)) {
       return null;
     }
+
+    renderedThinkingTurns.add(turnId);
 
     const live = props.streaming && turnId === props.streamingTurnId;
 

@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -283,3 +289,31 @@ test("untracked binaries are flagged", { skip: !gitAvailable() }, () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test(
+  "untracked symlinks are listed without reading their targets",
+  { skip: !gitAvailable() },
+  () => {
+    const dir = initRepo();
+    const outside = join(dir, "..", `veykor-outside-${Date.now()}.txt`);
+
+    try {
+      writeFileSync(outside, "private outside content\n");
+      symlinkSync(outside, join(dir, "outside-link.txt"));
+
+      assert.deepEqual(gitChanges(dir).files, [
+        {
+          path: "outside-link.txt",
+          additions: 0,
+          deletions: 0,
+          binary: true,
+          truncated: false,
+          lines: [],
+        },
+      ]);
+    } finally {
+      unlinkSync(outside);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
