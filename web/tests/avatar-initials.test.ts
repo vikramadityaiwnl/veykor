@@ -8,4 +8,7 @@ test("avatars use one initial per word up to two words", () => {
   assert.equal(avatarInitials("  Code   Tester  "), "CT");
   assert.equal(avatarInitials("Élodie Martin"), "ÉM");
   assert.equal(avatarInitials(""), "?");
+  assert.equal(avatarInitials("Plan & Code"), "PC");
+  assert.equal(avatarInitials("&"), "?");
+  assert.equal(avatarInitials("(Reviewer)"), "R");
 });

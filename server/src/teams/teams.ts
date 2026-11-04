@@ -97,7 +97,7 @@ const tools = [
   {
     name: "team_delegate",
     description:
-      "Assign concrete work to an assigned teammate. Reuses its single existing session in this chat, or creates it on first use. Returns queued status immediately; queued does not mean the work has run. Use this instead of native subagents. Completion is delivered automatically to you and the main chat.",
+      "Assign concrete work to an assigned teammate. Match the task to the teammate whose name, description, or instructions specialize in it, and pass that teammate's agentId. Prefer delegating specialty work such as version control or review over doing it in your own session. Reuses its single existing session in this chat, or creates it on first use. Returns queued status immediately; queued does not mean the work has run. Use this instead of native subagents. Completion is delivered automatically to you and the main chat.",
     inputSchema: {
       type: "object",
       properties: { agentId: { type: "string" }, task: { type: "string" } },

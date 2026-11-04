@@ -118,6 +118,10 @@ export function toHistoryItem(value: unknown): ChatHistoryItem {
   };
 }
 
+export function restoreHistoryItems(values: Array<unknown>): ChatHistoryItem[] {
+  return values.map(toHistoryItem);
+}
+
 export function toApproval(value: unknown): ChatApprovalRequest {
   const approval = record(value);
   const requirement = record(approval["currentRequirementId"]);
@@ -630,14 +634,9 @@ export async function readMuseChat(
     options.onTodoSnapshot?.(nativeTodos(record(snapshotState["todoList"])));
   }
   const terminals = new Map<string, TurnOutcome>();
-  const items = list(history["items"] ?? snapshotState["items"])
-    .map(toHistoryItem)
-    .filter(
-      (item) =>
-        item.kind !== "userMessage" ||
-        item.text !== "" ||
-        item.attachments.length > 0,
-    );
+  const items = restoreHistoryItems(
+    list(history["items"] ?? snapshotState["items"]),
+  );
   const turnDurations = await readTurnDurations(async (cursor) => {
     const page = record(
       await connection.request("view/page", {
