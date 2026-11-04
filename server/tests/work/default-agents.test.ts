@@ -177,6 +177,22 @@ test("default agents seed once and auto-add to new projects", async () => {
       if (agent.name === "Plan & Code") {
         assert.match(agent.instructions, /concrete plan/);
         assert.match(agent.instructions, /code tests/);
+        assert.match(
+          agent.instructions,
+          /subagents within your own Plan & Code session/,
+        );
+        assert.match(
+          agent.instructions,
+          /Do not delegate implementation work to other team agents or teammates/,
+        );
+        assert.match(
+          agent.instructions,
+          /current branch and in the shared working tree/,
+        );
+        assert.match(
+          agent.instructions,
+          /do not create or switch to another worktree/,
+        );
       }
 
       if (agent.name === "GitHub Manager") {

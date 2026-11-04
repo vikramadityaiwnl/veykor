@@ -106,6 +106,16 @@ test("upgrades untouched default agents without touching customized ones", () =>
     const manager = defaultAgentDefinitions[2];
 
     sqlite
+      .prepare(
+        "INSERT INTO agents (id, user_id, data) VALUES ('legacy-plan', 1, ?)",
+      )
+      .run(
+        JSON.stringify({
+          ...lead,
+          instructions: legacyDefaultInstructions["Plan & Code"]?.[0] ?? "",
+        }),
+      );
+    sqlite
       .prepare("INSERT INTO agents (id, user_id, data) VALUES ('legacy', 1, ?)")
       .run(
         JSON.stringify({
@@ -135,6 +145,15 @@ test("upgrades untouched default agents without touching customized ones", () =>
       );
 
     runMigrations(sqlite);
+
+    const refreshedPlan = JSON.parse(
+      (
+        sqlite
+          .prepare("SELECT data FROM agents WHERE id = 'legacy-plan'")
+          .get() as { data: string }
+      ).data,
+    );
+    assert.equal(refreshedPlan.instructions, lead.instructions);
 
     const upgraded = JSON.parse(
       (
