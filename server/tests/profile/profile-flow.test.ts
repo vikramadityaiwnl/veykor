@@ -1,14 +1,23 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import Database from "better-sqlite3";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   authPaths,
+  defaultPreferences,
   profilePaths,
+  preferencesPaths,
   veykorRequestHeaderName,
   veykorRequestHeaderValue,
 } from "@veykor/shared";
@@ -231,6 +240,194 @@ test("profile defaults, update, and password change", async () => {
 
     assert.equal(afterRestart.status, 200);
     assert.deepEqual(afterRestart.body, updated.body);
+  } finally {
+    await stopServer(child);
+    rmSync(folder, { recursive: true, force: true });
+  }
+});
+
+test("remove all data resets one account and preserves its login", async () => {
+  const folder = mkdtempSync(join(tmpdir(), "veykor-data-reset-"));
+  const database = join(folder, "test.db");
+
+  let child = await startServer(database);
+
+  try {
+    const ownerCookie = await register("reset-owner");
+    const otherCookie = await register("reset-other");
+    const defaultAgents = await request("/api/agents", {
+      cookie: ownerCookie,
+    });
+
+    assert.equal(defaultAgents.status, 200);
+
+    const customAgent = await request("/api/agents", {
+      method: "POST",
+      body: {
+        name: "Temporary agent",
+        description: "Created for a data reset test.",
+      },
+      cookie: ownerCookie,
+    });
+
+    assert.equal(customAgent.status, 201);
+
+    const otherAgent = await request("/api/agents", {
+      method: "POST",
+      body: {
+        name: "Keep this agent",
+        description: "Owned by another account.",
+      },
+      cookie: otherCookie,
+    });
+
+    assert.equal(otherAgent.status, 201);
+
+    const savedPreferences = {
+      ...defaultPreferences(),
+      sections: [{ id: "custom", title: "Custom", open: false }],
+    };
+    const preferencesUpdate = await request(preferencesPaths.preferences, {
+      method: "PUT",
+      body: savedPreferences,
+      cookie: ownerCookie,
+    });
+
+    assert.equal(preferencesUpdate.status, 200);
+
+    const sqlite = new Database(database);
+    const ownerId = sqlite
+      .prepare("SELECT id FROM users WHERE username = ?")
+      .get("reset-owner") as { id: number };
+    const skillRoot = join(
+      folder,
+      "workspaces",
+      String(ownerId.id),
+      ".agents",
+      "skills",
+    );
+    const managedSkillFolder = join(skillRoot, "veykor-managed-skill");
+    const externalSkillFolder = join(skillRoot, "external-prototype-skill");
+    const projectFolder = join(folder, "project-files");
+    const projectFile = join(projectFolder, "prototype.html");
+    const skillDefinition = join(managedSkillFolder, "SKILL.md");
+    const skillPrototype = join(managedSkillFolder, "prototype.js");
+
+    mkdirSync(managedSkillFolder, { recursive: true });
+    mkdirSync(externalSkillFolder, { recursive: true });
+    mkdirSync(projectFolder, { recursive: true });
+    writeFileSync(skillDefinition, "---\nname: veykor-managed-skill\n---\n");
+    writeFileSync(skillPrototype, "export const prototype = true;\n");
+    writeFileSync(projectFile, "<h1>Project prototype</h1>\n");
+    sqlite
+      .prepare(
+        "INSERT INTO skills (id, user_id, slug, name, description, instructions, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "managed-skill",
+        ownerId.id,
+        "veykor-managed-skill",
+        "Veykor managed skill",
+        "Managed in app",
+        "Skill instructions",
+        1,
+        "",
+        "",
+      );
+    sqlite
+      .prepare("INSERT INTO chats (id, user_id, title) VALUES (?, ?, ?)")
+      .run("reset-chat", ownerId.id, "Temporary chat");
+    sqlite
+      .prepare(
+        "INSERT INTO projects (id, user_id, name, folder) VALUES (?, ?, ?, ?)",
+      )
+      .run("reset-project", ownerId.id, "Temporary project", projectFolder);
+    sqlite
+      .prepare(
+        "INSERT INTO mcp_servers (id, user_id, name, transport, config) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run("reset-mcp", ownerId.id, "Temporary MCP", "stdio", "{}");
+    sqlite
+      .prepare(
+        "INSERT INTO memories (id, user_id, instruction) VALUES (?, ?, ?)",
+      )
+      .run("reset-memory", ownerId.id, "Temporary memory");
+    sqlite
+      .prepare(
+        "INSERT INTO generated_images (id, user_id, chat_id) VALUES (?, ?, ?)",
+      )
+      .run("reset-image", ownerId.id, "reset-chat");
+    sqlite.close();
+
+    const unconfirmed = await request(profilePaths.data, {
+      method: "DELETE",
+      cookie: ownerCookie,
+    });
+
+    assert.equal(unconfirmed.status, 400);
+
+    const removed = await request(profilePaths.data, {
+      method: "DELETE",
+      body: { confirmation: "REMOVE" },
+      cookie: ownerCookie,
+    });
+
+    assert.equal(removed.status, 200);
+    assert.deepEqual(removed.body, { removed: true });
+
+    const ownerProfile = await request(profilePaths.profile, {
+      cookie: ownerCookie,
+    });
+    const ownerAgents = await request("/api/agents", {
+      cookie: ownerCookie,
+    });
+    const ownerPreferences = await request(preferencesPaths.preferences, {
+      cookie: ownerCookie,
+    });
+    const otherAgents = await request("/api/agents", {
+      cookie: otherCookie,
+    });
+
+    assert.equal(ownerProfile.status, 200);
+    assert.equal(ownerAgents.status, 200);
+    assert.deepEqual(
+      (ownerAgents.body as unknown as Array<{ name: string }>)
+        .map((agent) => agent.name)
+        .sort(),
+      ["GitHub Manager", "Plan & Code", "Reviewer"],
+    );
+    assert.deepEqual(ownerPreferences.body, {
+      ...defaultPreferences(),
+      agentsSeeded: true,
+    });
+    assert.equal(otherAgents.status, 200);
+    assert.equal(
+      (otherAgents.body as unknown as Array<{ name: string }>).length,
+      4,
+    );
+    assert.equal(existsSync(skillDefinition), false);
+    assert.equal(existsSync(skillPrototype), true);
+    assert.equal(existsSync(managedSkillFolder), true);
+    assert.equal(existsSync(externalSkillFolder), true);
+    assert.equal(existsSync(projectFile), true);
+
+    const resetSqlite = new Database(database);
+
+    for (const table of [
+      "chats",
+      "projects",
+      "mcp_servers",
+      "memories",
+      "generated_images",
+    ]) {
+      const count = resetSqlite
+        .prepare(`SELECT COUNT(*) AS total FROM ${table} WHERE user_id = ?`)
+        .get(ownerId.id) as { total: number };
+
+      assert.equal(count.total, 0, `${table} should be reset`);
+    }
+
+    resetSqlite.close();
   } finally {
     await stopServer(child);
     rmSync(folder, { recursive: true, force: true });

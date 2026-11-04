@@ -1,8 +1,12 @@
+import { useState } from "react";
 import { MoonIcon, SunIcon } from "@heroicons/react/24/outline";
 import type { InterruptionBehavior } from "@veykor/shared";
+import { clearAttachmentDatabase } from "../chat/attachment-store.ts";
 import Divider from "../components/divider/divider.tsx";
 import SegmentedControl from "../components/segmented-control/segmented-control.tsx";
 import type { SegmentedControlOption } from "../components/segmented-control/segmented-control.tsx";
+import { removeAllData } from "../profile/profile-client.ts";
+import RemoveDataDialog from "./components/remove-data-dialog.tsx";
 import SettingItem from "./components/setting-item.tsx";
 import { useThemeStore } from "../theme/theme-store.ts";
 import type { Theme } from "../theme/theme-store.ts";
@@ -34,6 +38,8 @@ const interruptionOptions: Array<SegmentedControlOption<InterruptionBehavior>> =
   ];
 
 function SettingsPage() {
+  const [removeDataOpen, setRemoveDataOpen] = useState(false);
+  const [removeDataError, setRemoveDataError] = useState("");
   const theme = useThemeStore((state) => state.theme);
   const setTheme = useThemeStore((state) => state.setTheme);
   const interruptionBehavior = usePreferencesStore(
@@ -48,6 +54,30 @@ function SettingsPage() {
   const setHideThinkingByDefault = usePreferencesStore(
     (state) => state.setHideThinkingByDefault,
   );
+
+  async function handleRemoveAllData() {
+    setRemoveDataError("");
+
+    try {
+      await removeAllData();
+      await clearAttachmentDatabase().catch(() => {});
+
+      try {
+        window.localStorage.clear();
+      } catch {
+        window.location.replace("/");
+        return;
+      }
+
+      window.location.replace("/");
+    } catch (cause) {
+      setRemoveDataError(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to remove veykor data.",
+      );
+    }
+  }
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -116,7 +146,37 @@ function SettingsPage() {
             </button>
           </SettingItem>
         </section>
+
+        <Divider />
+
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold text-zinc-100">Data</h2>
+
+          <SettingItem
+            description="Remove your veykor chats, projects, and saved configuration. Files in project folders are kept."
+            title="Remove all data"
+          >
+            <button
+              className="cursor-pointer rounded-lg border border-rose-900 px-3 py-2 text-sm font-semibold text-rose-300 transition hover:bg-rose-950"
+              onClick={() => {
+                setRemoveDataError("");
+                setRemoveDataOpen(true);
+              }}
+              type="button"
+            >
+              Remove all data
+            </button>
+          </SettingItem>
+        </section>
       </div>
+
+      {removeDataOpen && (
+        <RemoveDataDialog
+          error={removeDataError}
+          onCancel={() => setRemoveDataOpen(false)}
+          onConfirm={handleRemoveAllData}
+        />
+      )}
     </div>
   );
 }
