@@ -16,7 +16,7 @@ function ComposerFrame(props: Props) {
   return (
     <>
       <div
-        className={`${shape} ${connected} border border-zinc-700 bg-zinc-900 shadow-xl`}
+        className={`${shape} ${connected} border border-zinc-700 bg-zinc-900/70 shadow-xl backdrop-blur-xl`}
         data-composer-mode={props.mode}
       >
         {props.children}

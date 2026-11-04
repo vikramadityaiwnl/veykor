@@ -519,7 +519,7 @@ function MemberSession(props: Props) {
         </div>
       )}
 
-      <div className="shrink-0 p-4">
+      <div className="relative z-10 -mt-12 shrink-0 p-4">
         <MemberComposerPanel
           member={props.member}
           approvals={detail?.pendingApprovals ?? []}

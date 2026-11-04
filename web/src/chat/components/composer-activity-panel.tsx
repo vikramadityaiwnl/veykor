@@ -20,7 +20,7 @@ function ComposerActivityPanel(props: Props) {
 
   return (
     <div
-      className={`${rounded} ${topBorder} ${bottomBorder} border border-zinc-700 bg-zinc-900/70`}
+      className={`${rounded} ${topBorder} ${bottomBorder} border border-zinc-700 bg-zinc-900/70 backdrop-blur-xl`}
       aria-label={props.title}
     >
       <div className="flex items-center gap-2 px-4 py-2.5">

@@ -114,7 +114,9 @@ function MainChatContent() {
         </div>
       )}
 
-      <ChatComposer key={projectId} />
+      <div className="relative z-10 -mt-12">
+        <ChatComposer key={projectId} />
+      </div>
     </div>
   );
 }
