@@ -42,6 +42,12 @@ function SettingsPage() {
   const setInterruptionBehavior = usePreferencesStore(
     (state) => state.setInterruptionBehavior,
   );
+  const hideThinkingByDefault = usePreferencesStore(
+    (state) => state.hideThinkingByDefault,
+  );
+  const setHideThinkingByDefault = usePreferencesStore(
+    (state) => state.setHideThinkingByDefault,
+  );
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -90,6 +96,24 @@ function SettingsPage() {
                 value={interruptionBehavior}
               />
             </div>
+          </SettingItem>
+
+          <SettingItem
+            description="Hide tool activity and intermediate messages while a response is generating. Completed Thinking stays collapsed and can be expanded."
+            title="Hide thinking by default"
+          >
+            <button
+              aria-label="Hide thinking by default"
+              aria-checked={hideThinkingByDefault}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${hideThinkingByDefault ? "bg-zinc-100" : "bg-zinc-700"}`}
+              onClick={() => setHideThinkingByDefault(!hideThinkingByDefault)}
+              role="switch"
+              type="button"
+            >
+              <span
+                className={`inline-block size-4 rounded-full transition ${hideThinkingByDefault ? "translate-x-6 bg-zinc-900" : "translate-x-1 bg-zinc-300"}`}
+              />
+            </button>
           </SettingItem>
         </section>
       </div>

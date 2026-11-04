@@ -23,12 +23,30 @@ function ComposerActivityPanel(props: Props) {
       className={`${rounded} ${topBorder} ${bottomBorder} border border-zinc-700 bg-zinc-900/70 backdrop-blur-xl`}
       aria-label={props.title}
     >
-      <div className="flex items-center gap-2 px-4 py-2.5">
-        <p className="text-sm font-semibold text-zinc-200">{props.title}</p>
+      <div
+        className="flex cursor-pointer items-center gap-2 px-4 py-2.5"
+        onClick={(event) => {
+          if ((event.target as HTMLElement).closest("button")) {
+            return;
+          }
 
-        <span className="rounded-full bg-zinc-700 px-2 py-0.5 text-[11px] text-zinc-100">
-          {props.count}
-        </span>
+          setCollapsed((current) => !current);
+        }}
+      >
+        <button
+          aria-expanded={!collapsed}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          onClick={() => setCollapsed((current) => !current)}
+          type="button"
+        >
+          <span className="truncate text-sm font-semibold text-zinc-200">
+            {props.title}
+          </span>
+
+          <span className="shrink-0 rounded-full bg-zinc-700 px-2 py-0.5 text-[11px] text-zinc-100">
+            {props.count}
+          </span>
+        </button>
 
         <div className="flex-1" />
 

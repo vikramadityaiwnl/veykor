@@ -99,7 +99,6 @@ interface ChatState {
   generatedImages: Array<GeneratedImageArtifact>;
   dismissedQuestions: Array<string>;
   turnDurations: Record<string, number>;
-  thinkingSnapshots: Record<string, Array<string>>;
   todos: Array<Record<string, unknown>>;
   modelId: string;
   providerId: string;
@@ -383,29 +382,17 @@ function applyDelta(
     return { ...item, visibleOutput: item.visibleOutput + delta };
   }
 
-  if (field.startsWith("summary.")) {
-    const index = Number(field.slice("summary.".length));
-
-    if (!Number.isInteger(index) || index < 0) {
-      return item;
-    }
-
-    const summary = [...item.summary];
-
-    while (summary.length <= index) {
-      summary.push("");
-    }
-
-    summary[index] += delta;
-
-    return { ...item, summary };
-  }
-
   return item;
 }
 
-function summarySize(summary: Array<string>): number {
-  return summary.reduce((total, part) => total + part.length, 0);
+function hideReasoningSummary(item: ChatHistoryItem): ChatHistoryItem {
+  return item.kind === "reasoning" ? { ...item, summary: [] } : item;
+}
+
+function hideReasoningSummaries(
+  items: Array<ChatHistoryItem>,
+): Array<ChatHistoryItem> {
+  return items.map(hideReasoningSummary);
 }
 
 function revokeImages(images: Array<ComposerImage>): void {
@@ -501,7 +488,6 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   generatedImages: [],
   dismissedQuestions: readDismissedQuestions(),
   turnDurations: {},
-  thinkingSnapshots: {},
   todos: [],
   modelId: "",
   providerId: "",
@@ -719,7 +705,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             );
 
       return {
-        items: detail.items,
+        items: hideReasoningSummaries(detail.items),
         turnDurations: detail.turnDurations,
         pendingApprovals: detail.pendingApprovals,
         pendingQuestions: detail.pendingQuestions,
@@ -819,7 +805,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             streaming: detail.running,
             streamingTurnId: detail.activeTurnId,
             streamingStartedAt: detail.activeTurnStartedAt,
-            items: detail.items,
+            items: hideReasoningSummaries(detail.items),
             turnDurations: detail.turnDurations,
             pendingApprovals: detail.pendingApprovals,
             pendingQuestions: detail.pendingQuestions,
@@ -1179,59 +1165,22 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             break;
 
           case "item":
-            set((currentItems) => {
-              const items = settleItem(currentItems.items, event.item);
-
-              if (event.item.kind !== "reasoning") {
-                return { items };
-              }
-
-              const kept =
-                currentItems.thinkingSnapshots[event.item.itemId] ?? [];
-              const incoming = event.item.summary;
-
-              return {
-                items,
-                thinkingSnapshots:
-                  summarySize(incoming) > summarySize(kept)
-                    ? {
-                        ...currentItems.thinkingSnapshots,
-                        [event.item.itemId]: [...incoming],
-                      }
-                    : currentItems.thinkingSnapshots,
-              };
-            });
+            set((currentItems) => ({
+              items: settleItem(
+                currentItems.items,
+                hideReasoningSummary(event.item),
+              ),
+            }));
             break;
 
           case "delta":
-            set((currentItems) => {
-              const items = currentItems.items.map((item) =>
+            set((currentItems) => ({
+              items: currentItems.items.map((item) =>
                 item.itemId === event.itemId
                   ? applyDelta(item, event.field, event.delta)
                   : item,
-              );
-
-              const updated = items.find(
-                (item) => item.itemId === event.itemId,
-              );
-
-              if (updated === undefined || updated.kind !== "reasoning") {
-                return { items };
-              }
-
-              const kept = currentItems.thinkingSnapshots[updated.itemId] ?? [];
-
-              return {
-                items,
-                thinkingSnapshots:
-                  summarySize(updated.summary) > summarySize(kept)
-                    ? {
-                        ...currentItems.thinkingSnapshots,
-                        [updated.itemId]: [...updated.summary],
-                      }
-                    : currentItems.thinkingSnapshots,
-              };
-            });
+              ),
+            }));
             break;
 
           case "approval": {

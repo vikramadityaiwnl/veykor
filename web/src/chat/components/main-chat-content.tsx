@@ -32,8 +32,10 @@ function MainChatContent() {
   const streamingStartedAt = useChatStore((state) => state.streamingStartedAt);
   const streamingTurnId = useChatStore((state) => state.streamingTurnId);
   const sentAttachments = useChatStore((state) => state.sentAttachments);
-  const thinkingSnapshots = useChatStore((state) => state.thinkingSnapshots);
   const turnDurations = useChatStore((state) => state.turnDurations);
+  const hideThinkingByDefault = usePreferencesStore(
+    (state) => state.hideThinkingByDefault,
+  );
   const error = useChatStore((state) => state.error);
   const memoryReceipts = useChatStore((state) => state.memoryReceipts);
   const dismissMemoryReceipt = useChatStore(
@@ -100,7 +102,7 @@ function MainChatContent() {
           questions={recentQuestions}
           streaming={streaming}
           streamingTurnId={streamingTurnId}
-          thinkingSnapshots={thinkingSnapshots}
+          hideThinkingByDefault={hideThinkingByDefault}
           turnDurations={turnDurations}
           streamingStartedAt={streamingStartedAt}
         />

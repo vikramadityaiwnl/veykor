@@ -41,6 +41,7 @@ export function defaultPreferences(): UserPreferences {
     preferredEfforts: { chat: {}, work: {} },
     preferredPermission: "read-only",
     interruptionBehavior: "queue",
+    hideThinkingByDefault: false,
     agentsSeeded: false,
   };
 }
@@ -182,6 +183,7 @@ export function sanitizePreferences(input: unknown): UserPreferences {
     preferredEfforts?: unknown;
     preferredPermission?: unknown;
     interruptionBehavior?: unknown;
+    hideThinkingByDefault?: unknown;
     agentsSeeded?: unknown;
   };
 
@@ -371,6 +373,7 @@ export function sanitizePreferences(input: unknown): UserPreferences {
     interruptionBehavior: sanitizeInterruptionBehavior(
       record.interruptionBehavior,
     ),
+    hideThinkingByDefault: record.hideThinkingByDefault === true,
     agentsSeeded: record.agentsSeeded === true,
   };
 }

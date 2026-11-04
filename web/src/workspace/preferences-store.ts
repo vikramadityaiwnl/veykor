@@ -40,6 +40,7 @@ interface PreferencesState extends UserPreferences {
   ) => void;
   setPreferredPermission: (permission: ChatPermission) => void;
   setInterruptionBehavior: (behavior: InterruptionBehavior) => void;
+  setHideThinkingByDefault: (hide: boolean) => void;
 }
 
 const initialSections = defaultPreferences().sections;
@@ -63,6 +64,7 @@ function persist(): void {
     preferredEfforts: state.preferredEfforts,
     preferredPermission: state.preferredPermission,
     interruptionBehavior: state.interruptionBehavior,
+    hideThinkingByDefault: state.hideThinkingByDefault,
     agentsSeeded: state.agentsSeeded,
   };
 
@@ -323,6 +325,11 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
 
   setInterruptionBehavior: (behavior) => {
     set({ interruptionBehavior: behavior, error: "" });
+    persist();
+  },
+
+  setHideThinkingByDefault: (hide) => {
+    set({ hideThinkingByDefault: hide, error: "" });
     persist();
   },
 }));

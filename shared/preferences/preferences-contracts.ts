@@ -34,5 +34,6 @@ export interface UserPreferences {
   preferredEfforts: Record<SidebarTab, Record<string, string>>;
   preferredPermission: ChatPermission;
   interruptionBehavior: InterruptionBehavior;
+  hideThinkingByDefault: boolean;
   agentsSeeded: boolean;
 }
