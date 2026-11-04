@@ -15,6 +15,7 @@ import { usePreferencesStore } from "../../workspace/preferences-store.ts";
 import Dialog from "../../components/dialog/dialog.tsx";
 import LoadingSpinner from "../../components/loading-spinner/loading-spinner.tsx";
 import ComposerPanel from "./composer-panel.tsx";
+import ComposerStatusPanel from "./composer-status-panel.tsx";
 import { visibleOrphanedQuestions } from "../question-drafts.ts";
 import EffortPicker from "./effort-picker.tsx";
 import ModelPicker from "./model-picker.tsx";
@@ -42,6 +43,12 @@ function ChatComposer(props: Props) {
     projectId !== "" &&
     workLoaded &&
     projects.every((project) => project.id !== projectId);
+  const activeProject = projects.find((project) => project.id === projectId);
+  const folderMissing =
+    projectId !== "" &&
+    workLoaded &&
+    activeProject !== undefined &&
+    !activeProject.folderExists;
   const activeChatId = useChatStore((state) => state.activeChatId);
   const agentMode = props.workMode === true || projectId !== "";
   const projectRequired = (agentMode && projectId === "") || projectMissing;
@@ -91,6 +98,7 @@ function ChatComposer(props: Props) {
   const canSend =
     (draft.trim() !== "" || composerImages.length > 0) &&
     !projectRequired &&
+    !folderMissing &&
     (!agentMode || !!agentId || activeChatId !== null);
   const action = composerAction(streaming, canSend, interruptionBehavior);
   const showStop = action === "stop";
@@ -100,8 +108,9 @@ function ChatComposer(props: Props) {
       : "Queue message"
     : "Send";
   const voiceActive = voicePhase !== "idle";
-  const placeholder =
-    voicePhase === "connecting"
+  const placeholder = folderMissing
+    ? "Project folder unavailable"
+    : voicePhase === "connecting"
       ? "Connecting…"
       : voiceActive
         ? "Listening…"
@@ -341,142 +350,148 @@ function ChatComposer(props: Props) {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-4">
-      <ComposerPanel />
+      {folderMissing && activeProject && (
+        <ComposerStatusPanel folder={activeProject.folder} />
+      )}
 
-      <ComposerFrame
-        mode={agentMode ? "project" : "chat"}
-        panelOpen={panelOpen}
-      >
-        <textarea
-          className="max-h-50 w-full resize-none bg-transparent px-4 pt-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
-          disabled={voiceActive || projectRequired}
-          onChange={(event) => {
-            setDraft(event.target.value);
-            autoresize();
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              void handleSend();
-            }
-          }}
-          placeholder={placeholder}
-          ref={textareaRef}
-          rows={1}
-          value={draft}
-        />
+      <fieldset className="m-0 min-w-0 border-0 p-0" disabled={folderMissing}>
+        <ComposerPanel connectedTop={folderMissing} />
 
-        {composerImages.length > 0 ? (
-          <div className="flex flex-wrap gap-2 px-4 pt-2">
-            {composerImages.map((image) => {
-              return (
-                <div className="relative" key={image.id}>
-                  <img
-                    alt={image.name}
-                    className="size-14 rounded-lg object-cover"
-                    src={image.previewUrl}
-                  />
-
-                  <button
-                    className="absolute -right-1.5 -top-1.5 rounded-full bg-zinc-700 p-0.5 text-zinc-200 hover:bg-zinc-600"
-                    onClick={() => removeImage(image.id)}
-                    title="Remove image"
-                    type="button"
-                  >
-                    <XMarkIcon className="size-3" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
-
-        <div className="flex items-center justify-between px-3 pb-3 pt-2">
-          <div className="flex items-center gap-1">
-            <button
-              className="rounded-full p-2 text-zinc-400 enabled:hover:bg-zinc-800 enabled:hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
-              onClick={() => fileRef.current?.click()}
-              title="Attach images"
-              disabled={projectRequired}
-              type="button"
-            >
-              <PaperClipIcon className="size-4" />
-            </button>
-
-            <input
-              disabled={projectRequired}
-              accept="image/*"
-              className="hidden"
-              multiple
-              onChange={(event) => handleFiles(event.target.files)}
-              ref={fileRef}
-              type="file"
-            />
-
-            {agentMode ? (
-              <AgentPicker />
-            ) : (
-              <>
-                <ModelPicker />
-                <EffortPicker />
-              </>
-            )}
-          </div>
-
-          <div className="flex items-center gap-1">
-            {!agentMode && <PermissionPicker />}
-
-            <button
-              className={
-                voicePhase === "listening"
-                  ? "rounded-full p-2 text-red-400 hover:bg-zinc-800 hover:text-red-300"
-                  : "rounded-full p-2 text-zinc-400 enabled:hover:bg-zinc-800 enabled:hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+        <ComposerFrame
+          mode={agentMode ? "project" : "chat"}
+          panelOpen={panelOpen || folderMissing}
+        >
+          <textarea
+            className="max-h-50 w-full resize-none bg-transparent px-4 pt-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
+            disabled={voiceActive || projectRequired}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              autoresize();
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void handleSend();
               }
-              disabled={projectRequired}
-              onClick={() => {
-                if (voiceActive) {
-                  void stopVoice();
-                } else {
-                  void startVoice();
-                }
-              }}
-              title={
-                voicePhase === "listening" ? "Stop dictation" : "Voice input"
-              }
-              type="button"
-            >
-              {voicePhase === "listening" ? (
-                <StopIcon aria-hidden="true" className="size-4" />
-              ) : voiceActive ? (
-                <LoadingSpinner />
+            }}
+            placeholder={placeholder}
+            ref={textareaRef}
+            rows={1}
+            value={draft}
+          />
+
+          {composerImages.length > 0 ? (
+            <div className="flex flex-wrap gap-2 px-4 pt-2">
+              {composerImages.map((image) => {
+                return (
+                  <div className="relative" key={image.id}>
+                    <img
+                      alt={image.name}
+                      className="size-14 rounded-lg object-cover"
+                      src={image.previewUrl}
+                    />
+
+                    <button
+                      className="absolute -right-1.5 -top-1.5 rounded-full bg-zinc-700 p-0.5 text-zinc-200 hover:bg-zinc-600"
+                      onClick={() => removeImage(image.id)}
+                      title="Remove image"
+                      type="button"
+                    >
+                      <XMarkIcon className="size-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+
+          <div className="flex items-center justify-between px-3 pb-3 pt-2">
+            <div className="flex items-center gap-1">
+              <button
+                className="rounded-full p-2 text-zinc-400 enabled:hover:bg-zinc-800 enabled:hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => fileRef.current?.click()}
+                title="Attach images"
+                disabled={projectRequired}
+                type="button"
+              >
+                <PaperClipIcon className="size-4" />
+              </button>
+
+              <input
+                disabled={projectRequired}
+                accept="image/*"
+                className="hidden"
+                multiple
+                onChange={(event) => handleFiles(event.target.files)}
+                ref={fileRef}
+                type="file"
+              />
+
+              {agentMode ? (
+                <AgentPicker />
               ) : (
-                <MicrophoneIcon className="size-4" />
+                <>
+                  <ModelPicker />
+                  <EffortPicker />
+                </>
               )}
-            </button>
+            </div>
 
-            {showStop ? (
+            <div className="flex items-center gap-1">
+              {!agentMode && <PermissionPicker />}
+
               <button
-                className="grid place-items-center rounded-full bg-red-600 p-2 text-white transition hover:bg-red-500"
-                onClick={() => cancelTurn()}
-                title="Stop"
+                className={
+                  voicePhase === "listening"
+                    ? "rounded-full p-2 text-red-400 hover:bg-zinc-800 hover:text-red-300"
+                    : "rounded-full p-2 text-zinc-400 enabled:hover:bg-zinc-800 enabled:hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                }
+                disabled={projectRequired}
+                onClick={() => {
+                  if (voiceActive) {
+                    void stopVoice();
+                  } else {
+                    void startVoice();
+                  }
+                }}
+                title={
+                  voicePhase === "listening" ? "Stop dictation" : "Voice input"
+                }
                 type="button"
               >
-                <StopIcon aria-hidden="true" className="size-4" />
+                {voicePhase === "listening" ? (
+                  <StopIcon aria-hidden="true" className="size-4" />
+                ) : voiceActive ? (
+                  <LoadingSpinner />
+                ) : (
+                  <MicrophoneIcon className="size-4" />
+                )}
               </button>
-            ) : (
-              <button
-                className="grid place-items-center rounded-full bg-zinc-100 p-2 text-zinc-950 transition hover:bg-white disabled:opacity-40 light:hover:bg-zinc-200"
-                disabled={!canSend || voicePhase === "stopping"}
-                onClick={() => void handleSend()}
-                title={sendTitle}
-                type="button"
-              >
-                <ArrowUpIcon className="size-4" />
-              </button>
-            )}
+
+              {showStop ? (
+                <button
+                  className="grid place-items-center rounded-full bg-red-600 p-2 text-white transition hover:bg-red-500"
+                  onClick={() => cancelTurn()}
+                  title="Stop"
+                  type="button"
+                >
+                  <StopIcon aria-hidden="true" className="size-4" />
+                </button>
+              ) : (
+                <button
+                  className="grid place-items-center rounded-full bg-zinc-100 p-2 text-zinc-950 transition hover:bg-white disabled:opacity-40 light:hover:bg-zinc-200"
+                  disabled={!canSend || voicePhase === "stopping"}
+                  onClick={() => void handleSend()}
+                  title={sendTitle}
+                  type="button"
+                >
+                  <ArrowUpIcon className="size-4" />
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-      </ComposerFrame>
+        </ComposerFrame>
+      </fieldset>
 
       {micBlocked && (
         <Dialog

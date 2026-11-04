@@ -9,7 +9,11 @@ import QuestionPanel from "./question-panel.tsx";
 import { useChatStore } from "../chat-store.ts";
 import { visibleOrphanedQuestions } from "../question-drafts.ts";
 
-function ComposerPanel() {
+interface Props {
+  connectedTop?: boolean;
+}
+
+function ComposerPanel(props: Props) {
   const pendingApprovals = useChatStore((s) => s.pendingApprovals);
   const queuedMessages = useChatStore((s) => s.queuedMessages);
   const pendingQuestions = useChatStore((s) => s.pendingQuestions);
@@ -105,7 +109,7 @@ function ComposerPanel() {
             ) : null
           }
           count={pendingApprovals.length}
-          first={first === "approvals"}
+          first={first === "approvals" && !props.connectedTop}
           last={last === "approvals"}
           title="Needs your approval"
         >
@@ -117,7 +121,7 @@ function ComposerPanel() {
 
       {showQuestions ? (
         <QuestionPanel
-          first={first === "questions"}
+          first={first === "questions" && !props.connectedTop}
           last={last === "questions"}
           pending={pendingQuestions}
           recent={recentQuestions}
@@ -127,7 +131,7 @@ function ComposerPanel() {
       {showQueue ? (
         <ComposerActivityPanel
           count={queuedMessages.length}
-          first={first === "queue"}
+          first={first === "queue" && !props.connectedTop}
           last={last === "queue"}
           title="Queued messages"
         >
@@ -138,7 +142,7 @@ function ComposerPanel() {
       {showTasks ? (
         <ComposerActivityPanel
           count={taskCount}
-          first={first === "tasks"}
+          first={first === "tasks" && !props.connectedTop}
           last={last === "tasks"}
           title="Team tasks"
         >

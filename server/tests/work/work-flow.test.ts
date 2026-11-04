@@ -240,6 +240,35 @@ test("host folder selection, project assignments, agent CRUD, and ownership", as
     assert.equal(renamed.body.name, "Renamed");
     assert.equal(renamed.body.sectionId, "work-section");
 
+    const vanishedFolder = join(temporary, "vanished-project");
+    mkdirSync(vanishedFolder);
+    const vanished = await request("/api/projects", {
+      cookie,
+      body: { folder: vanishedFolder, agentIds: [] },
+    });
+    assert.equal(vanished.status, 201);
+    assert.equal(vanished.body.folderExists, true);
+    const vanishedId = vanished.body.id as string;
+    rmSync(vanishedFolder, { recursive: true, force: true });
+    const relisted = (await request("/api/projects", { cookie }))
+      .body as unknown as Array<{
+      id: string;
+      folderExists: boolean;
+      branch: string;
+    }>;
+    const gone = relisted.find((entry) => entry.id === vanishedId);
+    assert.equal(gone?.folderExists, false);
+    assert.equal(gone?.branch, "No branch");
+    assert.equal(
+      (
+        await request(`/api/projects/${vanishedId}`, {
+          cookie,
+          method: "DELETE",
+        })
+      ).status,
+      200,
+    );
+
     const second = await request(authPaths.register, {
       body: { username: "other-owner", password: "a-strong-test-password" },
     });

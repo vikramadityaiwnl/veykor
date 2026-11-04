@@ -70,11 +70,11 @@ export const darkTheme: ThemePalette = {
     onSoft: "#bae6fd",
   },
   danger: {
-    text: "#fb7185",
-    solid: "#e11d48",
+    text: "#f87171",
+    solid: "#dc2626",
     onSolid: "#ffffff",
-    soft: "#881337",
-    onSoft: "#fecdd3",
+    soft: "#7f1d1d",
+    onSoft: "#fecaca",
   },
 };
 

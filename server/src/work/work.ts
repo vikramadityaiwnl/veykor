@@ -80,6 +80,14 @@ export function projectBranch(folder: string): string {
   }
 }
 
+export function projectFolderExists(folder: string): boolean {
+  try {
+    return statSync(folder).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 export function normalizeAgent(input: Partial<AgentInput>): AgentInput {
   const clean = (value: unknown, limit: number) =>
     typeof value === "string" ? value.trim().slice(0, limit) : "";
@@ -280,6 +288,7 @@ projectRoute.get("/", (c) => {
       sectionId: row.sectionId,
       agentIds: JSON.parse(row.agentIds),
       branch: projectBranch(row.folder),
+      folderExists: projectFolderExists(row.folder),
     }));
 
   return c.json(result);
@@ -373,7 +382,15 @@ for (const method of ["post", "put"] as const) {
     }
 
     return c.json(
-      { id, name, folder, sectionId, agentIds, branch: projectBranch(folder) },
+      {
+        id,
+        name,
+        folder,
+        sectionId,
+        agentIds,
+        branch: projectBranch(folder),
+        folderExists: projectFolderExists(folder),
+      },
       method === "post" ? 201 : 200,
     );
   });

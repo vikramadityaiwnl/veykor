@@ -20,7 +20,8 @@ export interface WorkProject {
   sectionId: string;
   agentIds: string[];
   branch: string;
+  folderExists: boolean;
 }
 
 export type AgentInput = Omit<AgentDefinition, "id">;
-export type ProjectInput = Omit<WorkProject, "id" | "branch">;
+export type ProjectInput = Omit<WorkProject, "id" | "branch" | "folderExists">;
