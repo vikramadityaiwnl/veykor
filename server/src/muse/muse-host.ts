@@ -1,3 +1,4 @@
+import { CommandGate } from "./command-gate.js";
 import { spawnMspConnection } from "@muse-code/sdk";
 import type { Connection } from "@muse-code/sdk";
 
@@ -20,6 +21,7 @@ export function museBinary(): string {
 
 class MuseHost {
   private ready: Promise<Connection> | null = null;
+  private commandGate = new CommandGate();
   private granted: Array<string> = [];
   private subscribers = new Map<string, Set<Subscriber>>();
 
@@ -61,6 +63,10 @@ class MuseHost {
       this.granted = [...msp.initializeResult.grantedCapabilities];
 
       connection = msp.connection;
+      const command = connection.command.bind(connection);
+
+      connection.command = (...args: Parameters<Connection["command"]>) =>
+        this.commandGate.run(() => command(...args));
     } catch (cause) {
       this.ready = null;
       throw cause;

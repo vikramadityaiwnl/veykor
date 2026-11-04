@@ -141,6 +141,12 @@ export function runMigrations(sqlite: Database.Database): void {
 
   for (const [name, value] of [
     ["project_id", ""],
+    ["parent_chat_id", ""],
+    ["delegated_by_id", ""],
+    ["team_token", ""],
+    ["task", ""],
+    ["team_status", "idle"],
+    ["team_error", ""],
     ["agent_snapshot", "{}"],
     ["agent_context", ""],
     ["mcp_snapshot", "[]"],
@@ -151,6 +157,29 @@ export function runMigrations(sqlite: Database.Database): void {
       );
     }
   }
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS chats_parent_idx ON chats(parent_chat_id);
+    CREATE TABLE IF NOT EXISTS team_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      root_id TEXT NOT NULL DEFAULT '' REFERENCES chats(id) ON DELETE CASCADE,
+      sender_id TEXT NOT NULL DEFAULT '',
+      recipient_id TEXT NOT NULL DEFAULT '',
+      kind TEXT NOT NULL DEFAULT '',
+      text TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS team_events_root_idx ON team_events(root_id, id);
+    CREATE TABLE IF NOT EXISTS team_jobs (
+      id TEXT PRIMARY KEY,
+      root_id TEXT NOT NULL DEFAULT '' REFERENCES chats(id) ON DELETE CASCADE,
+      target_id TEXT NOT NULL DEFAULT '' REFERENCES chats(id) ON DELETE CASCADE,
+      text TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS team_jobs_status_idx ON team_jobs(status, created_at);
+  `);
+
   sqlite
     .prepare(
       "INSERT OR IGNORE INTO preferences (user_id, data) SELECT id, ? FROM users",

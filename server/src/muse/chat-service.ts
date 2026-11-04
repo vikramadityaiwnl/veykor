@@ -232,6 +232,10 @@ export async function startMuseSession(
 
 const activeTurns = new Map<string, { turnId: string; startedAt: number }>();
 
+export function activeMuseTurn(museSessionId: string): string {
+  return activeTurns.get(museSessionId)?.turnId ?? "";
+}
+
 export function isMuseTurnRunning(museSessionId: string): boolean {
   return activeTurns.has(museSessionId);
 }

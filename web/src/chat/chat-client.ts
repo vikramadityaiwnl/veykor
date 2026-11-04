@@ -376,11 +376,13 @@ export async function streamTurn(
   text: string,
   images: Array<TurnImageInput>,
   onEvent: (event: TurnEvent) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   let response: Response;
 
   try {
     response = await fetch(chatPaths.turns(id), {
+      signal,
       method: "POST",
       credentials: "same-origin",
       headers: {

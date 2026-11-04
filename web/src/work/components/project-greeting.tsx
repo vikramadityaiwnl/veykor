@@ -25,6 +25,11 @@ function ProjectGreeting() {
           ? workGreetingFor(greetingTime, project.name)
           : "Loading project…"}
       </h1>
+      <p className="text-sm font-light text-zinc-500">
+        {assigned.length === 0
+          ? "Edit this project to assign agents before starting a session."
+          : "Choose an agent to start working in this project."}
+      </p>
       <div className="flex flex-wrap items-center justify-center gap-3">
         {assigned.map((agent) => (
           <button
@@ -58,11 +63,6 @@ function ProjectGreeting() {
             void useWorkStore.getState().load();
           }}
         />
-      )}
-      {project && assigned.length === 0 && (
-        <p className="text-sm font-light text-zinc-500">
-          Edit this project to assign agents before starting a session.
-        </p>
       )}
     </div>
   );

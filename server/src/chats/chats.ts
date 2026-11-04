@@ -1,12 +1,22 @@
-import { compileAgentContext, agentTurnInput } from "../work/agent-context.js";
+import { compileAgentContext } from "../work/agent-context.js";
 import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { SessionMcpServerConfig } from "@muse-code/sdk/dist/src/msp.js";
+import {
+  ownedChat,
+  beginTeamDeletion,
+  runTeamTurn,
+  sessionMcp as sessionMcpForChat,
+  shareInterruption,
+  stopTeamMember,
+  teamHasWork,
+  teamRows,
+} from "../teams/team-runtime.js";
 import { defaultChatTitle } from "@veykor/shared";
 import type {
   ChatDetail,
@@ -27,12 +37,10 @@ import { chats } from "../db/schema.js";
 import {
   McpRestoreError,
   buildSessionMcp,
-  restoreSessionMcp,
 } from "../integrations/integrations.js";
 import { syncAccountSkills } from "../integrations/skills.js";
 import {
   applyChatSettings,
-  cancelMuseTurn,
   decideMuseApproval,
   isMuseHostMissing,
   isMuseTurnRunning,
@@ -41,7 +49,6 @@ import {
   listPendingApprovals,
   museErrorMessage,
   readMuseChat,
-  runMuseTurn,
   startMuseSession,
   steerMuseTurn,
 } from "../muse/chat-service.js";
@@ -101,7 +108,9 @@ function toSummary(row: ChatRow): ChatSummary {
       (JSON.parse(row.agentSnapshot) as Partial<AgentDefinition>).id ?? "",
     agentName:
       (JSON.parse(row.agentSnapshot) as Partial<AgentDefinition>).name ?? "",
-    running: isMuseTurnRunning(museSessionId),
+    running:
+      isMuseTurnRunning(museSessionId) ||
+      (!row.parentChatId && teamHasWork(row)),
     createdAt: row.createdAt ?? "",
     updatedAt: row.updatedAt ?? "",
   };
@@ -246,7 +255,7 @@ chatRoute.get("/", requireAuth, (c) => {
   const rows = db
     .select()
     .from(chats)
-    .where(eq(chats.userId, c.get("user").id))
+    .where(and(eq(chats.userId, c.get("user").id), eq(chats.parentChatId, "")))
     .orderBy(desc(chats.updatedAt))
     .all();
 
@@ -300,7 +309,9 @@ chatRoute.post("/", requireAuth, async (c) => {
     }
   }
 
-  let museSessionId: string;
+  let museSessionId = "";
+  const id = randomUUID();
+  const stamp = nowIso();
 
   const sessionMcp = buildSessionMcp(userId);
   const mcpServerCount = Object.keys(sessionMcp.runtime).length;
@@ -309,9 +320,24 @@ chatRoute.post("/", requireAuth, async (c) => {
     syncAccountSkills(userId);
   }
 
+  db.insert(chats)
+    .values({
+      id,
+      userId,
+      title,
+      sectionId,
+      projectId,
+      agentSnapshot: JSON.stringify(agent ?? {}),
+      agentContext: agent && project ? compileAgentContext(agent, project) : "",
+      mcpSnapshot: JSON.stringify(sessionMcp.snapshot),
+      createdAt: stamp,
+      updatedAt: stamp,
+    })
+    .run();
+
   try {
     const started = await startMuseSession(userId, project?.folder, {
-      mcpServers: sessionMcp.runtime,
+      mcpServers: sessionMcpForChat(ownedChat(userId, id)!),
     });
 
     museSessionId = started.sessionId;
@@ -326,27 +352,15 @@ chatRoute.post("/", requireAuth, async (c) => {
       });
     }
   } catch (cause) {
+    if (museSessionId) {
+      await leaveMuseSession(museSessionId).catch(() => {});
+    }
+
+    db.delete(chats).where(eq(chats.id, id)).run();
     return mcpStartupHint(c, cause, mcpServerCount) ?? museFailure(c, cause);
   }
 
-  const id = randomUUID();
-  const stamp = nowIso();
-
-  db.insert(chats)
-    .values({
-      id,
-      userId: c.get("user").id,
-      title,
-      sectionId,
-      projectId,
-      agentSnapshot: JSON.stringify(agent ?? {}),
-      agentContext: agent && project ? compileAgentContext(agent, project) : "",
-      mcpSnapshot: JSON.stringify(sessionMcp.snapshot),
-      museSessionId,
-      createdAt: stamp,
-      updatedAt: stamp,
-    })
-    .run();
+  db.update(chats).set({ museSessionId }).where(eq(chats.id, id)).run();
 
   const row = readChat(c.get("user").id, id);
 
@@ -379,7 +393,7 @@ chatRoute.get("/:id", requireAuth, async (c) => {
   }
 
   try {
-    const mcpServers = restoreSessionMcp(row.userId, row.mcpSnapshot ?? "[]");
+    const mcpServers = sessionMcpForChat(row);
     const detail = await readMuseChat(toSummary(row), { mcpServers });
 
     const response: ChatDetail = {
@@ -403,7 +417,7 @@ chatRoute.get("/:id/events", requireAuth, async (c) => {
   let mcpServers: Record<string, SessionMcpServerConfig>;
 
   try {
-    mcpServers = restoreSessionMcp(row.userId, row.mcpSnapshot ?? "[]");
+    mcpServers = sessionMcpForChat(row);
   } catch (cause) {
     return museFailure(c, cause);
   }
@@ -498,19 +512,46 @@ chatRoute.delete("/:id", requireAuth, async (c) => {
     return c.json({ error: "Chat not found" }, 404);
   }
 
-  if (isMuseTurnRunning(row.museSessionId)) {
-    return c.json({ error: "Stop the running chat before deleting it." }, 409);
+  if (row.parentChatId) {
+    return c.json(
+      {
+        error:
+          "Team sessions belong to their main chat. Delete the main chat to remove the team.",
+      },
+      400,
+    );
+  }
+
+  let release: () => void;
+
+  try {
+    release = beginTeamDeletion(row);
+  } catch (cause) {
+    return c.json({ error: museErrorMessage(cause) }, 409);
   }
 
   try {
-    await leaveMuseSession(row.museSessionId);
+    const members = teamRows(row);
+
+    await Promise.all(
+      members.map((member) => leaveMuseSession(member.museSessionId)),
+    );
+    db.delete(chats)
+      .where(
+        and(
+          eq(chats.userId, row.userId),
+          inArray(
+            chats.id,
+            members.map((member) => member.id),
+          ),
+        ),
+      )
+      .run();
   } catch (cause) {
     return museFailure(c, cause);
+  } finally {
+    release();
   }
-
-  db.delete(chats)
-    .where(and(eq(chats.id, row.id), eq(chats.userId, row.userId)))
-    .run();
 
   return c.json({ deleted: true });
 });
@@ -552,26 +593,19 @@ chatRoute.post("/:id/turns", requireAuth, async (c) => {
         .where(and(eq(chats.id, row.id), eq(chats.userId, row.userId)))
         .run();
 
-      const turnInput = agentTurnInput(row.agentContext, text);
+      await runTeamTurn(row, text, images, async (event) => {
+        if (!stream.aborted) {
+          try {
+            const outgoing = withMcpTurnHint(event);
 
-      await runMuseTurn({
-        museSessionId: summary.museSessionId,
-        ...turnInput,
-        images,
-        onEvent: async (event) => {
-          if (!stream.aborted) {
-            try {
-              const outgoing = withMcpTurnHint(event);
-
-              await stream.writeSSE({
-                event: outgoing.type,
-                data: JSON.stringify(outgoing),
-              });
-            } catch {
-              return;
-            }
+            await stream.writeSSE({
+              event: outgoing.type,
+              data: JSON.stringify(outgoing),
+            });
+          } catch {
+            return;
           }
-        },
+        }
       });
 
       const patch: { updatedAt: string; title?: string } = {
@@ -606,7 +640,7 @@ chatRoute.post("/:id/turns/:turnId/cancel", requireAuth, async (c) => {
   }
 
   try {
-    await cancelMuseTurn(toSummary(row).museSessionId, c.req.param("turnId"));
+    await stopTeamMember(row, c.req.param("turnId"));
 
     return c.json({ cancelled: true });
   } catch (cause) {
@@ -653,6 +687,8 @@ chatRoute.post("/:id/steer", requireAuth, async (c) => {
       text,
       images,
     });
+
+    await shareInterruption(row, `The user redirected this session: ${text}`);
 
     return c.json({ steered: true });
   } catch (cause) {
@@ -714,7 +750,7 @@ chatRoute.put("/:id/settings", requireAuth, async (c) => {
 
   if (row.projectId !== "") {
     try {
-      const mcpServers = restoreSessionMcp(row.userId, row.mcpSnapshot ?? "[]");
+      const mcpServers = sessionMcpForChat(row);
       const detail = await readMuseChat(toSummary(row), { mcpServers });
 
       return c.json({ chat: toSummary(row), ...detail });
@@ -745,7 +781,7 @@ chatRoute.put("/:id/settings", requireAuth, async (c) => {
       permission,
     });
 
-    const mcpServers = restoreSessionMcp(row.userId, row.mcpSnapshot ?? "[]");
+    const mcpServers = sessionMcpForChat(row);
     const detail = await readMuseChat(toSummary(row), { mcpServers });
 
     const response: ChatDetail = {

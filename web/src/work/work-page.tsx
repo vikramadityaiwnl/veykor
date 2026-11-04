@@ -3,6 +3,7 @@ import { usePreferencesStore } from "../workspace/preferences-store.ts";
 import { useWorkStore } from "./work-store.ts";
 import ChatComposer from "../chat/components/chat-composer.tsx";
 import Logo from "../components/logo/logo.tsx";
+import ChatNavbar from "../chat/components/chat-navbar.tsx";
 import { useChatStore } from "../chat/chat-store.ts";
 import { workGreetingFor } from "./work-greeting-titles.ts";
 
@@ -24,6 +25,14 @@ function WorkPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <ChatNavbar
+        title="Work"
+        projectName=""
+        members={[]}
+        selectedId=""
+        onSelectMember={() => {}}
+        workMode
+      />
       <div className="grid flex-1 place-items-center px-6">
         <div className="space-y-4 text-center">
           <div className="flex justify-center opacity-40">

@@ -18,6 +18,8 @@ import {
   transcriptionMaxPayloadBytes,
 } from "./transcription/transcription-upgrade.js";
 import { agentRoute, projectRoute } from "./work/work.js";
+import { teamRoute, teamMcpRoute } from "./teams/teams.js";
+import { startTeamRuntime } from "./teams/team-runtime.js";
 
 const config = loadServerConfig();
 
@@ -27,6 +29,8 @@ app.use("/api/*", csrfProtection);
 
 app.route("/api/auth", authRoute);
 app.route("/api/chats", chatRoute);
+app.route("/api/teams", teamRoute);
+app.route("/api/team-mcp", teamMcpRoute);
 app.route("/api/agents", agentRoute);
 app.route("/api/projects", projectRoute);
 app.route("/api/models", modelRoute);
@@ -57,6 +61,8 @@ app.get("/api/me", requireAuth, (context) => {
 });
 
 app.notFound((context) => context.json({ error: "Not found" }, 404));
+
+startTeamRuntime();
 
 const server = serve(
   {

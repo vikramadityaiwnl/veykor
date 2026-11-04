@@ -36,6 +36,12 @@ export const chats = sqliteTable("chats", {
   title: text("title").notNull().default("Untitled chat"),
   sectionId: text("section_id").notNull().default("recent"),
   projectId: text("project_id").notNull().default(""),
+  parentChatId: text("parent_chat_id").notNull().default(""),
+  delegatedById: text("delegated_by_id").notNull().default(""),
+  teamToken: text("team_token").notNull().default(""),
+  task: text("task").notNull().default(""),
+  teamStatus: text("team_status").notNull().default("idle"),
+  teamError: text("team_error").notNull().default(""),
   agentSnapshot: text("agent_snapshot").notNull().default("{}"),
   agentContext: text("agent_context").notNull().default(""),
   mcpSnapshot: text("mcp_snapshot").notNull().default("[]"),
@@ -93,4 +99,32 @@ export const projects = sqliteTable("projects", {
   folder: text("folder").notNull().default(""),
   sectionId: text("section_id").notNull().default("default-projects"),
   agentIds: text("agent_ids").notNull().default("[]"),
+});
+
+export const teamEvents = sqliteTable("team_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  rootId: text("root_id")
+    .notNull()
+    .default("")
+    .references(() => chats.id, { onDelete: "cascade" }),
+  senderId: text("sender_id").notNull().default(""),
+  recipientId: text("recipient_id").notNull().default(""),
+  kind: text("kind").notNull().default(""),
+  text: text("text").notNull().default(""),
+  createdAt: text("created_at").notNull().default(""),
+});
+
+export const teamJobs = sqliteTable("team_jobs", {
+  id: text("id").primaryKey(),
+  rootId: text("root_id")
+    .notNull()
+    .default("")
+    .references(() => chats.id, { onDelete: "cascade" }),
+  targetId: text("target_id")
+    .notNull()
+    .default("")
+    .references(() => chats.id, { onDelete: "cascade" }),
+  text: text("text").notNull().default(""),
+  status: text("status").notNull().default("pending"),
+  createdAt: text("created_at").notNull().default(""),
 });

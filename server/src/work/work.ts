@@ -1,3 +1,4 @@
+import { beginTeamDeletion, teamHasWork } from "../teams/team-runtime.js";
 import { pickNativeFolder } from "./native-folder-picker.js";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -368,9 +369,29 @@ projectRoute.delete("/:id", async (c) => {
     .where(and(eq(chats.projectId, id), eq(chats.userId, userId)))
     .all();
 
-  if (doomed.some((chat) => isMuseTurnRunning(chat.museSessionId))) {
+  if (
+    doomed.some(
+      (chat) =>
+        isMuseTurnRunning(chat.museSessionId) ||
+        (!chat.parentChatId && teamHasWork(chat)),
+    )
+  ) {
     return c.json(
       { error: "Stop all running chats before deleting this project." },
+      409,
+    );
+  }
+
+  const releases: (() => void)[] = [];
+
+  try {
+    for (const root of doomed.filter((chat) => !chat.parentChatId)) {
+      releases.push(beginTeamDeletion(root));
+    }
+  } catch (cause) {
+    releases.forEach((release) => release());
+    return c.json(
+      { error: cause instanceof Error ? cause.message : "This team is busy." },
       409,
     );
   }
@@ -379,21 +400,22 @@ projectRoute.delete("/:id", async (c) => {
     await Promise.all(
       doomed.map((chat) => leaveMuseSession(chat.museSessionId)),
     );
+    db.transaction((tx) => {
+      tx.delete(chats)
+        .where(and(eq(chats.projectId, id), eq(chats.userId, userId)))
+        .run();
+      tx.delete(projects)
+        .where(and(eq(projects.id, id), eq(projects.userId, userId)))
+        .run();
+    });
   } catch {
     return c.json(
       { error: "Unable to stop project sessions. Try again." },
       502,
     );
+  } finally {
+    releases.forEach((release) => release());
   }
-
-  db.transaction((tx) => {
-    tx.delete(chats)
-      .where(and(eq(chats.projectId, id), eq(chats.userId, userId)))
-      .run();
-    tx.delete(projects)
-      .where(and(eq(projects.id, id), eq(projects.userId, userId)))
-      .run();
-  });
 
   return c.json({ deleted: true });
 });

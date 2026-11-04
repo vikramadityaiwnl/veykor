@@ -40,7 +40,7 @@ function AgentsPage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="w-full space-y-6 px-6 py-10">
+      <div className="w-full space-y-6 px-6 py-4">
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold text-zinc-50">Agents</h1>
 

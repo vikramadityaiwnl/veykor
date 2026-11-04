@@ -8,10 +8,6 @@ import { useThemeStore } from "../theme/theme-store.ts";
 import type { Theme } from "../theme/theme-store.ts";
 import { usePreferencesStore } from "../workspace/preferences-store.ts";
 
-interface Props {
-  [key: string]: never;
-}
-
 const themeOptions: Array<SegmentedControlOption<Theme>> = [
   {
     icon: <SunIcon aria-hidden="true" className="size-4" />,
@@ -37,7 +33,7 @@ const interruptionOptions: Array<SegmentedControlOption<InterruptionBehavior>> =
     },
   ];
 
-function SettingsPage(_props: Props) {
+function SettingsPage() {
   const theme = useThemeStore((state) => state.theme);
   const setTheme = useThemeStore((state) => state.setTheme);
   const interruptionBehavior = usePreferencesStore(
@@ -49,7 +45,7 @@ function SettingsPage(_props: Props) {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="w-full space-y-6 px-6 py-10">
+      <div className="w-full space-y-6 px-6 py-4">
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold text-zinc-50">Settings</h1>
 

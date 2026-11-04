@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { ChevronDownIcon, WrenchIcon } from "@heroicons/react/24/outline";
+import { useWorkStore } from "../../work/work-store.ts";
+import { useTeamStore } from "../../teams/team-store.ts";
 import type { ChatHistoryItem } from "@veykor/shared";
 
 interface Props {
@@ -8,6 +10,15 @@ interface Props {
 
 function ToolCallBlock(props: Props) {
   const [open, setOpen] = useState(false);
+  const members = useTeamStore((state) => state.snapshot.members);
+  const projectId = useWorkStore((state) => state.projectId);
+  const member =
+    projectId !== "" && props.item.tool.includes("team_delegate")
+      ? members.find(
+          (entry) =>
+            !entry.isMain && props.item.visibleOutput.includes(entry.id),
+        )
+      : undefined;
 
   function handleToggle() {
     setOpen((current) => !current);
@@ -40,6 +51,15 @@ function ToolCallBlock(props: Props) {
 
   return (
     <div className="w-full min-w-0">
+      {member && (
+        <button
+          type="button"
+          className="mb-2 rounded-lg border border-zinc-800 px-3 py-2 text-xs font-light text-zinc-300 hover:bg-zinc-900"
+          onClick={() => useTeamStore.getState().select(member.id)}
+        >
+          Open {member.name}
+        </button>
+      )}
       <button
         aria-expanded={open}
         className={buttonClassName}
