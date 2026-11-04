@@ -1,12 +1,16 @@
 import { Fragment, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import { extractGeneratedImageIds, isGenerateImageTool } from "@veykor/shared";
+import {
+  chatPaths,
+  extractGeneratedImageIds,
+  isGenerateImageTool,
+} from "@veykor/shared";
 import type {
   ChatHistoryItem,
   GeneratedImageArtifact,
   QuestionRequest,
 } from "@veykor/shared";
-import type { SentAttachment } from "../chat-store.ts";
+import type { LivePreview, SentAttachment } from "../chat-store.ts";
 import AgentMessage from "./agent-message.tsx";
 import GeneratedImage from "./generated-image.tsx";
 import QuestionHistoryRecord from "./question-history-record.tsx";
@@ -15,9 +19,11 @@ import ToolCallBlock from "./tool-call-block.tsx";
 import UserMessage from "./user-message.tsx";
 
 interface Props {
+  chatId: string;
   generatedImages: Array<GeneratedImageArtifact>;
   imageUrls: Array<SentAttachment>;
   items: Array<ChatHistoryItem>;
+  liveScreenshots: Record<string, LivePreview>;
   questions: Array<QuestionRequest>;
   streaming: boolean;
   streamingTurnId: string;
@@ -314,7 +320,18 @@ function MessageList(props: Props) {
 
     if (item.kind === "toolCall") {
       if (!isGenerateImageTool(item.tool)) {
-        return <ToolCallBlock item={item} key={item.itemId} />;
+        return (
+          <ToolCallBlock
+            item={item}
+            key={item.itemId}
+            screenshot={props.liveScreenshots[item.itemId] ?? null}
+            screenshotSrc={
+              props.chatId !== "" && item.tool.includes("take_screenshot")
+                ? chatPaths.screenshot(props.chatId, item.itemId)
+                : undefined
+            }
+          />
+        );
       }
 
       const images = bindToolImages(item, props.generatedImages);
@@ -381,7 +398,18 @@ function MessageList(props: Props) {
       }
 
       if (cards.length === 0) {
-        return <ToolCallBlock item={item} key={item.itemId} />;
+        return (
+          <ToolCallBlock
+            item={item}
+            key={item.itemId}
+            screenshot={props.liveScreenshots[item.itemId] ?? null}
+            screenshotSrc={
+              props.chatId !== "" && item.tool.includes("take_screenshot")
+                ? chatPaths.screenshot(props.chatId, item.itemId)
+                : undefined
+            }
+          />
+        );
       }
 
       return (

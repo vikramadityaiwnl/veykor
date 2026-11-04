@@ -6,6 +6,7 @@ import Logo from "../components/logo/logo.tsx";
 import ChatNavbar from "../chat/components/chat-navbar.tsx";
 import { useChatStore } from "../chat/chat-store.ts";
 import { workGreetingFor } from "./work-greeting-titles.ts";
+import LivePreviewPip from "../chat/components/live-preview-pip.tsx";
 
 function WorkPage() {
   const [title] = useState(() => workGreetingFor(new Date()));
@@ -45,6 +46,7 @@ function WorkPage() {
         </div>
       </div>
       <ChatComposer workMode />
+      <LivePreviewPip />
     </div>
   );
 }

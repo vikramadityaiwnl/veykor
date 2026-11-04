@@ -3,6 +3,8 @@ import type { ChatMode, ChatPermission } from "./chat-contracts.js";
 export const chatPaths = {
   chats: "/api/chats",
   chat: (id: string) => `/api/chats/${id}`,
+  screenshot: (id: string, itemId: string) =>
+    `/api/chats/${encodeURIComponent(id)}/screenshots/${encodeURIComponent(itemId)}`,
   events: (id: string) => `/api/chats/${id}/events`,
   turns: (id: string) => `/api/chats/${id}/turns`,
   cancelTurn: (id: string, turnId: string) =>

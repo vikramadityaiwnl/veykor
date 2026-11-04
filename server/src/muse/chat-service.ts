@@ -1,6 +1,6 @@
 import { userMessageText } from "./user-message-text.js";
-import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readFile, realpath } from "node:fs/promises";
+import { isAbsolute, relative } from "node:path";
 import type { SessionMcpServerConfig } from "@muse-code/sdk/dist/src/msp.js";
 import type {
   ChatApprovalRequest,
@@ -12,10 +12,11 @@ import type {
   ChatSummary,
   ChatTurnEvent,
 } from "@veykor/shared";
-import { databasePath } from "../db/client.js";
+import { isGenerateImageTool } from "@veykor/shared";
 import { readTurnDurations } from "./turn-durations.js";
 import { museHost } from "./muse-host.js";
 import type { MuseNotification } from "./muse-host.js";
+import { workspaceFor } from "./workspace.js";
 
 export type TurnEvent = ChatTurnEvent;
 
@@ -61,14 +62,6 @@ export function approvalModeToPermission(mode: string): ChatPermission {
   return "read-only";
 }
 
-export function workspaceFor(userId: number): string {
-  const root = resolve(dirname(databasePath), "workspaces", String(userId));
-
-  mkdirSync(root, { recursive: true });
-
-  return root;
-}
-
 function displayLabel(value: unknown): string {
   const entry = record(value);
 
@@ -94,7 +87,6 @@ function subjectTitle(subject: Record<string, unknown>): string {
 
 export function toHistoryItem(value: unknown): ChatHistoryItem {
   const item = record(value);
-
   const summary = list(item["summary"]).filter(
     (entry): entry is string => typeof entry === "string",
   );
@@ -265,6 +257,130 @@ function nativeTodos(value: Record<string, unknown>): NativeTodoSnapshot {
     revision: typeof value["revision"] === "number" ? value["revision"] : 0,
     sourceTool: text(value["sourceTool"]),
   };
+}
+
+function screenshotRef(
+  payload: unknown,
+  item: ChatHistoryItem,
+): { refId: string; mediaType: string } | null {
+  if (item.kind !== "toolCall" || isGenerateImageTool(item.tool)) {
+    return null;
+  }
+
+  const raw = record(payload);
+  const ref = record(raw["outputRef"]);
+  const refId = text(ref["id"]);
+  const imageContent = list(raw["modelVisibleContent"])
+    .map(record)
+    .find((content) => content["type"] === "image");
+  const mediaType = text(ref["mediaType"]) || text(imageContent?.["mediaType"]);
+  const availability = text(ref["availability"]);
+
+  if (refId === "" || !mediaType.startsWith("image/")) {
+    return null;
+  }
+
+  if (availability !== "" && availability !== "available") {
+    return null;
+  }
+
+  return { refId, mediaType };
+}
+
+function screenshotFilePath(payload: unknown, item: ChatHistoryItem): string {
+  const raw = record(payload);
+  const rawArgs = raw["args"] ?? raw["arguments"];
+  let filePath = "";
+
+  if (typeof rawArgs !== "string") {
+    filePath = text(record(rawArgs)["filePath"]);
+  } else {
+    try {
+      filePath = text(record(JSON.parse(rawArgs))["filePath"]);
+    } catch {
+      filePath = "";
+    }
+  }
+
+  if (filePath !== "") {
+    return filePath;
+  }
+
+  return (
+    item.visibleOutput.match(
+      /Saved screenshot to\s+(\/[^\n"]+?\.(?:png|jpe?g|webp))\.?(?=\s|$)/i,
+    )?.[1] ?? ""
+  );
+}
+
+async function readScreenshotFile(
+  filePath: string,
+  workspaceRoot: string,
+): Promise<{ mediaType: string; base64Data: string } | null> {
+  try {
+    const [root, resolvedPath] = await Promise.all([
+      realpath(workspaceRoot),
+      realpath(filePath),
+    ]);
+    const relativePath = relative(root, resolvedPath);
+
+    if (
+      relativePath === "" ||
+      relativePath.startsWith("..") ||
+      isAbsolute(relativePath)
+    ) {
+      return null;
+    }
+
+    const bytes = await readFile(resolvedPath);
+
+    if (bytes.byteLength === 0 || bytes.byteLength > 6 * 1024 * 1024) {
+      return null;
+    }
+
+    let mediaType = "";
+
+    if (
+      bytes[0] === 0x89 &&
+      bytes[1] === 0x50 &&
+      bytes[2] === 0x4e &&
+      bytes[3] === 0x47
+    ) {
+      mediaType = "image/png";
+    } else if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+      mediaType = "image/jpeg";
+    } else if (
+      bytes.toString("ascii", 0, 4) === "RIFF" &&
+      bytes.toString("ascii", 8, 12) === "WEBP"
+    ) {
+      mediaType = "image/webp";
+    }
+
+    if (mediaType === "") {
+      return null;
+    }
+
+    return { mediaType, base64Data: bytes.toString("base64") };
+  } catch {
+    return null;
+  }
+}
+
+export async function readScreenshotForItem(
+  item: ChatHistoryItem,
+  screenshotRoot: string,
+): Promise<{ mediaType: string; base64Data: string } | null> {
+  if (item.kind !== "toolCall" || !item.tool.includes("take_screenshot")) {
+    return null;
+  }
+
+  const filePath = screenshotFilePath({ args: item.args }, item);
+
+  if (filePath === "") {
+    return null;
+  }
+
+  return readScreenshotFile(filePath, screenshotRoot);
 }
 
 const activeTurns = new Map<string, ActiveTurn>();
@@ -562,6 +678,7 @@ export async function steerMuseTurn(input: {
 
 export async function runMuseTurn(input: {
   museSessionId: string;
+  screenshotRoot: string;
   text: string;
   images: Array<{ mediaType: string; base64Data: string }>;
   displayText?: string;
@@ -606,6 +723,75 @@ export async function runMuseTurn(input: {
   let terminalReceived = false;
   const userItemIds = new Set<string>();
   const turnItemIds = new Set<string>();
+  const pendingMedia = new Set<Promise<void>>();
+
+  async function emitScreenshot(
+    ref: { refId: string; mediaType: string } | null,
+    itemId: string,
+    filePath = "",
+  ): Promise<void> {
+    try {
+      let mediaType = "";
+      let base64Data = "";
+
+      if (ref !== null) {
+        let offset = 0;
+
+        for (;;) {
+          const page = record(
+            await connection.request("item/readOutput", {
+              sessionId: input.museSessionId,
+              itemId,
+              outputRef: ref.refId,
+              offsetBytes: offset,
+            }),
+          );
+
+          if (page["encoding"] !== "base64") {
+            return;
+          }
+
+          base64Data += text(page["content"]);
+
+          if (base64Data.length > 8 * 1024 * 1024) {
+            return;
+          }
+
+          if (page["eof"] === true) {
+            break;
+          }
+
+          const served = page["byteLen"];
+
+          if (typeof served !== "number" || served <= 0) {
+            return;
+          }
+
+          offset += served;
+        }
+
+        mediaType = ref.mediaType;
+      } else {
+        const file = await readScreenshotFile(filePath, input.screenshotRoot);
+
+        if (file === null) {
+          return;
+        }
+
+        mediaType = file.mediaType;
+        base64Data = file.base64Data;
+      }
+
+      await input.onEvent({
+        type: "screenshot",
+        itemId,
+        mediaType,
+        base64Data,
+      });
+    } catch {
+      return;
+    }
+  }
 
   if (activeTurns.has(input.museSessionId)) {
     throw new Error("A turn is already running in this chat.");
@@ -683,6 +869,26 @@ export async function runMuseTurn(input: {
                   text(record(payload)["text"]) === input.text
                 ) {
                   item.text = input.displayText;
+                }
+              }
+
+              if (notification.method === "item/completed") {
+                const ref = screenshotRef(payload, item);
+                const filePath =
+                  item.kind === "toolCall" &&
+                  item.tool.includes("take_screenshot")
+                    ? screenshotFilePath(payload, item)
+                    : "";
+
+                if (ref !== null || filePath !== "") {
+                  const job = emitScreenshot(
+                    ref,
+                    item.itemId,
+                    filePath,
+                  ).finally(() => {
+                    pendingMedia.delete(job);
+                  });
+                  pendingMedia.add(job);
                 }
               }
 
@@ -777,6 +983,10 @@ export async function runMuseTurn(input: {
       activeTurns.delete(input.museSessionId);
     }
   });
+
+  while (pendingMedia.size > 0) {
+    await Promise.allSettled([...pendingMedia]);
+  }
 
   if (outcome.durationMs <= 0) {
     try {

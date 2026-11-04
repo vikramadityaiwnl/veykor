@@ -1,6 +1,7 @@
 import { compileAgentContext } from "../work/agent-context.js";
 import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
+import { join } from "node:path";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -62,9 +63,11 @@ import {
   listMuseModels,
   listPendingApprovals,
   museErrorMessage,
+  readScreenshotForItem,
   startMuseSession,
   steerMuseTurn,
 } from "../muse/chat-service.js";
+import { workspaceFor } from "../muse/workspace.js";
 import type { TurnEvent } from "../muse/chat-service.js";
 import { readAgent, readProject } from "../work/work.js";
 import type { AgentDefinition } from "@veykor/shared";
@@ -429,6 +432,41 @@ chatRoute.get("/:id", requireAuth, async (c) => {
     };
 
     return c.json(response);
+  } catch (cause) {
+    return museFailure(c, cause);
+  }
+});
+
+chatRoute.get("/:id/screenshots/:itemId", requireAuth, async (c) => {
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row) {
+    return c.json({ error: "Chat not found" }, 404);
+  }
+
+  try {
+    const detail = await readTeamChat(row);
+    const item = detail.items.find(
+      (candidate) => candidate.itemId === c.req.param("itemId"),
+    );
+    const screenshot = item
+      ? await readScreenshotForItem(
+          item,
+          join(workspaceFor(row.userId), ".veykor", "previews"),
+        )
+      : null;
+
+    if (screenshot === null) {
+      return c.json({ error: "Screenshot not found" }, 404);
+    }
+
+    return new Response(Buffer.from(screenshot.base64Data, "base64"), {
+      headers: {
+        "Cache-Control": "private, max-age=3600",
+        "Content-Type": screenshot.mediaType,
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
   } catch (cause) {
     return museFailure(c, cause);
   }

@@ -158,4 +158,10 @@ export type ChatTurnEvent =
       durationMs: number;
     }
   | { type: "error"; message: string }
-  | { type: "memory-saved"; receipt: MemoryReceipt };
+  | { type: "memory-saved"; receipt: MemoryReceipt }
+  | {
+      type: "screenshot";
+      itemId: string;
+      mediaType: string;
+      base64Data: string;
+    };

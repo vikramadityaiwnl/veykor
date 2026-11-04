@@ -71,6 +71,13 @@ export interface ComposerRestore {
   text: string;
 }
 
+export interface LivePreview {
+  itemId: string;
+  mediaType: string;
+  base64Data: string;
+  active: boolean;
+}
+
 interface ChatState {
   chats: Array<ChatSummary>;
   chatsLoaded: boolean;
@@ -108,6 +115,10 @@ interface ChatState {
   catalogLoading: boolean;
   memoryReceipts: Array<MemoryReceipt>;
   dismissMemoryReceipt: (memoryId: string) => void;
+  livePreview: LivePreview | null;
+  liveScreenshots: Record<string, LivePreview>;
+  dismissLivePreview: () => void;
+  setLivePreviewActive: (active: boolean) => void;
   loadChats: () => Promise<void>;
   startDraft: (sectionId: string) => void;
   syncDraftPreferences: () => void;
@@ -505,6 +516,20 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   catalog: null,
   catalogLoading: false,
   memoryReceipts: [],
+  livePreview: null,
+  liveScreenshots: {},
+
+  dismissLivePreview: () => {
+    set({ livePreview: null });
+  },
+
+  setLivePreviewActive: (active) => {
+    set((current) =>
+      current.livePreview === null
+        ? current
+        : { livePreview: { ...current.livePreview, active } },
+    );
+  },
 
   dismissMemoryReceipt: (memoryId) => {
     set((current) => ({
@@ -611,6 +636,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       queuedMessages: [],
       queuePaused: false,
       composerRestore: { seq: 0, text: "" },
+      livePreview: null,
+      liveScreenshots: {},
     });
 
     get().syncDraftPreferences();
@@ -752,6 +779,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       queuedMessages: [],
       queuePaused: false,
       composerRestore: { seq: 0, text: "" },
+      livePreview: null,
+      liveScreenshots: {},
       finishedChatIds: current.finishedChatIds.filter(
         (finishedId) => finishedId !== id,
       ),
@@ -1133,6 +1162,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             currentTurnId = event.turnId;
             set((current) => ({
               streamingTurnId: event.turnId,
+              livePreview: null,
               streamingStartedAt:
                 event.startedAt && event.startedAt > 0
                   ? event.startedAt
@@ -1259,6 +1289,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
               streaming: false,
               streamingTurnId: "",
               streamingStartedAt: 0,
+              livePreview:
+                current.livePreview === null
+                  ? null
+                  : { ...current.livePreview, active: false },
               turnDurations: {
                 ...current.turnDurations,
                 [event.turnId]: event.durationMs > 0 ? event.durationMs : 0,
@@ -1285,6 +1319,27 @@ export const useChatStore = create<ChatState>()((set, get) => ({
                 event.receipt,
               ].slice(-3),
             }));
+            break;
+
+          case "screenshot":
+            if (event.base64Data !== "" && event.mediaType !== "") {
+              const screenshot = {
+                itemId: event.itemId,
+                mediaType: event.mediaType,
+                base64Data: event.base64Data,
+                active: false,
+              };
+
+              set((current) => ({
+                livePreview: {
+                  ...screenshot,
+                },
+                liveScreenshots: {
+                  ...current.liveScreenshots,
+                  [event.itemId]: screenshot,
+                },
+              }));
+            }
             break;
         }
       });

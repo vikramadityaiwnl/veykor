@@ -8,6 +8,7 @@ import { useChatStore } from "../chat-store.ts";
 import ChatComposer from "./chat-composer.tsx";
 import ChatNotFound from "./chat-not-found.tsx";
 import GreetingHeader from "./greeting-header.tsx";
+import LivePreviewPip from "./live-preview-pip.tsx";
 import MessageList from "./message-list.tsx";
 import LoadingSpinner from "../../components/loading-spinner/loading-spinner.tsx";
 
@@ -23,6 +24,7 @@ function MainChatContent() {
   const draftSeq = useChatStore((state) => state.draftSeq);
   const items = useChatStore((state) => state.items);
   const generatedImages = useChatStore((state) => state.generatedImages);
+  const liveScreenshots = useChatStore((state) => state.liveScreenshots);
   const recentQuestions = useChatStore((state) => state.recentQuestions);
   const historyLoading = useChatStore((state) => state.historyLoading);
   const chatNotFound = useChatStore((state) => state.chatNotFound);
@@ -90,9 +92,11 @@ function MainChatContent() {
         </div>
       ) : (
         <MessageList
+          chatId={activeChatId ?? ""}
           generatedImages={generatedImages}
           imageUrls={imageUrls}
           items={items}
+          liveScreenshots={liveScreenshots}
           questions={recentQuestions}
           streaming={streaming}
           streamingTurnId={streamingTurnId}
@@ -117,6 +121,8 @@ function MainChatContent() {
       <div className="relative z-10 -mt-12">
         <ChatComposer key={projectId} />
       </div>
+
+      <LivePreviewPip />
     </div>
   );
 }

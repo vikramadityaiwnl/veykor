@@ -25,7 +25,7 @@ import {
   readChatAttachmentIds,
   saveAttachment,
 } from "../../chat/attachment-store.ts";
-import type { SentAttachment } from "../../chat/chat-store.ts";
+import type { LivePreview, SentAttachment } from "../../chat/chat-store.ts";
 import { useChatStore } from "../../chat/chat-store.ts";
 import { visibleOrphanedQuestions } from "../../chat/question-drafts.ts";
 import MessageList from "../../chat/components/message-list.tsx";
@@ -57,6 +57,10 @@ function MemberSession(props: Props) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [pending, setPending] = useState(false);
   const [sentImages, setSentImages] = useState<SentAttachment[]>([]);
+  const [liveScreenshots, setLiveScreenshots] = useState<{
+    memberId: string;
+    screenshots: Record<string, LivePreview>;
+  }>({ memberId: props.member.id, screenshots: {} });
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
   const liveRef = useRef(true);
@@ -72,6 +76,19 @@ function MemberSession(props: Props) {
       detail.activeTurnId &&
       Object.hasOwn(detail.turnDurations, detail.activeTurnId)
     );
+
+  useEffect(() => {
+    if (!props.active) {
+      return;
+    }
+
+    useChatStore.getState().setLivePreviewActive(running);
+
+    return () => {
+      useChatStore.getState().setLivePreviewActive(false);
+    };
+  }, [props.active, running]);
+
   const hasInput = draft.trim() !== "" || attachments.length > 0;
   const action = composerAction(running, hasInput, interruption);
   const taskCount = useTeamStore((state) =>
@@ -339,6 +356,23 @@ function MemberSession(props: Props) {
                     }
                   : current,
               );
+            } else if (event.type === "screenshot") {
+              const screenshot = {
+                itemId: event.itemId,
+                mediaType: event.mediaType,
+                base64Data: event.base64Data,
+                active: false,
+              };
+
+              setLiveScreenshots((current) => ({
+                memberId: props.member.id,
+                screenshots: {
+                  ...(current.memberId === props.member.id
+                    ? current.screenshots
+                    : {}),
+                  [event.itemId]: screenshot,
+                },
+              }));
             }
           },
           controller.signal,
@@ -356,6 +390,8 @@ function MemberSession(props: Props) {
         );
       }
     } finally {
+      useChatStore.getState().setLivePreviewActive(false);
+
       if (turnRequestRef.current === controller) {
         turnRequestRef.current = null;
       }
@@ -503,9 +539,15 @@ function MemberSession(props: Props) {
     >
       {detail ? (
         <MessageList
+          chatId={props.member.id}
           generatedImages={detail.generatedImages}
           imageUrls={sentImages}
           items={detail.items}
+          liveScreenshots={
+            liveScreenshots.memberId === props.member.id
+              ? liveScreenshots.screenshots
+              : {}
+          }
           questions={detail.recentQuestions}
           streaming={running && props.active}
           streamingTurnId={detail.activeTurnId}

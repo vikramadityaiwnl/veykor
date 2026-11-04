@@ -110,6 +110,7 @@ test("chat deletion guards active work and failures while allowing unloaded team
 
   const turn = runMuseTurn({
     museSessionId: "muse-delete-running",
+    screenshotRoot: folder,
     text: "test turn",
     images: [],
     onEvent: () => {},
