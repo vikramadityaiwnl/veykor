@@ -1,4 +1,5 @@
 import { useWorkStore } from "../../work/work-store.ts";
+import { isFolderMissing } from "../../work/project-folder.ts";
 import AgentPicker from "../../work/components/agent-picker.tsx";
 import ComposerFrame from "./composer-frame.tsx";
 import { composerAction } from "../composer-mode.ts";
@@ -44,11 +45,7 @@ function ChatComposer(props: Props) {
     workLoaded &&
     projects.every((project) => project.id !== projectId);
   const activeProject = projects.find((project) => project.id === projectId);
-  const folderMissing =
-    projectId !== "" &&
-    workLoaded &&
-    activeProject !== undefined &&
-    !activeProject.folderExists;
+  const folderMissing = isFolderMissing(projectId, workLoaded, activeProject);
   const activeChatId = useChatStore((state) => state.activeChatId);
   const agentMode = props.workMode === true || projectId !== "";
   const projectRequired = (agentMode && projectId === "") || projectMissing;

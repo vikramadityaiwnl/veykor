@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { semanticColors } from "../../theme/semantic-colors.ts";
 
@@ -87,7 +88,7 @@ function ContextMenu(props: Props) {
     setFlyout({ id: item.id, top: Math.max(clamped, 8) });
   }
 
-  return (
+  return createPortal(
     <>
       <button
         aria-label="Close menu"
@@ -188,7 +189,8 @@ function ContextMenu(props: Props) {
           ))}
         </div>
       )}
-    </>
+    </>,
+    document.body,
   );
 }
 
