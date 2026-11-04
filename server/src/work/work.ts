@@ -24,6 +24,18 @@ import { agents, projects, chats, memories } from "../db/schema.js";
 import { isMuseTurnRunning, leaveMuseSession } from "../muse/chat-service.js";
 import { settleRootQuestions } from "../questions/question-store.js";
 
+export function toAgentDefinition(row: {
+  id: string;
+  data: string;
+}): AgentDefinition {
+  const data = JSON.parse(row.data) as Partial<AgentInput>;
+
+  return {
+    ...normalizeAgent(data),
+    id: row.id,
+  };
+}
+
 export function readAgent(
   userId: number,
   id: string,
@@ -34,9 +46,16 @@ export function readAgent(
     .where(and(eq(agents.id, id), eq(agents.userId, userId)))
     .get();
 
-  return row
-    ? ({ ...JSON.parse(row.data), id: row.id } as AgentDefinition)
-    : undefined;
+  return row ? toAgentDefinition(row) : undefined;
+}
+
+export function readAgents(userId: number): Array<AgentDefinition> {
+  return db
+    .select()
+    .from(agents)
+    .where(eq(agents.userId, userId))
+    .all()
+    .map(toAgentDefinition);
 }
 
 export function readProject(userId: number, id: string) {
@@ -77,6 +96,7 @@ export function normalizeAgent(input: Partial<AgentInput>): AgentInput {
       input.permission === "full-access" || input.permission === "approved"
         ? input.permission
         : "read-only",
+    autoAddToNewProjects: input.autoAddToNewProjects === true,
   };
 }
 
@@ -104,16 +124,7 @@ agentRoute.use(
   validateInput,
 );
 
-agentRoute.get("/", (c) =>
-  c.json(
-    db
-      .select()
-      .from(agents)
-      .where(eq(agents.userId, c.get("user").id))
-      .all()
-      .map((row) => ({ ...JSON.parse(row.data), id: row.id })),
-  ),
-);
+agentRoute.get("/", (c) => c.json(readAgents(c.get("user").id)));
 
 agentRoute.post("/", async (c) => {
   const data = normalizeAgent(await c.req.json());
@@ -316,15 +327,27 @@ for (const method of ["post", "put"] as const) {
       );
     }
 
-    const agentIds = Array.isArray(body.agentIds)
+    const requested = Array.isArray(body.agentIds)
       ? [...new Set(body.agentIds)]
       : [];
 
     if (
-      agentIds.some((id) => typeof id !== "string" || !readAgent(userId, id))
+      requested.some((id) => typeof id !== "string" || !readAgent(userId, id))
     ) {
       return c.json({ error: "Choose agents from your library." }, 400);
     }
+
+    const agentIds =
+      method === "post"
+        ? [
+            ...new Set([
+              ...requested,
+              ...readAgents(userId)
+                .filter((agent) => agent.autoAddToNewProjects)
+                .map((agent) => agent.id),
+            ]),
+          ]
+        : requested;
 
     const id = existing?.id ?? randomUUID();
     const sectionId =

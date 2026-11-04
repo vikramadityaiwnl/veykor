@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -24,7 +24,8 @@ import type {
   RegisterRequest,
 } from "@veykor/shared";
 import { db } from "../db/client.js";
-import { preferences, sessions, users } from "../db/schema.js";
+import { agents, preferences, sessions, users } from "../db/schema.js";
+import { defaultAgentDefinitions } from "../work/default-agents.js";
 import { isHostRequest } from "./host-access.js";
 import { hashPassword, verifyPassword } from "./password.js";
 
@@ -343,10 +344,20 @@ authRoute.post("/register", async (c) => {
       tx.insert(preferences)
         .values({
           userId: created.id,
-          data: JSON.stringify(defaultPreferences()),
+          data: JSON.stringify({ ...defaultPreferences(), agentsSeeded: true }),
           updatedAt: new Date().toISOString(),
         })
         .run();
+
+      for (const definition of defaultAgentDefinitions) {
+        tx.insert(agents)
+          .values({
+            id: randomUUID(),
+            userId: created.id,
+            data: JSON.stringify(definition),
+          })
+          .run();
+      }
     }
 
     return created;

@@ -10,6 +10,7 @@ export interface AgentDefinition {
   providerId: string;
   reasoningEffort: string;
   permission: ChatPermission;
+  autoAddToNewProjects: boolean;
 }
 
 export interface WorkProject {

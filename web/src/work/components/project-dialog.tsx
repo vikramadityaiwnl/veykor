@@ -23,7 +23,9 @@ function ProjectDialog(props: Props) {
       name: "",
       folder: "",
       sectionId: props.sectionId,
-      agentIds: [],
+      agentIds: agents
+        .filter((agent) => agent.autoAddToNewProjects)
+        .map((agent) => agent.id),
     },
   );
   const [picking, setPicking] = useState(false);

@@ -132,7 +132,10 @@ test("preferences default, update, and survive restart", async () => {
     const initial = await request(preferencesPaths.preferences, { cookie });
 
     assert.equal(initial.status, 200);
-    assert.deepEqual(initial.body, defaultPreferences());
+    assert.deepEqual(initial.body, {
+      ...defaultPreferences(),
+      agentsSeeded: true,
+    });
 
     const withoutMarker = await request(preferencesPaths.preferences, {
       method: "PUT",
@@ -168,6 +171,7 @@ test("preferences default, update, and survive restart", async () => {
       },
       preferredPermission: "approved",
       interruptionBehavior: "steer",
+      agentsSeeded: true,
     };
 
     const saved = await request(preferencesPaths.preferences, {
@@ -225,6 +229,7 @@ test("preferences default, update, and survive restart", async () => {
       preferredEfforts: { chat: {}, work: {} },
       preferredPermission: "read-only",
       interruptionBehavior: "queue",
+      agentsSeeded: false,
     });
 
     await stopServer(child);
@@ -235,7 +240,10 @@ test("preferences default, update, and survive restart", async () => {
     });
 
     assert.equal(afterRestart.status, 200);
-    assert.deepEqual(afterRestart.body, sanitized.body);
+    assert.deepEqual(afterRestart.body, {
+      ...(sanitized.body as Record<string, unknown>),
+      agentsSeeded: true,
+    });
   } finally {
     await stopServer(child);
     rmSync(folder, { recursive: true, force: true });

@@ -41,6 +41,7 @@ export function defaultPreferences(): UserPreferences {
     preferredEfforts: { chat: {}, work: {} },
     preferredPermission: "read-only",
     interruptionBehavior: "queue",
+    agentsSeeded: false,
   };
 }
 
@@ -181,6 +182,7 @@ export function sanitizePreferences(input: unknown): UserPreferences {
     preferredEfforts?: unknown;
     preferredPermission?: unknown;
     interruptionBehavior?: unknown;
+    agentsSeeded?: unknown;
   };
 
   const lastTab: SidebarTab = record.lastTab === "work" ? "work" : "chat";
@@ -369,5 +371,6 @@ export function sanitizePreferences(input: unknown): UserPreferences {
     interruptionBehavior: sanitizeInterruptionBehavior(
       record.interruptionBehavior,
     ),
+    agentsSeeded: record.agentsSeeded === true,
   };
 }

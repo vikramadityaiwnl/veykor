@@ -63,6 +63,7 @@ function persist(): void {
     preferredEfforts: state.preferredEfforts,
     preferredPermission: state.preferredPermission,
     interruptionBehavior: state.interruptionBehavior,
+    agentsSeeded: state.agentsSeeded,
   };
 
   saveQueue = saveQueue.then(async () => {

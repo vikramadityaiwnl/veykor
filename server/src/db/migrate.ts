@@ -1,9 +1,14 @@
 import { compileAgentContext } from "../work/agent-context.js";
 import {
+  defaultAgentDefinitions,
+  legacyDefaultInstructions,
+} from "../work/default-agents.js";
+import {
   sanitizePreferences,
   defaultProjectSectionId,
   defaultPreferences,
 } from "@veykor/shared";
+import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 
 export function runMigrations(sqlite: Database.Database): void {
@@ -302,9 +307,83 @@ export function runMigrations(sqlite: Database.Database): void {
       value = undefined;
     }
 
+    const sanitized = sanitizePreferences(value);
+
+    if (!sanitized.agentsSeeded) {
+      const agentCount = (
+        sqlite
+          .prepare("SELECT COUNT(*) AS count FROM agents WHERE user_id = ?")
+          .get(row.user_id) as { count: number }
+      ).count;
+
+      if (agentCount === 0) {
+        const insert = sqlite.prepare(
+          "INSERT INTO agents (id, user_id, data) VALUES (?, ?, ?)",
+        );
+
+        for (const definition of defaultAgentDefinitions) {
+          insert.run(randomUUID(), row.user_id, JSON.stringify(definition));
+        }
+      }
+
+      sanitized.agentsSeeded = true;
+    }
+
     sqlite
       .prepare("UPDATE preferences SET data = ? WHERE user_id = ?")
-      .run(JSON.stringify(sanitizePreferences(value)), row.user_id);
+      .run(JSON.stringify(sanitized), row.user_id);
+  }
+
+  const storedAgents = sqlite
+    .prepare("SELECT id, data FROM agents")
+    .all() as Array<{ id: string; data: string }>;
+
+  for (const row of storedAgents) {
+    let data: Record<string, unknown>;
+
+    try {
+      const parsed: unknown = JSON.parse(row.data);
+
+      if (
+        typeof parsed !== "object" ||
+        parsed === null ||
+        Array.isArray(parsed)
+      ) {
+        continue;
+      }
+
+      data = parsed as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+
+    const definition = defaultAgentDefinitions.find(
+      (entry) => entry.name === data["name"],
+    );
+
+    if (!definition) {
+      continue;
+    }
+
+    const legacyInstructions = legacyDefaultInstructions[definition.name];
+    const untouchedInstructions =
+      data["instructions"] === definition.instructions ||
+      (legacyInstructions !== undefined &&
+        data["instructions"] === legacyInstructions);
+    const stockModel =
+      data["modelId"] === "" || data["modelId"] === definition.modelId;
+
+    if (!untouchedInstructions || !stockModel) {
+      continue;
+    }
+
+    sqlite.prepare("UPDATE agents SET data = ? WHERE id = ?").run(
+      JSON.stringify({
+        ...definition,
+        autoAddToNewProjects: data["autoAddToNewProjects"] === true,
+      }),
+      row.id,
+    );
   }
 
   sqlite
