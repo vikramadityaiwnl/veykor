@@ -1,12 +1,9 @@
 import { useState } from "react";
 import { ChevronDownIcon, WrenchIcon } from "@heroicons/react/24/outline";
 import type { ChatHistoryItem } from "@veykor/shared";
-import { extractFilePathCandidates } from "@veykor/shared";
 import type { LivePreview } from "../chat-store.ts";
-import FileReferenceText from "./file-reference-text.tsx";
 
 interface Props {
-  chatId: string;
   item: ChatHistoryItem;
   preview?: LivePreview | null;
   previewSrc?: string;
@@ -47,10 +44,6 @@ function ToolCallBlock(props: Props) {
   const previewSrc = props.preview
     ? `data:${props.preview.mediaType};base64,${props.preview.base64Data}`
     : (props.previewSrc ?? "");
-  const filePaths = extractFilePathCandidates(
-    props.item.args,
-    props.item.visibleOutput,
-  );
 
   return (
     <div className="w-full min-w-0">
@@ -91,23 +84,13 @@ function ToolCallBlock(props: Props) {
 
             {props.item.args !== "" && (
               <pre className="max-h-40 overflow-auto rounded-lg bg-zinc-950 p-2 font-mono text-xs font-light whitespace-pre-wrap break-words text-zinc-500">
-                <FileReferenceText
-                  chatId={props.chatId}
-                  filePaths={filePaths}
-                  itemId={props.item.itemId}
-                  text={props.item.args}
-                />
+                {props.item.args}
               </pre>
             )}
 
             {props.item.visibleOutput !== "" && (
               <pre className="max-h-40 overflow-auto rounded-lg bg-zinc-950 p-2 font-mono text-xs font-light whitespace-pre-wrap break-words text-zinc-400">
-                <FileReferenceText
-                  chatId={props.chatId}
-                  filePaths={filePaths}
-                  itemId={props.item.itemId}
-                  text={props.item.visibleOutput}
-                />
+                {props.item.visibleOutput}
               </pre>
             )}
           </div>

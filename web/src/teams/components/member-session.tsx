@@ -594,6 +594,8 @@ function MemberSession(props: Props) {
             <textarea
               disabled={voice.active}
               aria-label={`Message ${props.member.name}`}
+              id={`message-${props.member.id}`}
+              name="message"
               placeholder={`Message ${props.member.name}…`}
               className="max-h-40 w-full resize-none bg-transparent text-sm font-light text-zinc-100 outline-none placeholder:text-zinc-600"
               rows={2}

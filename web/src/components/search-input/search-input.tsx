@@ -21,6 +21,8 @@ function SearchInput(props: Props) {
       <input
         ref={props.inputRef}
         className="w-full rounded-lg border border-zinc-800 bg-zinc-900 py-2 pl-10 pr-16 text-sm font-light text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-600 focus:outline-none"
+        id="sidebar-search"
+        name="sidebar-search"
         onChange={(event) => props.onChange(event.target.value)}
         placeholder={props.placeholder}
         type="search"

@@ -319,7 +319,6 @@ function MessageList(props: Props) {
     if (!isGenerateImageTool(item.tool)) {
       return (
         <ToolCallBlock
-          chatId={props.chatId}
           item={item}
           key={item.itemId}
           preview={preview}
@@ -331,7 +330,6 @@ function MessageList(props: Props) {
     if (item.turnId !== null && finalTurnIds.has(item.turnId)) {
       return (
         <ToolCallBlock
-          chatId={props.chatId}
           item={item}
           key={item.itemId}
           preview={preview}
@@ -406,7 +404,6 @@ function MessageList(props: Props) {
     if (cards.length === 0) {
       return (
         <ToolCallBlock
-          chatId={props.chatId}
           item={item}
           key={item.itemId}
           preview={preview}
@@ -417,7 +414,7 @@ function MessageList(props: Props) {
 
     return (
       <Fragment key={item.itemId}>
-        <ToolCallBlock chatId={props.chatId} item={item} />
+        <ToolCallBlock item={item} />
 
         <div className="space-y-3 pt-3">{cards}</div>
       </Fragment>

@@ -361,6 +361,8 @@ function ChatComposer(props: Props) {
           <textarea
             className="max-h-50 w-full resize-none bg-transparent px-4 pt-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
             disabled={voiceActive || projectRequired}
+            id="chat-composer-input"
+            name="message"
             onChange={(event) => {
               setDraft(event.target.value);
               autoresize();
