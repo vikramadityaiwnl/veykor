@@ -5,6 +5,25 @@ export interface StoredAttachment {
   name: string;
 }
 
+export async function clearAttachmentDatabase(): Promise<void> {
+  database?.close();
+  database = null;
+
+  if (opening !== null) {
+    const opened = await opening.catch(() => null);
+    opened?.close();
+    opening = null;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const request = window.indexedDB.deleteDatabase(databaseName);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+    request.onblocked = () => reject(new Error("Attachment storage is busy."));
+  });
+}
+
 const databaseName = "veykor";
 const databaseVersion = 1;
 const attachmentStore = "attachments";

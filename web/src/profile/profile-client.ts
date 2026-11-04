@@ -79,6 +79,28 @@ export async function updateProfile(
   return (await response.json()) as UserProfile;
 }
 
+export async function removeAllData(): Promise<void> {
+  let response: Response;
+
+  try {
+    response = await fetch(profilePaths.data, {
+      method: "DELETE",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        [veykorRequestHeaderName]: veykorRequestHeaderValue,
+      },
+      body: JSON.stringify({ confirmation: "REMOVE" }),
+    });
+  } catch {
+    throw new Error("Unable to reach the veykor server.");
+  }
+
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+}
+
 export async function changePassword(
   input: ChangePasswordRequest,
 ): Promise<ChangePasswordResponse> {

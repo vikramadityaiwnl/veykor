@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -146,6 +147,26 @@ function removeSkillFiles(userId: number, slug: string): void {
 
   if (insideWorkspace(userId, dir) && existsSync(dir)) {
     rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+export function removeAccountSkillFiles(
+  userId: number,
+  slugs: Array<string>,
+): void {
+  for (const slug of slugs) {
+    const dir = skillDir(userId, slug);
+
+    if (!insideWorkspace(userId, dir)) {
+      continue;
+    }
+
+    try {
+      rmSync(join(dir, "SKILL.md"), { force: true });
+      rmdirSync(dir);
+    } catch {
+      continue;
+    }
   }
 }
 

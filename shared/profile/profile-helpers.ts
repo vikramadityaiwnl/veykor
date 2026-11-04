@@ -3,6 +3,7 @@ import type { UpdateProfileRequest, UserProfile } from "./profile-contracts.js";
 
 export const profilePaths = {
   profile: "/api/profile",
+  data: "/api/profile/data",
 } as const;
 
 export const defaultTag = "Building";
