@@ -19,14 +19,17 @@ function ComposerPanel(props: Props) {
   const pendingQuestions = useChatStore((s) => s.pendingQuestions);
   const recentQuestions = useChatStore((s) => s.recentQuestions);
   const dismissedQuestions = useChatStore((s) => s.dismissedQuestions);
-
   const activeChatId = useChatStore((state) => state.activeChatId);
+  const hasTeammates = useTeamStore((state) =>
+    state.snapshot.members.some((member) => !member.isMain),
+  );
   const taskCount = useTeamStore((state) =>
     state.snapshot.members.reduce(
       (count, member) => count + member.todos.length,
       0,
     ),
   );
+
   const [index, setIndex] = useState(0);
   const [knownIds, setKnownIds] = useState("");
 
@@ -144,9 +147,12 @@ function ComposerPanel(props: Props) {
           count={taskCount}
           first={first === "tasks" && !props.connectedTop}
           last={last === "tasks"}
-          title="Team tasks"
+          title={hasTeammates ? "Team tasks" : "Tasks"}
         >
-          <TeamTodos memberId={activeChatId ?? ""} />
+          <TeamTodos
+            memberId={activeChatId ?? ""}
+            showMemberHeaders={hasTeammates}
+          />
         </ComposerActivityPanel>
       ) : null}
     </>

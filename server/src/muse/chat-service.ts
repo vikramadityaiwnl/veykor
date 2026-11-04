@@ -1,7 +1,7 @@
 import { userMessageText } from "./user-message-text.js";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { basename, isAbsolute, relative, resolve } from "node:path";
 import type { SessionMcpServerConfig } from "@muse-code/sdk/dist/src/msp.js";
 import type {
   ChatApprovalRequest,
@@ -13,7 +13,7 @@ import type {
   ChatSummary,
   ChatTurnEvent,
 } from "@veykor/shared";
-import { isGenerateImageTool } from "@veykor/shared";
+import { extractFilePathCandidates, isGenerateImageTool } from "@veykor/shared";
 import { readTurnDurations } from "./turn-durations.js";
 import { museHost } from "./muse-host.js";
 import type { MuseNotification } from "./muse-host.js";
@@ -321,78 +321,14 @@ function inlinePreview(
     : null;
 }
 
-function parseArgs(value: unknown): unknown {
-  if (typeof value !== "string") {
-    return value;
-  }
-
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return value;
-  }
-}
-
-function addFilePathCandidates(
-  value: unknown,
-  paths: Set<string>,
-  depth = 0,
-): void {
-  if (paths.size >= 32 || depth > 8) {
-    return;
-  }
-
-  if (typeof value === "string") {
-    const direct = value.trim();
-
-    if (direct.startsWith("/") && !direct.includes("\n")) {
-      paths.add(direct);
-    }
-
-    for (const match of value.matchAll(/(["'])(\/[^"']+)\1/g)) {
-      if (match[2]) {
-        paths.add(match[2]);
-      }
-    }
-
-    for (const match of value.matchAll(/(?:^|\s)(\/[^\s"'<>]+)/g)) {
-      const candidate = match[1]?.replace(/[),.;]+$/, "");
-
-      if (candidate) {
-        paths.add(candidate);
-      }
-    }
-
-    return;
-  }
-
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      addFilePathCandidates(entry, paths, depth + 1);
-    }
-
-    return;
-  }
-
-  if (typeof value === "object" && value !== null) {
-    for (const entry of Object.values(value)) {
-      addFilePathCandidates(entry, paths, depth + 1);
-    }
-  }
-}
-
 function previewFilePaths(payload: unknown, item: ChatHistoryItem): string[] {
   const raw = record(payload);
-  const paths = new Set<string>();
 
-  addFilePathCandidates(
-    parseArgs(raw["args"] ?? raw["arguments"] ?? item.args),
-    paths,
+  return extractFilePathCandidates(
+    raw["args"] ?? raw["arguments"] ?? item.args,
+    item.visibleOutput,
+    raw["visibleOutput"],
   );
-  addFilePathCandidates(item.visibleOutput, paths);
-  addFilePathCandidates(raw["visibleOutput"], paths);
-
-  return [...paths].slice(0, 32);
 }
 
 function previewAssetPaths(itemId: string, previewRoot: string): string[] {
@@ -511,6 +447,113 @@ async function readPreviewFile(
     }
 
     return { mediaType, base64Data: bytes.toString("base64") };
+  } catch {
+    return null;
+  }
+}
+
+function mediaTypeFromBytes(bytes: Buffer): string {
+  if (
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47
+  ) {
+    return "image/png";
+  }
+
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "image/jpeg";
+  }
+
+  if (
+    bytes.toString("ascii", 0, 4) === "RIFF" &&
+    bytes.toString("ascii", 8, 12) === "WEBP"
+  ) {
+    return "image/webp";
+  }
+
+  if (/^GIF8[79]a$/.test(bytes.toString("ascii", 0, 6))) {
+    return "image/gif";
+  }
+
+  if (bytes.toString("ascii", 0, 2) === "BM") {
+    return "image/bmp";
+  }
+
+  if (
+    bytes.toString("ascii", 4, 8) === "ftyp" &&
+    ["avif", "avis"].includes(bytes.toString("ascii", 8, 12))
+  ) {
+    return "image/avif";
+  }
+
+  if (bytes.toString("ascii", 4, 8) === "ftyp") {
+    return "video/mp4";
+  }
+
+  if (bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))) {
+    return "video/webm";
+  }
+
+  if (bytes.toString("ascii", 0, 4) === "OggS") {
+    return "video/ogg";
+  }
+
+  return "";
+}
+
+export async function readChatFileForItem(
+  item: ChatHistoryItem,
+  previewRoot: string,
+  fileIndex: number,
+): Promise<{ bytes: Buffer; fileName: string; mediaType: string } | null> {
+  if (
+    item.kind !== "toolCall" ||
+    !Number.isInteger(fileIndex) ||
+    fileIndex < 0
+  ) {
+    return null;
+  }
+
+  const filePath = extractFilePathCandidates(item.args, item.visibleOutput)[
+    fileIndex
+  ];
+
+  if (filePath === undefined) {
+    return null;
+  }
+
+  try {
+    const [root, resolvedPath] = await Promise.all([
+      realpath(previewRoot),
+      realpath(
+        isAbsolute(filePath) ? filePath : resolve(previewRoot, filePath),
+      ),
+    ]);
+    const relativePath = relative(root, resolvedPath);
+
+    if (
+      relativePath === "" ||
+      relativePath.startsWith("..") ||
+      isAbsolute(relativePath)
+    ) {
+      return null;
+    }
+
+    const bytes = await readFile(resolvedPath);
+
+    if (bytes.byteLength === 0 || bytes.byteLength > 100 * 1024 * 1024) {
+      return null;
+    }
+
+    const mediaType = mediaTypeFromBytes(bytes);
+
+    if (mediaType === "") {
+      return null;
+    }
+
+    return { bytes, fileName: basename(resolvedPath), mediaType };
   } catch {
     return null;
   }

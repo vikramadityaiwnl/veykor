@@ -23,6 +23,7 @@ function caption(prompt: string): string {
 function GeneratedImage(props: Props) {
   const [fetched, setFetched] = useState<GeneratedImageArtifact | null>(null);
   const [fetchFailed, setFetchFailed] = useState(false);
+  const [landscape, setLandscape] = useState(false);
 
   const needsFetch = props.artifact === null && props.artifactId !== "";
 
@@ -81,27 +82,29 @@ function GeneratedImage(props: Props) {
         : `Generated image: ${caption(resolved.prompt)}`;
 
     return (
-      <figure className="w-full min-w-0 space-y-2">
-        <img
-          src={resolved.url}
-          alt={alt}
-          loading="lazy"
-          className="max-h-[480px] w-full rounded-xl border border-zinc-800/80 bg-zinc-950 object-contain"
-        />
+      <figure className="w-full min-w-0">
+        <div
+          className={`group relative ${landscape ? "w-full" : "w-fit max-w-full"}`}
+        >
+          <img
+            src={resolved.url}
+            alt={alt}
+            loading="lazy"
+            onLoad={(event) => {
+              setLandscape(
+                event.currentTarget.naturalWidth >
+                  event.currentTarget.naturalHeight,
+              );
+            }}
+            className={`block max-h-[480px] rounded-xl object-contain ${landscape ? "h-auto w-full" : "h-auto w-auto max-w-full"}`}
+          />
 
-        <figcaption className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          {resolved.prompt !== "" && (
-            <span className="min-w-0 flex-1 truncate text-xs font-light text-zinc-500">
-              {caption(resolved.prompt)}
-            </span>
-          )}
-
-          <span className="flex shrink-0 items-center gap-3">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-end gap-4 bg-gradient-to-t from-black/70 to-transparent p-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             <a
               href={resolved.url}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 text-xs font-light text-zinc-400 hover:text-zinc-100"
+              className="pointer-events-auto inline-flex items-center gap-1 text-xs font-light text-white hover:text-zinc-200"
             >
               <ArrowTopRightOnSquareIcon
                 aria-hidden="true"
@@ -113,13 +116,13 @@ function GeneratedImage(props: Props) {
             <a
               href={resolved.downloadUrl}
               download
-              className="inline-flex items-center gap-1 text-xs font-light text-zinc-400 hover:text-zinc-100"
+              className="pointer-events-auto inline-flex items-center gap-1 text-xs font-light text-white hover:text-zinc-200"
             >
               <ArrowDownTrayIcon aria-hidden="true" className="size-3.5" />
               Download
             </a>
-          </span>
-        </figcaption>
+          </div>
+        </div>
       </figure>
     );
   }

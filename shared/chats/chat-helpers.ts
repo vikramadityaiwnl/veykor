@@ -5,6 +5,8 @@ export const chatPaths = {
   chat: (id: string) => `/api/chats/${id}`,
   preview: (id: string, itemId: string) =>
     `/api/chats/${encodeURIComponent(id)}/previews/${encodeURIComponent(itemId)}`,
+  file: (id: string, itemId: string, fileIndex: number) =>
+    `/api/chats/${encodeURIComponent(id)}/files/${encodeURIComponent(itemId)}/${fileIndex}`,
   events: (id: string) => `/api/chats/${id}/events`,
   turns: (id: string) => `/api/chats/${id}/turns`,
   cancelTurn: (id: string, turnId: string) =>

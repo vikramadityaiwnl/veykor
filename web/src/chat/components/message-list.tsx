@@ -190,6 +190,16 @@ function MessageList(props: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
   const assistantTurns = collectTurnItems(props.items);
+  const finalTurnIds = new Set(
+    props.items
+      .filter(
+        (item) =>
+          item.kind === "agentMessage" &&
+          assistantTurns.finalItemIds.has(item.itemId) &&
+          item.turnId !== null,
+      )
+      .map((item) => item.turnId as string),
+  );
 
   function handleScroll() {
     const container = containerRef.current;
@@ -304,6 +314,19 @@ function MessageList(props: Props) {
     if (!isGenerateImageTool(item.tool)) {
       return (
         <ToolCallBlock
+          chatId={props.chatId}
+          item={item}
+          key={item.itemId}
+          preview={preview}
+          previewSrc={previewSrc}
+        />
+      );
+    }
+
+    if (item.turnId !== null && finalTurnIds.has(item.turnId)) {
+      return (
+        <ToolCallBlock
+          chatId={props.chatId}
           item={item}
           key={item.itemId}
           preview={preview}
@@ -378,6 +401,7 @@ function MessageList(props: Props) {
     if (cards.length === 0) {
       return (
         <ToolCallBlock
+          chatId={props.chatId}
           item={item}
           key={item.itemId}
           preview={preview}
@@ -388,7 +412,7 @@ function MessageList(props: Props) {
 
     return (
       <Fragment key={item.itemId}>
-        <ToolCallBlock item={item} />
+        <ToolCallBlock chatId={props.chatId} item={item} />
 
         <div className="space-y-3 pt-3">{cards}</div>
       </Fragment>
@@ -425,6 +449,10 @@ function MessageList(props: Props) {
     }
 
     for (const artifact of orphanedByTurn.get(turnId) ?? []) {
+      if (finalTurnIds.has(turnId)) {
+        continue;
+      }
+
       activity.push({
         at: artifact.createdAt,
         node: (
@@ -479,7 +507,32 @@ function MessageList(props: Props) {
         return null;
       }
 
-      const message = <AgentMessage item={item} key={item.itemId} />;
+      const turnImages =
+        item.turnId === null
+          ? []
+          : props.generatedImages.filter(
+              (image) => image.turnId === item.turnId,
+            );
+      const message = (
+        <Fragment key={item.itemId}>
+          <AgentMessage item={item} />
+
+          {turnImages.length > 0 ? (
+            <div className="space-y-3 pt-3">
+              {turnImages.map((artifact) => (
+                <GeneratedImage
+                  key={artifact.id}
+                  artifact={artifact}
+                  artifactId=""
+                  generating={false}
+                  prompt=""
+                  error=""
+                />
+              ))}
+            </div>
+          ) : null}
+        </Fragment>
+      );
 
       return item.itemId === latestAssistantMessageId && !props.streaming ? (
         <div

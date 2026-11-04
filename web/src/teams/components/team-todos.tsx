@@ -3,6 +3,7 @@ import { useTeamStore } from "../team-store.ts";
 
 interface Props {
   memberId: string;
+  showMemberHeaders?: boolean;
 }
 
 function TeamTodos(props: Props) {
@@ -18,27 +19,27 @@ function TeamTodos(props: Props) {
     return null;
   }
 
+  const showMemberHeaders = props.showMemberHeaders !== false;
+
   return (
-    <div aria-label="Shared team tasks" className="space-y-4 px-4 pb-3">
+    <div
+      aria-label={showMemberHeaders ? "Shared team tasks" : "Tasks"}
+      className="space-y-4 px-4 pb-3"
+    >
       {lists.map((member) => (
-        <section
-          key={member.id}
-          aria-label={`${member.name} tasks`}
-          className="space-y-2"
-        >
-          <p className="flex justify-between gap-2 text-xs font-semibold text-zinc-400">
-            <span>
-              {member.name}
-              {member.id === props.memberId ? " · This agent" : ""}
-            </span>
-            <span className="font-light text-zinc-500">
-              {
-                member.todos.filter((todo) => todo.status === "completed")
-                  .length
-              }
-              /{member.todos.length}
-            </span>
-          </p>
+        <section key={member.id} className="space-y-2">
+          {showMemberHeaders ? (
+            <p className="flex justify-between gap-2 text-xs font-semibold text-zinc-400">
+              <span>{member.name}</span>
+              <span className="font-light text-zinc-500">
+                {
+                  member.todos.filter((todo) => todo.status === "completed")
+                    .length
+                }
+                /{member.todos.length}
+              </span>
+            </p>
+          ) : null}
           <ul className="space-y-1.5">
             {member.todos.map((todo) => (
               <li

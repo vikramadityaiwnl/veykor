@@ -64,6 +64,7 @@ import {
   listPendingApprovals,
   museErrorMessage,
   readPreviewForItem,
+  readChatFileForItem,
   startMuseSession,
   steerMuseTurn,
 } from "../muse/chat-service.js";
@@ -464,6 +465,49 @@ chatRoute.get("/:id/previews/:itemId", requireAuth, async (c) => {
       headers: {
         "Cache-Control": "private, max-age=3600",
         "Content-Type": preview.mediaType,
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  } catch (cause) {
+    return museFailure(c, cause);
+  }
+});
+
+chatRoute.get("/:id/files/:itemId/:fileIndex", requireAuth, async (c) => {
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row) {
+    return c.json({ error: "Chat not found" }, 404);
+  }
+
+  const fileIndex = Number(c.req.param("fileIndex"));
+
+  if (!Number.isInteger(fileIndex) || fileIndex < 0 || fileIndex >= 32) {
+    return c.json({ error: "File not found" }, 404);
+  }
+
+  try {
+    const detail = await readTeamChat(row);
+    const item = detail.items.find(
+      (candidate) => candidate.itemId === c.req.param("itemId"),
+    );
+    const file = item
+      ? await readChatFileForItem(
+          item,
+          join(workspaceFor(row.userId), ".veykor", "previews"),
+          fileIndex,
+        )
+      : null;
+
+    if (file === null) {
+      return c.json({ error: "Previewable file not found" }, 404);
+    }
+
+    return new Response(file.bytes, {
+      headers: {
+        "Cache-Control": "private, max-age=3600",
+        "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+        "Content-Type": file.mediaType,
         "X-Content-Type-Options": "nosniff",
       },
     });
