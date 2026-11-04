@@ -455,7 +455,7 @@ function Sidebar(props: Props) {
 
   return (
     <aside
-      className="flex h-full w-72 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950"
+      className="flex h-full w-72 shrink-0 flex-col border-r border-zinc-800 bg-sidebar"
       onContextMenu={handleContextMenu}
     >
       <div className="space-y-4 p-4">
