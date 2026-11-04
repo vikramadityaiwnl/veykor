@@ -129,6 +129,7 @@ function toTurnEvent(name: string, data: unknown): TurnEvent | null {
       case "turn-completed":
       case "error":
       case "memory-saved":
+      case "preview":
         return typed as TurnEvent;
       default:
         return null;
@@ -214,6 +215,14 @@ function toTurnEvent(name: string, data: unknown): TurnEvent | null {
         receipt: receipt as unknown as import("@veykor/shared").MemoryReceipt,
       };
     }
+
+    case "preview":
+      return {
+        type: "preview",
+        itemId: readString(data, "itemId"),
+        mediaType: readString(data, "mediaType"),
+        base64Data: readString(data, "base64Data"),
+      };
 
     default:
       return null;

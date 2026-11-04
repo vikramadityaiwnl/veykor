@@ -275,7 +275,7 @@ export function createMemory(
   const digest = hashInstruction(normalized);
 
   if (findDuplicate(userId, scope, projectId, digest)) {
-    throw new MemoryFailure(409, "That memory already exists.");
+    throw new MemoryFailure(409, "That learning already exists.");
   }
 
   const stamp = nowIso();
@@ -301,7 +301,7 @@ export function createMemory(
       .run();
   } catch (cause) {
     if (isUniqueViolation(cause)) {
-      throw new MemoryFailure(409, "That memory already exists.");
+      throw new MemoryFailure(409, "That learning already exists.");
     }
 
     throw cause;
@@ -310,7 +310,7 @@ export function createMemory(
   const row = readMemory(userId, id);
 
   if (!row) {
-    throw new MemoryFailure(500, "Unable to save the memory.");
+    throw new MemoryFailure(500, "Unable to save the learning.");
   }
 
   return toMemorySummary(row);
@@ -324,7 +324,7 @@ export function updateMemory(
   const row = readMemory(userId, id);
 
   if (!row) {
-    throw new MemoryFailure(404, "Memory not found.");
+    throw new MemoryFailure(404, "Learning not found.");
   }
 
   const validationError = memoryValidationError(input, { partial: true });
@@ -339,7 +339,7 @@ export function updateMemory(
   ) {
     throw new MemoryFailure(
       409,
-      "That memory changed elsewhere. Reload and try again.",
+      "That learning changed elsewhere. Reload and try again.",
     );
   }
 
@@ -359,7 +359,7 @@ export function updateMemory(
     if (nextScope === "global" && cleanId(input.projectId) !== "") {
       throw new MemoryFailure(
         400,
-        "Global memories cannot belong to a project.",
+        "Global learnings cannot belong to a project.",
       );
     }
 
@@ -367,7 +367,7 @@ export function updateMemory(
   }
 
   if (nextScope === "project" && nextProjectId === "") {
-    throw new MemoryFailure(400, "Choose a project for project memories.");
+    throw new MemoryFailure(400, "Choose a project for project learnings.");
   }
 
   if (nextScope === "project" && !projectOwned(userId, nextProjectId)) {
@@ -380,7 +380,7 @@ export function updateMemory(
       : (row.instruction ?? "");
 
   if (nextInstruction === "") {
-    throw new MemoryFailure(400, "Write the memory instruction.");
+    throw new MemoryFailure(400, "Write the learning instruction.");
   }
 
   if (nextInstruction.length > maxInstructionLength) {
@@ -395,7 +395,7 @@ export function updateMemory(
   if (findDuplicate(userId, nextScope, nextProjectId, nextHash, row.id)) {
     throw new MemoryFailure(
       409,
-      "Another memory already uses that instruction.",
+      "Another learning already uses that instruction.",
     );
   }
 
@@ -420,7 +420,7 @@ export function updateMemory(
     if (isUniqueViolation(cause)) {
       throw new MemoryFailure(
         409,
-        "Another memory already uses that instruction.",
+        "Another learning already uses that instruction.",
       );
     }
 
@@ -430,7 +430,7 @@ export function updateMemory(
   const updated = readMemory(userId, row.id);
 
   if (!updated) {
-    throw new MemoryFailure(404, "Memory not found.");
+    throw new MemoryFailure(404, "Learning not found.");
   }
 
   return { summary: toMemorySummary(updated), previous };
@@ -444,7 +444,7 @@ export function deleteMemory(
   const row = readMemory(userId, id);
 
   if (!row) {
-    throw new MemoryFailure(404, "Memory not found.");
+    throw new MemoryFailure(404, "Learning not found.");
   }
 
   if (
@@ -453,7 +453,7 @@ export function deleteMemory(
   ) {
     throw new MemoryFailure(
       409,
-      "That memory changed elsewhere. Reload and try again.",
+      "That learning changed elsewhere. Reload and try again.",
     );
   }
 
@@ -475,7 +475,7 @@ export function undoMemory(
   const row = readMemory(userId, id);
 
   if (!row) {
-    throw new MemoryFailure(404, "Memory not found.");
+    throw new MemoryFailure(404, "Learning not found.");
   }
 
   if (
@@ -485,7 +485,7 @@ export function undoMemory(
   ) {
     throw new MemoryFailure(
       409,
-      "That memory was edited after this receipt. Undo is no longer available.",
+      "That learning was edited after this receipt. Undo is no longer available.",
     );
   }
 
@@ -527,7 +527,7 @@ export function undoMemory(
   ) {
     throw new MemoryFailure(
       409,
-      "Another memory already uses that instruction.",
+      "Another learning already uses that instruction.",
     );
   }
 
@@ -545,7 +545,7 @@ export function undoMemory(
   const restored = readMemory(userId, row.id);
 
   if (!restored) {
-    throw new MemoryFailure(404, "Memory not found.");
+    throw new MemoryFailure(404, "Learning not found.");
   }
 
   return { summary: toMemorySummary(restored) };
@@ -568,7 +568,7 @@ export function saveConversationMemory(
   const instruction = cleanInstruction(input.instruction);
 
   if (instruction === "") {
-    throw new MemoryFailure(400, "Write the memory instruction.");
+    throw new MemoryFailure(400, "Write the learning instruction.");
   }
 
   if (instruction.length > maxInstructionLength) {
@@ -581,7 +581,7 @@ export function saveConversationMemory(
   if (memoryContainsSecret(instruction)) {
     throw new MemoryFailure(
       400,
-      "That looks like a credential or secret. Memories cannot store secrets.",
+      "That looks like a credential or secret. Learnings cannot store secrets.",
     );
   }
 
@@ -698,7 +698,7 @@ export function saveConversationMemory(
         };
       }
 
-      throw new MemoryFailure(409, "That memory already exists.");
+      throw new MemoryFailure(409, "That learning already exists.");
     }
 
     throw cause;
@@ -707,7 +707,7 @@ export function saveConversationMemory(
   const row = readMemory(userId, id);
 
   if (!row) {
-    throw new MemoryFailure(500, "Unable to save the memory.");
+    throw new MemoryFailure(500, "Unable to save the learning.");
   }
 
   const summary = toMemorySummary(row);

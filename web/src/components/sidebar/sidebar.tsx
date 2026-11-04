@@ -24,6 +24,10 @@ import ProfileCard from "../../components/profile-card/profile-card.tsx";
 import SearchInput from "../../components/search-input/search-input.tsx";
 import SegmentedControl from "../../components/segmented-control/segmented-control.tsx";
 import SectionChatList from "./components/section-chat-list.tsx";
+import {
+  clearableSectionChats,
+  sectionChats,
+} from "../../chat/section-chats.ts";
 import { useChatStore } from "../../chat/chat-store.ts";
 import { usePreferencesStore } from "../../workspace/preferences-store.ts";
 import { useProfileStore } from "../../profile/profile-store.ts";
@@ -49,7 +53,8 @@ type DialogState =
 
 type AlertState =
   | { kind: "delete-chat"; chatId: string }
-  | { kind: "delete-section"; sectionId: string };
+  | { kind: "delete-section"; sectionId: string }
+  | { kind: "clear-section"; sectionId: string };
 
 function Sidebar(props: Props) {
   const navigate = useNavigate();
@@ -90,19 +95,6 @@ function Sidebar(props: Props) {
 
   const searching = debouncedQuery.trim() !== "";
   const anyRunning = chats.some((chat) => chat.running);
-  const knownSections = new Set(sections.map((section) => section.id));
-
-  function sectionOf(chatSectionId: string): string {
-    if (knownSections.has(chatSectionId)) {
-      return chatSectionId;
-    }
-
-    if (knownSections.has(recentSectionId)) {
-      return recentSectionId;
-    }
-
-    return sections[0]?.id ?? "";
-  }
 
   const matchingChats = chats.filter(
     (chat) =>
@@ -111,9 +103,7 @@ function Sidebar(props: Props) {
   );
 
   function chatsInSection(sectionId: string) {
-    return matchingChats.filter(
-      (chat) => sectionOf(chat.sectionId) === sectionId,
-    );
+    return sectionChats(matchingChats, sections, sectionId);
   }
 
   function goHome(sectionId: string): void {
@@ -133,10 +123,17 @@ function Sidebar(props: Props) {
       : "";
 
   const alertSectionTitle =
-    alert?.kind === "delete-section"
+    alert?.kind === "delete-section" || alert?.kind === "clear-section"
       ? (sections.find((section) => section.id === alert.sectionId)?.title ??
         "")
       : "";
+
+  const alertClearKeepsRunning =
+    alert?.kind === "clear-section"
+      ? sectionChats(chats, sections, alert.sectionId).some(
+          (chat) => chat.running,
+        )
+      : false;
 
   function menuItemsFor(context: MenuContext): Array<ContextMenuEntry> {
     if (context.kind === "chat") {
@@ -188,23 +185,7 @@ function Sidebar(props: Props) {
     }
 
     if (context.kind === "section") {
-      if (
-        context.sectionId === recentSectionId ||
-        context.sectionId === defaultProjectSectionId
-      ) {
-        return [
-          {
-            kind: "item",
-            icon: (
-              <PencilIcon aria-hidden="true" className="size-4 text-zinc-400" />
-            ),
-            id: "rename",
-            label: "Rename",
-          },
-        ];
-      }
-
-      return [
+      const items: Array<ContextMenuEntry> = [
         {
           kind: "item",
           icon: (
@@ -213,15 +194,52 @@ function Sidebar(props: Props) {
           id: "rename",
           label: "Rename",
         },
-        {
+      ];
+
+      if (
+        context.sectionId !== recentSectionId &&
+        context.sectionId !== defaultProjectSectionId
+      ) {
+        items.push({
           kind: "item",
           icon: (
             <TrashIcon aria-hidden="true" className="size-4 text-zinc-400" />
           ),
           id: "delete",
           label: "Delete",
-        },
-      ];
+        });
+      }
+
+      if (lastTab !== "work") {
+        const clearable = clearableSectionChats(
+          chats,
+          sections,
+          context.sectionId,
+        );
+        const total = sectionChats(chats, sections, context.sectionId).length;
+
+        items.push(
+          { kind: "divider" },
+          {
+            kind: "item",
+            icon: (
+              <TrashIcon
+                aria-hidden="true"
+                className={`size-4 ${semanticColors.delete.text}`}
+              />
+            ),
+            id: "clear-section-chats",
+            disabled: clearable.length === 0,
+            label:
+              total > 0 && clearable.length === 0
+                ? "Stop to clear"
+                : "Clear all chats",
+            danger: true,
+          },
+        );
+      }
+
+      return items;
     }
 
     return [
@@ -315,6 +333,11 @@ function Sidebar(props: Props) {
       return;
     }
 
+    if (item.id === "clear-section-chats" && context.kind === "section") {
+      setAlert({ kind: "clear-section", sectionId: context.sectionId });
+      return;
+    }
+
     if (item.id === "rename-chat" && context.kind === "chat") {
       const chat = chats.find((entry) => entry.id === context.chatId);
 
@@ -375,16 +398,28 @@ function Sidebar(props: Props) {
 
       void (async () => {
         await Promise.all(
-          chats
-            .filter(
-              (chat) =>
-                !chat.projectId && sectionOf(chat.sectionId) === sectionId,
-            )
-            .map((chat) => moveChat(chat.id, recentSectionId)),
+          sectionChats(chats, sections, sectionId).map((chat) =>
+            moveChat(chat.id, recentSectionId),
+          ),
         );
 
         deleteSection(sectionId);
       })();
+    }
+
+    if (alert?.kind === "clear-section") {
+      const targets = clearableSectionChats(chats, sections, alert.sectionId);
+      const deletedIds: Array<string> = [];
+
+      for (const target of targets) {
+        if (await removeChat(target.id)) {
+          deletedIds.push(target.id);
+        }
+      }
+
+      if (activeChatId !== null && deletedIds.includes(activeChatId)) {
+        navigate("/", { replace: true });
+      }
     }
 
     setAlert(null);
@@ -455,7 +490,7 @@ function Sidebar(props: Props) {
 
   return (
     <aside
-      className="flex h-full w-72 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950"
+      className="flex h-full w-72 shrink-0 flex-col border-r border-zinc-800 bg-sidebar"
       onContextMenu={handleContextMenu}
     >
       <div className="space-y-4 p-4">
@@ -638,18 +673,26 @@ function Sidebar(props: Props) {
 
       {alert && (
         <AlertDialog
-          confirmLabel="Delete"
+          confirmLabel={alert.kind === "clear-section" ? "Clear all" : "Delete"}
           description={
             alert.kind === "delete-chat"
               ? `"${alertChatTitle}" will be permanently removed.`
-              : lastTab === "work"
-                ? `"${alertSectionTitle}" will be removed. Its projects move to Default projects.`
-                : `"${alertSectionTitle}" will be removed. Its chats move to Recent.`
+              : alert.kind === "clear-section"
+                ? alertClearKeepsRunning
+                  ? `All chats in "${alertSectionTitle}" will be permanently removed. Running chats are kept.`
+                  : `All chats in "${alertSectionTitle}" will be permanently removed.`
+                : lastTab === "work"
+                  ? `"${alertSectionTitle}" will be removed. Its projects move to Default projects.`
+                  : `"${alertSectionTitle}" will be removed. Its chats move to Recent.`
           }
           onClose={() => setAlert(null)}
           onConfirm={handleConfirmAlert}
           title={
-            alert.kind === "delete-chat" ? "Delete chat" : "Delete section"
+            alert.kind === "delete-chat"
+              ? "Delete chat"
+              : alert.kind === "clear-section"
+                ? "Clear all chats"
+                : "Delete section"
           }
         />
       )}

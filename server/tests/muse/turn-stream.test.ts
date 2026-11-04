@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -9,7 +9,7 @@ import type { MuseNotification } from "../../src/muse/muse-host.ts";
 
 const folder = mkdtempSync(join(tmpdir(), "veykor-stream-test-"));
 process.env["DATABASE_URL"] = join(folder, "test.db");
-const { runMuseTurn, toHistoryItem } =
+const { readPreviewForItem, runMuseTurn, toHistoryItem } =
   await import("../../src/muse/chat-service.ts");
 
 test("turn projection hides raw user context, ignores old turns and uses durable measured timing", async () => {
@@ -76,6 +76,7 @@ test("turn projection hides raw user context, ignores old turns and uses durable
   try {
     await runMuseTurn({
       museSessionId: "test",
+      previewRoot: folder,
       text: raw,
       displayText: "hello",
       images: [],
@@ -137,6 +138,7 @@ test("a delayed start acknowledgement cannot restart a turn after its terminal e
   try {
     await runMuseTurn({
       museSessionId: "late-test",
+      previewRoot: folder,
       text: "hello",
       images: [],
       onEvent: (event) => {
@@ -207,6 +209,7 @@ test("durable terminal history releases a turn when its live completion was miss
   try {
     const pending = runMuseTurn({
       museSessionId: "recovery",
+      previewRoot: folder,
       text: "hello",
       images: [],
       onEvent: (event) => {
@@ -238,6 +241,242 @@ test("durable terminal history releases a turn when its live completion was miss
       1,
     );
     assert.deepEqual(todos, [[{ text: "Verify", status: "completed" }], []]);
+  } finally {
+    museHost.connection = connection;
+    museHost.subscribe = subscribe;
+  }
+});
+
+test("tool image outputs forward as previews before the terminal event", async () => {
+  const connection = museHost.connection;
+  const subscribe = museHost.subscribe;
+  const events: Array<Record<string, unknown>> = [];
+  const previewDirectory = join(folder, "previews");
+  const screenshotPath = join(previewDirectory, "browser-capture.png");
+  const outsideScreenshotPath = join(folder, "outside.png");
+  let notify!: (event: MuseNotification) => void;
+
+  mkdirSync(previewDirectory, { recursive: true });
+  writeFileSync(screenshotPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  writeFileSync(outsideScreenshotPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+  const shot = {
+    kind: "toolCall",
+    itemId: "shot",
+    turnId: "current",
+    tool: "mcp__camera__capture_frame",
+    status: "completed",
+    outputRef: {
+      id: "ref-shot",
+      mediaType: "image/png",
+      availability: "available",
+      kind: "tool_output",
+      uri: "output://shot",
+      byteLen: 5,
+    },
+  };
+
+  museHost.subscribe = (_id, listener) => {
+    notify = listener;
+    return () => {};
+  };
+  museHost.connection = async () =>
+    ({
+      command: async () => {
+        queueMicrotask(() => {
+          notify({ method: "turn/started", params: { turnId: "current" } });
+          notify({ method: "item/completed", params: { item: shot } });
+          notify({
+            method: "item/completed",
+            params: {
+              item: {
+                ...shot,
+                itemId: "shot-with-content-metadata",
+                outputRef: {
+                  ...shot.outputRef,
+                  id: "ref-shot-content-metadata",
+                  mediaType: undefined,
+                },
+                modelVisibleContent: [
+                  {
+                    type: "image",
+                    mediaType: "image/webp",
+                    sourceToolName: "mcp__camera__capture_frame",
+                    path: "output://shot",
+                  },
+                ],
+              },
+            },
+          });
+          notify({
+            method: "item/completed",
+            params: {
+              item: {
+                kind: "toolCall",
+                itemId: "inline-image",
+                turnId: "current",
+                tool: "mcp__vision__capture_frame",
+                status: "completed",
+                modelVisibleContent: [
+                  {
+                    type: "image",
+                    mediaType: "image/png",
+                    base64Data: "iVBORw==",
+                  },
+                ],
+              },
+            },
+          });
+          notify({
+            method: "item/completed",
+            params: {
+              item: {
+                kind: "toolCall",
+                itemId: "outside-shot",
+                turnId: "current",
+                tool: "mcp__agent_device__capture_frame",
+                status: "completed",
+                args: JSON.stringify({ filePath: outsideScreenshotPath }),
+              },
+            },
+          });
+          notify({
+            method: "item/completed",
+            params: {
+              item: {
+                kind: "toolCall",
+                itemId: "shot-from-file",
+                turnId: "current",
+                tool: "mcp__agent_device__capture_frame",
+                status: "completed",
+                args: JSON.stringify({ filePath: screenshotPath }),
+              },
+            },
+          });
+          notify({
+            method: "item/completed",
+            params: {
+              item: {
+                kind: "toolCall",
+                itemId: "shot-from-visible-output",
+                turnId: "current",
+                tool: "mcp__device__read_frame",
+                status: "completed",
+                visibleOutput: `Took a screenshot.\nSaved screenshot to ${screenshotPath}.`,
+              },
+            },
+          });
+          notify({
+            method: "item/completed",
+            params: {
+              item: {
+                ...shot,
+                itemId: "gen",
+                tool: "mcp__veykor_team__generate_image",
+                outputRef: { ...shot.outputRef, id: "ref-gen" },
+              },
+            },
+          });
+          notify({
+            method: "item/completed",
+            params: {
+              item: {
+                ...shot,
+                itemId: "text",
+                tool: "mcp__browser__navigate",
+                outputRef: { ...shot.outputRef, mediaType: "text/plain" },
+              },
+            },
+          });
+          notify({
+            method: "turn/completed",
+            params: { turnId: "current", terminal: "completed" },
+          });
+        });
+
+        return { turnId: "current" };
+      },
+      request: async (method: string) => {
+        if (method === "item/readOutput") {
+          return {
+            content: "iVBORw==",
+            encoding: "base64",
+            mediaType: "image/png",
+            byteLen: 5,
+            eof: true,
+            offsetBytes: 0,
+          };
+        }
+
+        return { events: [] };
+      },
+    }) as unknown as Connection;
+
+  try {
+    await runMuseTurn({
+      museSessionId: "screenshot-test",
+      previewRoot: previewDirectory,
+      text: "go",
+      images: [],
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+
+    const previews = events.filter((event) => event.type === "preview");
+    assert.equal(previews.length, 5);
+    const previewsByItemId = new Map(
+      previews.map((event) => [(event as { itemId: string }).itemId, event]),
+    );
+    assert.deepEqual(previewsByItemId.get("shot"), {
+      type: "preview",
+      itemId: "shot",
+      mediaType: "image/png",
+      base64Data: "iVBORw==",
+    });
+    assert.deepEqual(previewsByItemId.get("shot-with-content-metadata"), {
+      type: "preview",
+      itemId: "shot-with-content-metadata",
+      mediaType: "image/webp",
+      base64Data: "iVBORw==",
+    });
+    assert.deepEqual(previewsByItemId.get("inline-image"), {
+      type: "preview",
+      itemId: "inline-image",
+      mediaType: "image/png",
+      base64Data: "iVBORw==",
+    });
+    assert.deepEqual(previewsByItemId.get("shot-from-file"), {
+      type: "preview",
+      itemId: "shot-from-file",
+      mediaType: "image/png",
+      base64Data: "iVBORw==",
+    });
+    assert.deepEqual(previewsByItemId.get("shot-from-visible-output"), {
+      type: "preview",
+      itemId: "shot-from-visible-output",
+      mediaType: "image/png",
+      base64Data: "iVBORw==",
+    });
+
+    const order = events.map((event) => String(event.type));
+    assert.ok(order.indexOf("preview") !== -1);
+    assert.ok(order.indexOf("preview") < order.indexOf("turn-completed"));
+
+    const savedPreview = await readPreviewForItem(
+      toHistoryItem({
+        kind: "toolCall",
+        itemId: "shot",
+        tool: "mcp__camera__capture_frame",
+        args: "{}",
+      }),
+      previewDirectory,
+    );
+
+    assert.deepEqual(savedPreview, {
+      mediaType: "image/png",
+      base64Data: "iVBORw==",
+    });
   } finally {
     museHost.connection = connection;
     museHost.subscribe = subscribe;

@@ -1,16 +1,22 @@
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import Divider from "../../components/divider/divider.tsx";
 
 interface Props {
   durationMs: number;
+  hideByDefault: boolean;
   running: boolean;
   startedAt: number;
-  summaries: Array<string>;
+  children?: ReactNode;
 }
 
 function ThinkingBlock(props: Props) {
-  const [open, setOpen] = useState(() => props.running);
+  const [open, setOpen] = useState(props.running && !props.hideByDefault);
   const [now, setNow] = useState(Date.now);
+
+  useEffect(() => {
+    setOpen(props.running && !props.hideByDefault);
+  }, [props.hideByDefault, props.running]);
 
   useEffect(() => {
     if (!props.running) {
@@ -41,23 +47,34 @@ function ThinkingBlock(props: Props) {
     : spent > 0
       ? `Thought for ${spent} ${spent === 1 ? "second" : "seconds"}`
       : "Thought";
+  const hasContent = props.children !== undefined && props.children !== null;
 
   return (
     <div className="w-full min-w-0">
-      <button
-        aria-expanded={open}
-        className="rounded-lg py-1.5 text-left text-sm font-light text-zinc-500 hover:text-zinc-300"
-        onClick={() => setOpen((current) => !current)}
-        type="button"
-      >
-        {props.running ? (
-          <span className="animate-shimmer">{title}</span>
-        ) : (
-          <span>{title}</span>
-        )}
-      </button>
+      {hasContent ? (
+        <button
+          aria-expanded={open}
+          className="rounded-lg py-1.5 text-left text-sm font-light text-zinc-500 hover:text-zinc-300"
+          onClick={() => setOpen((current) => !current)}
+          type="button"
+        >
+          {props.running ? (
+            <span className="animate-shimmer">{title}</span>
+          ) : (
+            <span>{title}</span>
+          )}
+        </button>
+      ) : (
+        <p className="py-1.5 text-sm font-light text-zinc-500">
+          {props.running ? (
+            <span className="animate-shimmer">{title}</span>
+          ) : (
+            <span>{title}</span>
+          )}
+        </p>
+      )}
 
-      {props.summaries.length > 0 ? (
+      {hasContent ? (
         <div
           className={
             open
@@ -66,16 +83,7 @@ function ThinkingBlock(props: Props) {
           }
         >
           <div className="overflow-hidden">
-            <div className="space-y-1.5 pb-2 pt-1">
-              {props.summaries.map((paragraph, index) => (
-                <p
-                  className="text-xs font-light text-zinc-500"
-                  key={`${index}-${paragraph.length}`}
-                >
-                  {paragraph}
-                </p>
-              ))}
-            </div>
+            <div className="space-y-3 pb-2 pt-1">{props.children}</div>
           </div>
         </div>
       ) : null}

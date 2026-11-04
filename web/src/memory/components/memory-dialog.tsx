@@ -52,7 +52,7 @@ function MemoryDialog(props: Props) {
       props.onSaved();
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Unable to save the memory.",
+        cause instanceof Error ? cause.message : "Unable to save the learning.",
       );
       setSaving(false);
     }
@@ -61,7 +61,7 @@ function MemoryDialog(props: Props) {
   return (
     <Dialog
       size="wide"
-      title={creating ? "Add memory" : "Edit memory"}
+      title={creating ? "Add learning" : "Edit learning"}
       description={
         creating
           ? "Teach veykor a preference, rule, or procedure for future chats."
@@ -101,7 +101,7 @@ function MemoryDialog(props: Props) {
 
           <div className="w-56">
             <SegmentedControl
-              label="Memory scope"
+              label="Learning scope"
               onChange={(value) => {
                 setScope(value);
                 if (value === "global") {
@@ -128,7 +128,7 @@ function MemoryDialog(props: Props) {
             </label>
 
             <Selector
-              label="Memory project"
+              label="Learning project"
               onChange={setProjectId}
               options={props.projects.map((project) => ({
                 label: project.name,
@@ -163,7 +163,7 @@ function MemoryDialog(props: Props) {
             className="rounded-lg bg-zinc-100 px-5 py-2 text-sm font-semibold text-zinc-950 disabled:opacity-40"
             disabled={saving}
           >
-            {saving ? "Saving…" : creating ? "Add memory" : "Save changes"}
+            {saving ? "Saving…" : creating ? "Add learning" : "Save changes"}
           </button>
         </div>
       </form>

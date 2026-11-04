@@ -12,6 +12,10 @@ import { fetchStatus } from "../../auth/auth-client.ts";
 import CollapsibleSection from "../../components/collapsible-section/collapsible-section.tsx";
 import EmptyState from "../../components/empty-state/empty-state.tsx";
 import { usePreferencesStore } from "../../workspace/preferences-store.ts";
+import {
+  clearableProjectChats,
+  projectChats,
+} from "../../chat/project-chats.ts";
 import { useChatStore } from "../../chat/chat-store.ts";
 import { useWorkStore } from "../work-store.ts";
 import ProjectDialog from "./project-dialog.tsx";
@@ -36,6 +40,8 @@ function WorkSidebar(props: Props) {
   const sections = usePreferencesStore((state) => state.workSections);
   const setSectionOpen = usePreferencesStore((state) => state.setSectionOpen);
   const chats = useChatStore((state) => state.chats);
+  const activeChatId = useChatStore((state) => state.activeChatId);
+  const removeChat = useChatStore((state) => state.deleteChat);
   const navigate = useNavigate();
   const [menu, setMenu] = useState<{
     x: number;
@@ -43,6 +49,7 @@ function WorkSidebar(props: Props) {
     project: WorkProject;
   } | null>(null);
   const [deleting, setDeleting] = useState<WorkProject | null>(null);
+  const [clearing, setClearing] = useState<WorkProject | null>(null);
   const [failure, setFailure] = useState("");
   const [canCreate, setCanCreate] = useState(false);
   const [dialog, setDialog] = useState<{
@@ -62,6 +69,38 @@ function WorkSidebar(props: Props) {
     useChatStore.getState().startDraft("recent");
     useWorkStore.getState().selectProject(id);
     navigate(`/work/${encodeURIComponent(id)}`);
+  }
+
+  const menuClearable = menu
+    ? clearableProjectChats(chats, menu.project.id)
+    : [];
+
+  const menuTotal = menu ? projectChats(chats, menu.project.id).length : 0;
+
+  const clearingKeepsRunning = clearing
+    ? projectChats(chats, clearing.id).some((chat) => chat.running)
+    : false;
+
+  async function handleConfirmClear() {
+    if (!clearing) {
+      return;
+    }
+
+    const project = clearing;
+    const targets = clearableProjectChats(chats, project.id);
+    const deletedIds: Array<string> = [];
+
+    for (const target of targets) {
+      if (await removeChat(target.id)) {
+        deletedIds.push(target.id);
+      }
+    }
+
+    if (activeChatId !== null && deletedIds.includes(activeChatId)) {
+      navigate(`/work/${project.id}`, { replace: true });
+    }
+
+    setClearing(null);
   }
 
   return (
@@ -207,6 +246,17 @@ function WorkSidebar(props: Props) {
             { kind: "divider" },
             {
               kind: "item",
+              id: "clear-chats",
+              label:
+                menuTotal > 0 && menuClearable.length === 0
+                  ? "Stop to clear"
+                  : "Clear all chats",
+              disabled: menuClearable.length === 0,
+              danger: true,
+              icon: <TrashIcon className="size-4 text-red-400" />,
+            },
+            {
+              kind: "item",
               id: "delete",
               label: "Delete",
               danger: true,
@@ -219,6 +269,8 @@ function WorkSidebar(props: Props) {
                 project: menu.project,
                 sectionId: menu.project.sectionId,
               });
+            } else if (item.id === "clear-chats") {
+              setClearing(menu.project);
             } else {
               setDeleting(menu.project);
             }
@@ -251,6 +303,19 @@ function WorkSidebar(props: Props) {
                 setDeleting(null);
               });
           }}
+        />
+      )}
+      {clearing && (
+        <AlertDialog
+          title="Clear all chats"
+          description={
+            clearingKeepsRunning
+              ? `All chats in "${clearing.name}" will be permanently removed. Running chats are kept.`
+              : `All chats in "${clearing.name}" will be permanently removed.`
+          }
+          confirmLabel="Clear all"
+          onClose={() => setClearing(null)}
+          onConfirm={handleConfirmClear}
         />
       )}
       {dialog && (

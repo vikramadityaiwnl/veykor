@@ -1,4 +1,4 @@
-import { FolderIcon } from "@heroicons/react/24/outline";
+import { ChatBubbleLeftIcon, FolderIcon } from "@heroicons/react/24/outline";
 import type { TeamMember } from "@veykor/shared";
 import AgentTabs from "../../teams/components/agent-tabs.tsx";
 import TeamAvatar from "../../teams/components/team-avatar.tsx";
@@ -35,6 +35,12 @@ function ChatNavbar(props: Props) {
                 /
               </span>
             </>
+          )}
+          {!props.workMode && (
+            <ChatBubbleLeftIcon
+              aria-hidden="true"
+              className="size-4 shrink-0 text-zinc-100"
+            />
           )}
           <span className="truncate text-zinc-100" title={props.title}>
             {props.title}

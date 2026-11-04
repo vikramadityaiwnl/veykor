@@ -8,6 +8,7 @@ import { useChatStore } from "../chat-store.ts";
 import ChatComposer from "./chat-composer.tsx";
 import ChatNotFound from "./chat-not-found.tsx";
 import GreetingHeader from "./greeting-header.tsx";
+import LivePreviewPip from "./live-preview-pip.tsx";
 import MessageList from "./message-list.tsx";
 import LoadingSpinner from "../../components/loading-spinner/loading-spinner.tsx";
 
@@ -23,6 +24,7 @@ function MainChatContent() {
   const draftSeq = useChatStore((state) => state.draftSeq);
   const items = useChatStore((state) => state.items);
   const generatedImages = useChatStore((state) => state.generatedImages);
+  const livePreviews = useChatStore((state) => state.livePreviews);
   const recentQuestions = useChatStore((state) => state.recentQuestions);
   const historyLoading = useChatStore((state) => state.historyLoading);
   const chatNotFound = useChatStore((state) => state.chatNotFound);
@@ -30,8 +32,10 @@ function MainChatContent() {
   const streamingStartedAt = useChatStore((state) => state.streamingStartedAt);
   const streamingTurnId = useChatStore((state) => state.streamingTurnId);
   const sentAttachments = useChatStore((state) => state.sentAttachments);
-  const thinkingSnapshots = useChatStore((state) => state.thinkingSnapshots);
   const turnDurations = useChatStore((state) => state.turnDurations);
+  const hideThinkingByDefault = usePreferencesStore(
+    (state) => state.hideThinkingByDefault,
+  );
   const error = useChatStore((state) => state.error);
   const memoryReceipts = useChatStore((state) => state.memoryReceipts);
   const dismissMemoryReceipt = useChatStore(
@@ -90,13 +94,15 @@ function MainChatContent() {
         </div>
       ) : (
         <MessageList
+          chatId={activeChatId ?? ""}
           generatedImages={generatedImages}
           imageUrls={imageUrls}
           items={items}
+          livePreviews={livePreviews}
           questions={recentQuestions}
           streaming={streaming}
           streamingTurnId={streamingTurnId}
-          thinkingSnapshots={thinkingSnapshots}
+          hideThinkingByDefault={hideThinkingByDefault}
           turnDurations={turnDurations}
           streamingStartedAt={streamingStartedAt}
         />
@@ -114,7 +120,11 @@ function MainChatContent() {
         </div>
       )}
 
-      <ChatComposer key={projectId} />
+      <div className="relative z-10 -mt-12">
+        <ChatComposer key={projectId} />
+      </div>
+
+      <LivePreviewPip />
     </div>
   );
 }

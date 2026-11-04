@@ -6,6 +6,7 @@ import Logo from "../components/logo/logo.tsx";
 import ChatNavbar from "../chat/components/chat-navbar.tsx";
 import { useChatStore } from "../chat/chat-store.ts";
 import { workGreetingFor } from "./work-greeting-titles.ts";
+import LivePreviewPip from "../chat/components/live-preview-pip.tsx";
 
 function WorkPage() {
   const [title] = useState(() => workGreetingFor(new Date()));
@@ -34,17 +35,18 @@ function WorkPage() {
         workMode
       />
       <div className="grid flex-1 place-items-center px-6">
-        <div className="space-y-4 text-center">
+        <div className="w-full max-w-xl space-y-6 text-center">
           <div className="flex justify-center opacity-40">
             <Logo size={96} />
           </div>
-          <h1 className="text-xl font-semibold">{title}</h1>
-          <p className="text-sm font-light text-zinc-400">
+          <h1 className="text-2xl font-semibold">{title}</h1>
+          <p className="text-sm font-light text-zinc-500">
             Choose a project or add a folder to start working.
           </p>
         </div>
       </div>
       <ChatComposer workMode />
+      <LivePreviewPip />
     </div>
   );
 }

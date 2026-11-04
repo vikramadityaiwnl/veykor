@@ -70,6 +70,7 @@ const profile: AgentDefinition = {
   providerId: "",
   reasoningEffort: "",
   permission: "full-access",
+  autoAddToNewProjects: false,
 };
 
 for (const id of ["planner", "tester", "unassigned"]) {

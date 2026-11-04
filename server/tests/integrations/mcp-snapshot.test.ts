@@ -15,6 +15,7 @@ const {
   parseMcpSnapshot,
   restoreSessionMcp,
 } = await import("../../src/integrations/integrations.ts");
+const { workspaceFor } = await import("../../src/muse/workspace.ts");
 const { db } = await import("../../src/db/client.ts");
 const { mcpServers, users } = await import("../../src/db/schema.ts");
 
@@ -100,6 +101,53 @@ test("enabled servers resolve to runtime config with protocol transports", () =>
     mode: "optional",
     headers: { Authorization: "Bearer live-token" },
   });
+});
+
+test("Chrome DevTools MCP receives the user's Veykor workspace automatically", () => {
+  saveServer({
+    id: "browser-server",
+    name: "Browser",
+    transport: "stdio",
+    config: {
+      command: "npx",
+      args: ["-y", "chrome-devtools-mcp@latest", "--workspace=/custom"],
+      env: {},
+    },
+    enabled: 1,
+    mode: "required",
+  });
+
+  try {
+    const session = buildSessionMcp(owner.id);
+    const browser = session.runtime["Browser"];
+    const workspaceRoot = join(workspaceFor(owner.id), ".veykor", "previews");
+
+    assert.ok(browser?.transport === "stdio");
+    assert.deepEqual(browser.args, [
+      "-y",
+      "chrome-devtools-mcp@latest",
+      "--workspace=/custom",
+      `--workspace=${workspaceRoot}`,
+      "--isolated",
+    ]);
+    assert.deepEqual(
+      session.snapshot.find((entry) => entry.id === "browser-server")?.args,
+      ["-y", "chrome-devtools-mcp@latest", "--workspace=/custom"],
+    );
+
+    const restored = restoreSessionMcp(
+      owner.id,
+      JSON.stringify(session.snapshot),
+    );
+
+    assert.ok(restored["Browser"]?.transport === "stdio");
+    assert.ok(
+      restored["Browser"].args?.includes(`--workspace=${workspaceRoot}`),
+    );
+    assert.ok(restored["Browser"].args?.includes("--isolated"));
+  } finally {
+    db.delete(mcpServers).where(eq(mcpServers.id, "browser-server")).run();
+  }
 });
 
 test("snapshots hold secret names without secret values", () => {

@@ -188,6 +188,7 @@ test("host folder selection, project assignments, agent CRUD, and ownership", as
     assert.equal(agent.body.name, "Builder");
     assert.equal(agent.body.permission, "read-only");
     assert.equal(agent.body.modelId, "");
+    assert.equal(agent.body.autoAddToNewProjects, false);
     const agentId = agent.body.id as string;
     assert.equal(
       (
@@ -207,6 +208,14 @@ test("host folder selection, project assignments, agent CRUD, and ownership", as
     assert.equal(created.body.folder, realpathSync(folder));
     assert.equal(created.body.branch, "No branch");
     const projectId = created.body.id as string;
+    const library = (await request("/api/agents", { cookie }))
+      .body as unknown as Array<{ id: string; autoAddToNewProjects: boolean }>;
+    assert.deepEqual(created.body.agentIds, [
+      agentId,
+      ...library
+        .filter((entry) => entry.autoAddToNewProjects)
+        .map((entry) => entry.id),
+    ]);
 
     assert.equal(
       (
@@ -231,13 +240,45 @@ test("host folder selection, project assignments, agent CRUD, and ownership", as
     assert.equal(renamed.body.name, "Renamed");
     assert.equal(renamed.body.sectionId, "work-section");
 
+    const vanishedFolder = join(temporary, "vanished-project");
+    mkdirSync(vanishedFolder);
+    const vanished = await request("/api/projects", {
+      cookie,
+      body: { folder: vanishedFolder, agentIds: [] },
+    });
+    assert.equal(vanished.status, 201);
+    assert.equal(vanished.body.folderExists, true);
+    const vanishedId = vanished.body.id as string;
+    rmSync(vanishedFolder, { recursive: true, force: true });
+    const relisted = (await request("/api/projects", { cookie }))
+      .body as unknown as Array<{
+      id: string;
+      folderExists: boolean;
+      branch: string;
+    }>;
+    const gone = relisted.find((entry) => entry.id === vanishedId);
+    assert.equal(gone?.folderExists, false);
+    assert.equal(gone?.branch, "No branch");
+    assert.equal(
+      (
+        await request(`/api/projects/${vanishedId}`, {
+          cookie,
+          method: "DELETE",
+        })
+      ).status,
+      200,
+    );
+
     const second = await request(authPaths.register, {
       body: { username: "other-owner", password: "a-strong-test-password" },
     });
     assert.equal(second.status, 201);
     assert.deepEqual(
-      (await request("/api/agents", { cookie: second.cookie })).body,
-      [],
+      (
+        (await request("/api/agents", { cookie: second.cookie }))
+          .body as unknown as Array<{ name: string }>
+      ).map((entry) => entry.name),
+      ["Team Lead", "Coder", "Reviewer", "GitHub Manager"],
     );
     assert.deepEqual(
       (await request("/api/projects", { cookie: second.cookie })).body,
@@ -281,7 +322,14 @@ test("host folder selection, project assignments, agent CRUD, and ownership", as
     const projects = (await request("/api/projects", { cookie }))
       .body as unknown as { agentIds: string[] }[];
     assert.deepEqual(projects[0].agentIds, []);
-    assert.deepEqual((await request("/api/agents", { cookie })).body, []);
+    assert.deepEqual(
+      (
+        (await request("/api/agents", { cookie })).body as unknown as Array<{
+          name: string;
+        }>
+      ).map((entry) => entry.name),
+      ["Team Lead", "Coder", "Reviewer", "GitHub Manager"],
+    );
 
     await stopServer(child);
     child = await startServer(join(temporary, "test.db"));

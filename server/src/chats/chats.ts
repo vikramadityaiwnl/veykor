@@ -1,6 +1,7 @@
 import { compileAgentContext } from "../work/agent-context.js";
 import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
+import { join } from "node:path";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -62,9 +63,12 @@ import {
   listMuseModels,
   listPendingApprovals,
   museErrorMessage,
+  readPreviewForItem,
+  readChatFileForItem,
   startMuseSession,
   steerMuseTurn,
 } from "../muse/chat-service.js";
+import { workspaceFor } from "../muse/workspace.js";
 import type { TurnEvent } from "../muse/chat-service.js";
 import { readAgent, readProject } from "../work/work.js";
 import type { AgentDefinition } from "@veykor/shared";
@@ -429,6 +433,84 @@ chatRoute.get("/:id", requireAuth, async (c) => {
     };
 
     return c.json(response);
+  } catch (cause) {
+    return museFailure(c, cause);
+  }
+});
+
+chatRoute.get("/:id/previews/:itemId", requireAuth, async (c) => {
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row) {
+    return c.json({ error: "Chat not found" }, 404);
+  }
+
+  try {
+    const detail = await readTeamChat(row);
+    const item = detail.items.find(
+      (candidate) => candidate.itemId === c.req.param("itemId"),
+    );
+    const preview = item
+      ? await readPreviewForItem(
+          item,
+          join(workspaceFor(row.userId), ".veykor", "previews"),
+        )
+      : null;
+
+    if (preview === null) {
+      return c.json({ error: "Preview not found" }, 404);
+    }
+
+    return new Response(Buffer.from(preview.base64Data, "base64"), {
+      headers: {
+        "Cache-Control": "private, max-age=3600",
+        "Content-Type": preview.mediaType,
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  } catch (cause) {
+    return museFailure(c, cause);
+  }
+});
+
+chatRoute.get("/:id/files/:itemId/:fileIndex", requireAuth, async (c) => {
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row) {
+    return c.json({ error: "Chat not found" }, 404);
+  }
+
+  const fileIndex = Number(c.req.param("fileIndex"));
+
+  if (!Number.isInteger(fileIndex) || fileIndex < 0 || fileIndex >= 32) {
+    return c.json({ error: "File not found" }, 404);
+  }
+
+  try {
+    const detail = await readTeamChat(row);
+    const item = detail.items.find(
+      (candidate) => candidate.itemId === c.req.param("itemId"),
+    );
+    const file = item
+      ? await readChatFileForItem(
+          item,
+          join(workspaceFor(row.userId), ".veykor", "previews"),
+          fileIndex,
+        )
+      : null;
+
+    if (file === null) {
+      return c.json({ error: "Previewable file not found" }, 404);
+    }
+
+    return new Response(file.bytes, {
+      headers: {
+        "Cache-Control": "private, max-age=3600",
+        "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+        "Content-Type": file.mediaType,
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
   } catch (cause) {
     return museFailure(c, cause);
   }

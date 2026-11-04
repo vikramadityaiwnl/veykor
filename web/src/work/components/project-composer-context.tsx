@@ -23,7 +23,7 @@ function ProjectComposerContext() {
 
   return (
     <>
-      <div className="flex items-center justify-between gap-4 rounded-b-3xl border border-t-0 border-zinc-700 bg-zinc-900/70 px-4 py-3 text-xs font-light text-zinc-400">
+      <div className="flex items-center justify-between gap-4 rounded-b-3xl border border-t-0 border-zinc-700 bg-zinc-900/70 px-4 py-3 text-xs font-light text-zinc-400 backdrop-blur-xl">
         <button
           type="button"
           disabled={!!project || !canCreate}

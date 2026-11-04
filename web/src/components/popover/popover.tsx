@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 interface Props {
   anchorRect: DOMRect;
@@ -68,7 +69,7 @@ function Popover(props: Props) {
         }
       : { left: position.left, top: position.top, width };
 
-  return (
+  return createPortal(
     <>
       <button
         aria-label="Close menu"
@@ -85,7 +86,8 @@ function Popover(props: Props) {
       >
         {props.children}
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 

@@ -30,7 +30,7 @@ import type { AuthEnv } from "../auth/auth.js";
 import { db } from "../db/client.js";
 import { chats, skills } from "../db/schema.js";
 import { museHost, museBinary } from "../muse/muse-host.js";
-import { workspaceFor } from "../muse/chat-service.js";
+import { workspaceFor } from "../muse/workspace.js";
 
 type SkillRow = typeof skills.$inferSelect;
 

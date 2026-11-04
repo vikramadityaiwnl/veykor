@@ -1,12 +1,16 @@
 import { Fragment, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import { extractGeneratedImageIds, isGenerateImageTool } from "@veykor/shared";
+import {
+  chatPaths,
+  extractGeneratedImageIds,
+  isGenerateImageTool,
+} from "@veykor/shared";
 import type {
   ChatHistoryItem,
   GeneratedImageArtifact,
   QuestionRequest,
 } from "@veykor/shared";
-import type { SentAttachment } from "../chat-store.ts";
+import type { LivePreview, SentAttachment } from "../chat-store.ts";
 import AgentMessage from "./agent-message.tsx";
 import GeneratedImage from "./generated-image.tsx";
 import QuestionHistoryRecord from "./question-history-record.tsx";
@@ -15,26 +19,22 @@ import ToolCallBlock from "./tool-call-block.tsx";
 import UserMessage from "./user-message.tsx";
 
 interface Props {
+  chatId: string;
   generatedImages: Array<GeneratedImageArtifact>;
   imageUrls: Array<SentAttachment>;
+  hideThinkingByDefault: boolean;
   items: Array<ChatHistoryItem>;
+  livePreviews: Record<string, LivePreview>;
   questions: Array<QuestionRequest>;
   streaming: boolean;
   streamingTurnId: string;
   streamingStartedAt: number;
-  thinkingSnapshots: Record<string, Array<string>>;
   turnDurations: Record<string, number>;
 }
 
 interface TimelineEntry {
   at: string;
   node: ReactNode;
-}
-
-interface ThinkingGroup {
-  firstItemId: string;
-  itemIds: Array<string>;
-  summaries: Array<string>;
 }
 
 function allocateImages(
@@ -73,36 +73,36 @@ function collectUserTurns(items: Array<ChatHistoryItem>): Set<string> {
   return turns;
 }
 
-function collectThinking(
-  items: Array<ChatHistoryItem>,
-): Map<string, ThinkingGroup> {
-  const groups = new Map<string, ThinkingGroup>();
+function collectTurnItems(items: Array<ChatHistoryItem>): {
+  itemsByTurn: Map<string, Array<ChatHistoryItem>>;
+  finalItemIds: Set<string>;
+} {
+  const itemsByTurn = new Map<string, Array<ChatHistoryItem>>();
 
   for (const item of items) {
-    if (item.kind !== "reasoning") {
+    if (item.turnId === null || item.kind === "userMessage") {
       continue;
     }
 
-    const key = item.turnId ?? item.itemId;
-    const group = groups.get(key);
+    const turnItems = itemsByTurn.get(item.turnId) ?? [];
 
-    if (group === undefined) {
-      groups.set(key, {
-        firstItemId: item.itemId,
-        itemIds: [item.itemId],
-        summaries: [...item.summary],
-      });
-    } else {
-      group.itemIds.push(item.itemId);
-      group.summaries.push(...item.summary);
+    turnItems.push(item);
+    itemsByTurn.set(item.turnId, turnItems);
+  }
+
+  const finalItemIds = new Set<string>();
+
+  for (const turnItems of itemsByTurn.values()) {
+    const finalMessage = turnItems
+      .filter((item) => item.kind === "agentMessage")
+      .at(-1);
+
+    if (finalMessage !== undefined) {
+      finalItemIds.add(finalMessage.itemId);
     }
   }
 
-  return groups;
-}
-
-function summarySize(summary: Array<string>): number {
-  return summary.reduce((total, part) => total + part.length, 0);
+  return { itemsByTurn, finalItemIds };
 }
 
 function toolPrompt(item: ChatHistoryItem): string {
@@ -189,6 +189,17 @@ function bindToolImages(
 function MessageList(props: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
+  const assistantTurns = collectTurnItems(props.items);
+  const finalTurnIds = new Set(
+    props.items
+      .filter(
+        (item) =>
+          item.kind === "agentMessage" &&
+          assistantTurns.finalItemIds.has(item.itemId) &&
+          item.turnId !== null,
+      )
+      .map((item) => item.turnId as string),
+  );
 
   function handleScroll() {
     const container = containerRef.current;
@@ -214,36 +225,56 @@ function MessageList(props: Props) {
   }, [props.items, props.questions, props.streaming, props.generatedImages]);
 
   const imageByItem = allocateImages(props.items, props.imageUrls);
-  const thinkingByTurn = collectThinking(props.items);
   const userTurns = collectUserTurns(props.items);
+  const latestAssistantMessageId = [...props.items]
+    .reverse()
+    .find((item) => item.kind === "agentMessage")?.itemId;
+  const claimed = new Set<string>();
+
+  for (const item of props.items) {
+    const images = bindToolImages(item, props.generatedImages);
+
+    for (const artifact of images.bound) {
+      claimed.add(artifact.id);
+    }
+
+    for (const id of images.pending) {
+      claimed.add(id);
+    }
+  }
+
+  const orphaned = props.generatedImages.filter(
+    (image) => !claimed.has(image.id),
+  );
+  const orphanedByTurn = new Map<string, Array<GeneratedImageArtifact>>();
+
+  for (const artifact of orphaned) {
+    const turnImages = orphanedByTurn.get(artifact.turnId) ?? [];
+
+    turnImages.push(artifact);
+    orphanedByTurn.set(artifact.turnId, turnImages);
+  }
 
   const liveKey =
     props.streamingTurnId !== "" ? props.streamingTurnId : "pending";
 
   const liveHasThinking =
-    props.streamingTurnId !== "" && thinkingByTurn.has(props.streamingTurnId);
+    props.streamingTurnId !== "" &&
+    assistantTurns.itemsByTurn.has(props.streamingTurnId);
 
   const liveAnchored =
     props.streamingTurnId !== "" && userTurns.has(props.streamingTurnId);
 
-  function pinnedSummaries(group: ThinkingGroup): Array<string> {
-    const pinned = group.itemIds.flatMap(
-      (itemId) => props.thinkingSnapshots[itemId] ?? [],
-    );
-
-    return summarySize(pinned) > summarySize(group.summaries)
-      ? pinned
-      : group.summaries;
-  }
-
   function thinkingBlock(
     turnKey: string,
     live: boolean,
-    summaries: Array<string>,
+    children: ReactNode,
+    hasActivity = false,
   ): ReactNode {
     if (
       !live &&
-      summaries.length === 0 &&
+      children === null &&
+      !hasActivity &&
       (props.turnDurations[turnKey] ?? 0) <= 0
     ) {
       return null;
@@ -252,11 +283,139 @@ function MessageList(props: Props) {
     return (
       <ThinkingBlock
         durationMs={props.turnDurations[turnKey] ?? 0}
+        hideByDefault={props.hideThinkingByDefault}
         key={`thinking-${turnKey}`}
         running={live}
         startedAt={props.streamingStartedAt}
-        summaries={summaries}
+        children={children}
       />
+    );
+  }
+
+  function renderThinkingItem(item: ChatHistoryItem): ReactNode {
+    if (item.kind === "agentMessage") {
+      if (assistantTurns.finalItemIds.has(item.itemId)) {
+        return null;
+      }
+
+      return <AgentMessage item={item} key={item.itemId} />;
+    }
+
+    if (item.kind !== "toolCall") {
+      return null;
+    }
+
+    const preview = props.livePreviews[item.itemId] ?? null;
+    const previewSrc =
+      props.chatId !== ""
+        ? chatPaths.preview(props.chatId, item.itemId)
+        : undefined;
+
+    if (!isGenerateImageTool(item.tool)) {
+      return (
+        <ToolCallBlock
+          chatId={props.chatId}
+          item={item}
+          key={item.itemId}
+          preview={preview}
+          previewSrc={previewSrc}
+        />
+      );
+    }
+
+    if (item.turnId !== null && finalTurnIds.has(item.turnId)) {
+      return (
+        <ToolCallBlock
+          chatId={props.chatId}
+          item={item}
+          key={item.itemId}
+          preview={preview}
+          previewSrc={previewSrc}
+        />
+      );
+    }
+
+    const images = bindToolImages(item, props.generatedImages);
+    const cards: Array<ReactNode> = images.bound.map((artifact) => (
+      <GeneratedImage
+        key={artifact.id}
+        artifact={artifact}
+        artifactId=""
+        generating={false}
+        prompt=""
+        error=""
+      />
+    ));
+
+    for (const id of images.pending) {
+      cards.push(
+        <GeneratedImage
+          key={id}
+          artifact={null}
+          artifactId={id}
+          generating={false}
+          prompt={toolPrompt(item)}
+          error=""
+        />,
+      );
+    }
+
+    if (
+      cards.length === 0 &&
+      (item.status === "inProgress" || item.status === "")
+    ) {
+      cards.push(
+        <GeneratedImage
+          key={`${item.itemId}-generating`}
+          artifact={null}
+          artifactId=""
+          generating={true}
+          prompt={toolPrompt(item)}
+          error=""
+        />,
+      );
+    }
+
+    if (
+      cards.length === 0 &&
+      item.status !== "inProgress" &&
+      item.status !== "" &&
+      item.status !== "completed"
+    ) {
+      cards.push(
+        <GeneratedImage
+          key={`${item.itemId}-failed`}
+          artifact={null}
+          artifactId=""
+          generating={false}
+          prompt=""
+          error={
+            item.visibleOutput.trim() === ""
+              ? "Image generation did not return an image."
+              : item.visibleOutput.trim().slice(0, 300)
+          }
+        />,
+      );
+    }
+
+    if (cards.length === 0) {
+      return (
+        <ToolCallBlock
+          chatId={props.chatId}
+          item={item}
+          key={item.itemId}
+          preview={preview}
+          previewSrc={previewSrc}
+        />
+      );
+    }
+
+    return (
+      <Fragment key={item.itemId}>
+        <ToolCallBlock chatId={props.chatId} item={item} />
+
+        <div className="space-y-3 pt-3">{cards}</div>
+      </Fragment>
     );
   }
 
@@ -266,13 +425,63 @@ function MessageList(props: Props) {
     }
 
     const live = props.streaming && turnId === props.streamingTurnId;
-    const group = thinkingByTurn.get(turnId);
 
-    if (group === undefined) {
-      return thinkingBlock(turnId, live, []);
+    if (live && props.hideThinkingByDefault) {
+      return null;
     }
 
-    return thinkingBlock(turnId, live, pinnedSummaries(group));
+    const turnItems = assistantTurns.itemsByTurn.get(turnId) ?? [];
+    const activity: Array<TimelineEntry> = [];
+
+    for (const item of turnItems) {
+      if (
+        item.kind === "agentMessage" &&
+        assistantTurns.finalItemIds.has(item.itemId)
+      ) {
+        continue;
+      }
+
+      const node = renderThinkingItem(item);
+
+      if (node !== null) {
+        activity.push({ at: item.recordedAt, node });
+      }
+    }
+
+    for (const artifact of orphanedByTurn.get(turnId) ?? []) {
+      if (finalTurnIds.has(turnId)) {
+        continue;
+      }
+
+      activity.push({
+        at: artifact.createdAt,
+        node: (
+          <GeneratedImage
+            key={artifact.id}
+            artifact={artifact}
+            artifactId=""
+            generating={false}
+            prompt=""
+            error=""
+          />
+        ),
+      });
+    }
+
+    activity.sort((first, second) => first.at.localeCompare(second.at));
+    const children =
+      activity.length === 0 ? null : activity.map((entry) => entry.node);
+    const hasActivity = turnItems.some(
+      (item) =>
+        item.kind !== "agentMessage" ||
+        !assistantTurns.finalItemIds.has(item.itemId),
+    );
+    return thinkingBlock(
+      turnId,
+      live,
+      children,
+      hasActivity || (orphanedByTurn.get(turnId)?.length ?? 0) > 0,
+    );
   }
 
   function renderItem(item: ChatHistoryItem) {
@@ -289,107 +498,51 @@ function MessageList(props: Props) {
     }
 
     if (item.kind === "agentMessage") {
-      return <AgentMessage item={item} key={item.itemId} />;
-    }
-
-    if (item.kind === "reasoning") {
-      if (item.turnId !== null && userTurns.has(item.turnId)) {
-        return null;
-      }
-
-      const key = item.turnId ?? item.itemId;
-      const group = thinkingByTurn.get(key);
-
-      if (group === undefined || group.firstItemId !== item.itemId) {
-        return null;
-      }
-
-      const running =
+      const isFinal = assistantTurns.finalItemIds.has(item.itemId);
+      const isLive =
         props.streaming &&
-        item.turnId !== null &&
-        item.turnId === props.streamingTurnId;
+        (item.turnId === props.streamingTurnId || item.status === "inProgress");
 
-      return thinkingBlock(key, running, pinnedSummaries(group));
-    }
-
-    if (item.kind === "toolCall") {
-      if (!isGenerateImageTool(item.tool)) {
-        return <ToolCallBlock item={item} key={item.itemId} />;
+      if (!isFinal || isLive) {
+        return null;
       }
 
-      const images = bindToolImages(item, props.generatedImages);
-      const cards: Array<ReactNode> = images.bound.map((artifact) => (
-        <GeneratedImage
-          key={artifact.id}
-          artifact={artifact}
-          artifactId=""
-          generating={false}
-          prompt=""
-          error=""
-        />
-      ));
-
-      for (const id of images.pending) {
-        cards.push(
-          <GeneratedImage
-            key={id}
-            artifact={null}
-            artifactId={id}
-            generating={false}
-            prompt={toolPrompt(item)}
-            error=""
-          />,
-        );
-      }
-
-      if (
-        cards.length === 0 &&
-        (item.status === "inProgress" || item.status === "")
-      ) {
-        cards.push(
-          <GeneratedImage
-            key={`${item.itemId}-generating`}
-            artifact={null}
-            artifactId=""
-            generating={true}
-            prompt={toolPrompt(item)}
-            error=""
-          />,
-        );
-      }
-
-      if (
-        cards.length === 0 &&
-        item.status !== "inProgress" &&
-        item.status !== "" &&
-        item.status !== "completed"
-      ) {
-        cards.push(
-          <GeneratedImage
-            key={`${item.itemId}-failed`}
-            artifact={null}
-            artifactId=""
-            generating={false}
-            prompt=""
-            error={
-              item.visibleOutput.trim() === ""
-                ? "Image generation did not return an image."
-                : item.visibleOutput.trim().slice(0, 300)
-            }
-          />,
-        );
-      }
-
-      if (cards.length === 0) {
-        return <ToolCallBlock item={item} key={item.itemId} />;
-      }
-
-      return (
+      const turnImages =
+        item.turnId === null
+          ? []
+          : props.generatedImages.filter(
+              (image) => image.turnId === item.turnId,
+            );
+      const message = (
         <Fragment key={item.itemId}>
-          <ToolCallBlock item={item} />
+          <AgentMessage item={item} />
 
-          <div className="space-y-3 pt-3">{cards}</div>
+          {turnImages.length > 0 ? (
+            <div className="space-y-3 pt-3">
+              {turnImages.map((artifact) => (
+                <GeneratedImage
+                  key={artifact.id}
+                  artifact={artifact}
+                  artifactId=""
+                  generating={false}
+                  prompt=""
+                  error=""
+                />
+              ))}
+            </div>
+          ) : null}
         </Fragment>
+      );
+
+      return item.itemId === latestAssistantMessageId && !props.streaming ? (
+        <div
+          className="animate-[veykor-message-in_240ms_ease-out_both] motion-reduce:animate-none"
+          key={item.itemId}
+        >
+          {message}
+        </div>
+      ) : (
+        message
       );
     }
 
@@ -430,24 +583,6 @@ function MessageList(props: Props) {
     }
   }
 
-  const claimed = new Set<string>();
-
-  for (const item of props.items) {
-    const images = bindToolImages(item, props.generatedImages);
-
-    for (const artifact of images.bound) {
-      claimed.add(artifact.id);
-    }
-
-    for (const id of images.pending) {
-      claimed.add(id);
-    }
-  }
-
-  const orphaned = props.generatedImages
-    .filter((image) => !claimed.has(image.id))
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-
   return (
     <div
       className="flex-1 overflow-y-auto"
@@ -457,19 +592,11 @@ function MessageList(props: Props) {
       <div className="mx-auto w-full max-w-3xl space-y-6 px-4 pb-24 pt-6">
         {timeline.map((entry) => entry.node)}
 
-        {orphaned.map((artifact) => (
-          <GeneratedImage
-            key={artifact.id}
-            artifact={artifact}
-            artifactId=""
-            generating={false}
-            prompt=""
-            error=""
-          />
-        ))}
-
-        {props.streaming && !liveAnchored && !liveHasThinking
-          ? thinkingBlock(liveKey, true, [])
+        {props.streaming &&
+        !props.hideThinkingByDefault &&
+        !liveAnchored &&
+        !liveHasThinking
+          ? thinkingBlock(liveKey, true, null)
           : null}
       </div>
     </div>

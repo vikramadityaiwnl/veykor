@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -23,6 +25,7 @@ import type { AuthEnv } from "../auth/auth.js";
 import { isHostRequest } from "../auth/host-access.js";
 import { db } from "../db/client.js";
 import { mcpServers } from "../db/schema.js";
+import { workspaceFor } from "../muse/workspace.js";
 
 type McpRow = typeof mcpServers.$inferSelect;
 
@@ -172,6 +175,7 @@ function toRuntimeConfig(
   transport: McpTransport,
   config: StoredMcpConfig,
   mode: McpServerMode,
+  workspaceRoot: string,
 ): SessionMcpServerConfig {
   if (transport === "http") {
     if (Object.keys(config.headers).length > 0) {
@@ -190,22 +194,55 @@ function toRuntimeConfig(
     };
   }
 
-  if (config.args.length > 0 && Object.keys(config.env).length > 0) {
+  const args = [...config.args];
+  const executable = `${config.command} ${args.join(" ")}`.toLowerCase();
+
+  if (executable.includes("chrome-devtools-mcp")) {
+    const previewRoot = join(workspaceRoot, ".veykor", "previews");
+    const configuredRoots = new Set<string>();
+
+    mkdirSync(previewRoot, { recursive: true });
+
+    for (let index = 0; index < args.length; index += 1) {
+      const argument = args[index];
+      const value = argument?.match(/^--workspace=(.*)$/)?.[1];
+
+      if (value) {
+        configuredRoots.add(value);
+      } else if (argument === "--workspace") {
+        const next = args[index + 1];
+
+        if (next) {
+          configuredRoots.add(next);
+        }
+      }
+    }
+
+    if (!configuredRoots.has(previewRoot)) {
+      args.push(`--workspace=${previewRoot}`);
+    }
+
+    if (!args.includes("--isolated")) {
+      args.push("--isolated");
+    }
+  }
+
+  if (args.length > 0 && Object.keys(config.env).length > 0) {
     return {
       transport: "stdio",
       command: config.command,
       mode,
-      args: [...config.args],
+      args,
       env: { ...config.env },
     };
   }
 
-  if (config.args.length > 0) {
+  if (args.length > 0) {
     return {
       transport: "stdio",
       command: config.command,
       mode,
-      args: [...config.args],
+      args,
     };
   }
 
@@ -324,6 +361,7 @@ export function buildSessionMcp(userId: number): {
       entry.transport,
       parseStoredConfig(row.config ?? "{}"),
       entry.mode,
+      workspaceFor(userId),
     );
   }
 
@@ -371,6 +409,7 @@ export function restoreSessionMcp(
           headers: {},
         },
         entry.mode,
+        workspaceFor(userId),
       );
 
       continue;
@@ -412,6 +451,7 @@ export function restoreSessionMcp(
         headers,
       },
       entry.mode,
+      workspaceFor(userId),
     );
   }
 

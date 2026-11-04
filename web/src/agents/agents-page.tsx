@@ -4,6 +4,7 @@ import type { AgentDefinition } from "@veykor/shared";
 import AgentAvatar from "./components/agent-avatar.tsx";
 import AlertDialog from "../components/alert-dialog/alert-dialog.tsx";
 import AgentDialog from "./components/agent-dialog.tsx";
+import Badge from "../components/badge/badge.tsx";
 import Divider from "../components/divider/divider.tsx";
 import EmptyState from "../components/empty-state/empty-state.tsx";
 import { useWorkStore } from "../work/work-store.ts";
@@ -90,7 +91,7 @@ function AgentsPage() {
             {agents.map((agent) => (
               <div
                 key={agent.id}
-                className="cursor-pointer space-y-4 rounded-2xl border border-zinc-800 p-5 transition hover:border-zinc-700"
+                className="flex cursor-pointer flex-col gap-4 rounded-2xl border border-zinc-800 p-5 transition hover:border-zinc-700"
                 onClick={() => setEditing(agent)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
@@ -103,14 +104,19 @@ function AgentsPage() {
               >
                 <div className="flex items-center gap-3">
                   <AgentAvatar name={agent.name} size={40} />
-                  <h2 className="font-semibold">{agent.name}</h2>
+
+                  <div className="flex min-w-0 flex-col items-start gap-1">
+                    {agent.autoAddToNewProjects && <Badge text="Auto-add" />}
+
+                    <h2 className="truncate font-semibold">{agent.name}</h2>
+                  </div>
                 </div>
 
                 <p className="text-sm font-light text-zinc-400">
                   {agent.description || "Ready for project work."}
                 </p>
 
-                <div className="flex gap-4 text-xs">
+                <div className="mt-auto flex gap-4 text-xs">
                   <button
                     className="text-zinc-500 hover:text-rose-400"
                     onClick={(event) => {

@@ -18,7 +18,7 @@ function MemoryFilters(props: Props) {
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
       <div className="w-full sm:w-72">
         <SegmentedControl
-          label="Memory scope filter"
+          label="Learning scope filter"
           onChange={props.onScopeChange}
           options={[
             { label: "All", value: "" },
@@ -59,7 +59,7 @@ function MemoryFilters(props: Props) {
           <input
             className="w-full rounded-lg border border-zinc-800 bg-zinc-900 py-2 pl-9 pr-3 text-sm font-light text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-600 focus:outline-none"
             onChange={(event) => props.onQueryChange(event.target.value)}
-            placeholder="Search memories..."
+            placeholder="Search learnings..."
             type="search"
             value={props.query}
           />

@@ -71,6 +71,13 @@ export interface ComposerRestore {
   text: string;
 }
 
+export interface LivePreview {
+  itemId: string;
+  mediaType: string;
+  base64Data: string;
+  active: boolean;
+}
+
 interface ChatState {
   chats: Array<ChatSummary>;
   chatsLoaded: boolean;
@@ -92,7 +99,6 @@ interface ChatState {
   generatedImages: Array<GeneratedImageArtifact>;
   dismissedQuestions: Array<string>;
   turnDurations: Record<string, number>;
-  thinkingSnapshots: Record<string, Array<string>>;
   todos: Array<Record<string, unknown>>;
   modelId: string;
   providerId: string;
@@ -108,6 +114,10 @@ interface ChatState {
   catalogLoading: boolean;
   memoryReceipts: Array<MemoryReceipt>;
   dismissMemoryReceipt: (memoryId: string) => void;
+  livePreview: LivePreview | null;
+  livePreviews: Record<string, LivePreview>;
+  dismissLivePreview: () => void;
+  setLivePreviewActive: (active: boolean) => void;
   loadChats: () => Promise<void>;
   startDraft: (sectionId: string) => void;
   syncDraftPreferences: () => void;
@@ -372,29 +382,17 @@ function applyDelta(
     return { ...item, visibleOutput: item.visibleOutput + delta };
   }
 
-  if (field.startsWith("summary.")) {
-    const index = Number(field.slice("summary.".length));
-
-    if (!Number.isInteger(index) || index < 0) {
-      return item;
-    }
-
-    const summary = [...item.summary];
-
-    while (summary.length <= index) {
-      summary.push("");
-    }
-
-    summary[index] += delta;
-
-    return { ...item, summary };
-  }
-
   return item;
 }
 
-function summarySize(summary: Array<string>): number {
-  return summary.reduce((total, part) => total + part.length, 0);
+function hideReasoningSummary(item: ChatHistoryItem): ChatHistoryItem {
+  return item.kind === "reasoning" ? { ...item, summary: [] } : item;
+}
+
+function hideReasoningSummaries(
+  items: Array<ChatHistoryItem>,
+): Array<ChatHistoryItem> {
+  return items.map(hideReasoningSummary);
 }
 
 function revokeImages(images: Array<ComposerImage>): void {
@@ -490,7 +488,6 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   generatedImages: [],
   dismissedQuestions: readDismissedQuestions(),
   turnDurations: {},
-  thinkingSnapshots: {},
   todos: [],
   modelId: "",
   providerId: "",
@@ -505,6 +502,20 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   catalog: null,
   catalogLoading: false,
   memoryReceipts: [],
+  livePreview: null,
+  livePreviews: {},
+
+  dismissLivePreview: () => {
+    set({ livePreview: null });
+  },
+
+  setLivePreviewActive: (active) => {
+    set((current) =>
+      current.livePreview === null
+        ? current
+        : { livePreview: { ...current.livePreview, active } },
+    );
+  },
 
   dismissMemoryReceipt: (memoryId) => {
     set((current) => ({
@@ -611,6 +622,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       queuedMessages: [],
       queuePaused: false,
       composerRestore: { seq: 0, text: "" },
+      livePreview: null,
+      livePreviews: {},
     });
 
     get().syncDraftPreferences();
@@ -692,7 +705,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             );
 
       return {
-        items: detail.items,
+        items: hideReasoningSummaries(detail.items),
         turnDurations: detail.turnDurations,
         pendingApprovals: detail.pendingApprovals,
         pendingQuestions: detail.pendingQuestions,
@@ -752,6 +765,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       queuedMessages: [],
       queuePaused: false,
       composerRestore: { seq: 0, text: "" },
+      livePreview: null,
+      livePreviews: {},
       finishedChatIds: current.finishedChatIds.filter(
         (finishedId) => finishedId !== id,
       ),
@@ -790,7 +805,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             streaming: detail.running,
             streamingTurnId: detail.activeTurnId,
             streamingStartedAt: detail.activeTurnStartedAt,
-            items: detail.items,
+            items: hideReasoningSummaries(detail.items),
             turnDurations: detail.turnDurations,
             pendingApprovals: detail.pendingApprovals,
             pendingQuestions: detail.pendingQuestions,
@@ -1133,6 +1148,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             currentTurnId = event.turnId;
             set((current) => ({
               streamingTurnId: event.turnId,
+              livePreview: null,
               streamingStartedAt:
                 event.startedAt && event.startedAt > 0
                   ? event.startedAt
@@ -1149,59 +1165,22 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             break;
 
           case "item":
-            set((currentItems) => {
-              const items = settleItem(currentItems.items, event.item);
-
-              if (event.item.kind !== "reasoning") {
-                return { items };
-              }
-
-              const kept =
-                currentItems.thinkingSnapshots[event.item.itemId] ?? [];
-              const incoming = event.item.summary;
-
-              return {
-                items,
-                thinkingSnapshots:
-                  summarySize(incoming) > summarySize(kept)
-                    ? {
-                        ...currentItems.thinkingSnapshots,
-                        [event.item.itemId]: [...incoming],
-                      }
-                    : currentItems.thinkingSnapshots,
-              };
-            });
+            set((currentItems) => ({
+              items: settleItem(
+                currentItems.items,
+                hideReasoningSummary(event.item),
+              ),
+            }));
             break;
 
           case "delta":
-            set((currentItems) => {
-              const items = currentItems.items.map((item) =>
+            set((currentItems) => ({
+              items: currentItems.items.map((item) =>
                 item.itemId === event.itemId
                   ? applyDelta(item, event.field, event.delta)
                   : item,
-              );
-
-              const updated = items.find(
-                (item) => item.itemId === event.itemId,
-              );
-
-              if (updated === undefined || updated.kind !== "reasoning") {
-                return { items };
-              }
-
-              const kept = currentItems.thinkingSnapshots[updated.itemId] ?? [];
-
-              return {
-                items,
-                thinkingSnapshots:
-                  summarySize(updated.summary) > summarySize(kept)
-                    ? {
-                        ...currentItems.thinkingSnapshots,
-                        [updated.itemId]: [...updated.summary],
-                      }
-                    : currentItems.thinkingSnapshots,
-              };
-            });
+              ),
+            }));
             break;
 
           case "approval": {
@@ -1259,6 +1238,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
               streaming: false,
               streamingTurnId: "",
               streamingStartedAt: 0,
+              livePreview:
+                current.livePreview === null
+                  ? null
+                  : { ...current.livePreview, active: false },
               turnDurations: {
                 ...current.turnDurations,
                 [event.turnId]: event.durationMs > 0 ? event.durationMs : 0,
@@ -1285,6 +1268,27 @@ export const useChatStore = create<ChatState>()((set, get) => ({
                 event.receipt,
               ].slice(-3),
             }));
+            break;
+
+          case "preview":
+            if (event.base64Data !== "" && event.mediaType !== "") {
+              const preview = {
+                itemId: event.itemId,
+                mediaType: event.mediaType,
+                base64Data: event.base64Data,
+                active: false,
+              };
+
+              set((current) => ({
+                livePreview: {
+                  ...preview,
+                },
+                livePreviews: {
+                  ...current.livePreviews,
+                  [event.itemId]: preview,
+                },
+              }));
+            }
             break;
         }
       });

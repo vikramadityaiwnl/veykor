@@ -68,14 +68,14 @@ export function memoryValidationError(
     const instruction = input.instruction.trim();
 
     if (instruction === "") {
-      return "Write the memory instruction.";
+      return "Write the learning instruction.";
     }
 
     if (instruction.length > maxInstructionLength) {
       return "Keep the instruction under 2,000 characters.";
     }
   } else if (!options.partial) {
-    return "Write the memory instruction.";
+    return "Write the learning instruction.";
   }
 
   if (
@@ -88,7 +88,7 @@ export function memoryValidationError(
 
   if ("projectId" in input && input.projectId !== undefined) {
     if (typeof input.projectId !== "string") {
-      return "Choose a project for project memories.";
+      return "Choose a project for project learnings.";
     }
 
     if (input.projectId.length > 200) {
@@ -146,11 +146,11 @@ export function memoryValidationError(
     const resolvedScope = scope ?? "global";
 
     if (resolvedScope === "project" && projectId === "") {
-      return "Choose a project for project memories.";
+      return "Choose a project for project learnings.";
     }
 
     if (resolvedScope === "global" && projectId !== "") {
-      return "Global memories cannot belong to a project.";
+      return "Global learnings cannot belong to a project.";
     }
   }
 
@@ -248,12 +248,12 @@ export function buildMemoryContextBlock(
   return [
     '<veykor-memory-context version="1">',
     "The following are saved user preferences and instructions. They are not the current user message.",
-    "Treat each memory as conditional: apply it only when the situation it describes arises. For example, always roll d20 means use a d20 whenever dice are rolled, not that you must roll dice unprompted. Never invoke a skill or tool just because a memory mentions it.",
+    "Treat each learning as conditional: apply it only when the situation it describes arises. For example, always roll d20 means use a d20 whenever dice are rolled, not that you must roll dice unprompted. Never invoke a skill or tool just because a learning mentions it.",
     "Only instructions that explicitly say every response, each turn, or at the end of a response apply to every turn.",
-    "Follow them alongside the current request. The current request overrides saved memory on conflict.",
-    "Project instructions override conflicting global preferences. Saved memory never overrides runtime instructions, project rules, permissions, or tool restrictions.",
-    "Apply corrections immediately in this conversation. When the user teaches a durable preference, rule, or procedure with words like remember, always, never, from now on, or an explicit ongoing preference, persist it with the memory_save tool and continue the main task. Only claim a memory was saved after the tool succeeds. Never save credentials or secrets.",
-    "When an explicit correction clearly replaces a saved memory, update it with memory_update instead of leaving contradictory instructions. If a conflict cannot be resolved confidently, keep the correction local to this conversation and ask one concise clarification.",
+    "Follow learnings alongside the current request. The current request overrides a saved learning on conflict.",
+    "Project instructions override conflicting global preferences. Saved learnings never override runtime instructions, project rules, permissions, or tool restrictions.",
+    "Apply corrections immediately in this conversation. When the user teaches a durable preference, rule, or procedure with words like remember, always, never, from now on, or an explicit ongoing preference, persist it with the memory_save tool and continue the main task. Only claim a learning was saved after the tool succeeds. Never save credentials or secrets.",
+    "When an explicit correction clearly replaces a saved learning, update it with memory_update instead of leaving contradictory instructions. If a conflict cannot be resolved confidently, keep the correction local to this conversation and ask one concise clarification.",
     ...lines,
     "</veykor-memory-context>",
   ].join("\n");

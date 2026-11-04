@@ -42,7 +42,7 @@ export const useMemoryStore = create<MemoryState>()((set, get) => ({
       set({
         loading: false,
         error:
-          cause instanceof Error ? cause.message : "Unable to load memories.",
+          cause instanceof Error ? cause.message : "Unable to load learnings.",
       });
     }
   },
