@@ -32,6 +32,9 @@ const {
   shareInterruption,
   pumpTeamJobs,
   readTeamChat,
+  updateTeamTodos,
+  queueTeamInput,
+  removeQueuedTeamInput,
 } = await import("../../src/teams/team-runtime.ts");
 
 const owner = db
@@ -571,6 +574,42 @@ test("linked sessions coordinate, share interruptions, isolate ownership and pre
           input.text.includes("Manual turn admission failed"),
       ),
     );
+
+    updateTeamTodos(main, [
+      { text: "Plan implementation", status: "completed" },
+    ]);
+    updateTeamTodos(plannerRow, [
+      { text: "Check edge cases", status: "in_progress" },
+    ]);
+    const lists = teamSnapshot(main).members;
+    assert.equal(
+      lists.find((member) => member.id === main.id)?.todos[0].text,
+      "Plan implementation",
+    );
+    assert.equal(
+      lists.find((member) => member.id === planner.id)?.todos[0].text,
+      "Check edge cases",
+    );
+    updateTeamTodos(plannerRow, []);
+    assert.equal(
+      teamSnapshot(main).members.find((member) => member.id === planner.id)
+        ?.todos.length,
+      0,
+    );
+    assert.equal(
+      teamSnapshot(main).members.find((member) => member.id === main.id)?.todos
+        .length,
+      1,
+    );
+    const queuedInput = queueTeamInput(plannerRow, "Queued user follow-up", []);
+    assert.equal(
+      teamSnapshot(main).members.find((member) => member.id === planner.id)
+        ?.queuedMessages[0].text,
+      "Queued user follow-up",
+    );
+    assert.equal(removeQueuedTeamInput(main, queuedInput.id), false);
+    assert.equal(removeQueuedTeamInput(plannerRow, queuedInput.id), true);
+    assert.equal(removeQueuedTeamInput(plannerRow, queuedInput.id), false);
 
     const outsider = db
       .insert(chats)

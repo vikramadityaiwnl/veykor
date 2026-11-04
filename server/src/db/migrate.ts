@@ -147,6 +147,8 @@ export function runMigrations(sqlite: Database.Database): void {
     ["task", ""],
     ["team_status", "idle"],
     ["team_error", ""],
+    ["todos", "[]"],
+    ["native_todo_snapshot", ""],
     ["agent_snapshot", "{}"],
     ["agent_context", ""],
     ["mcp_snapshot", "[]"],
@@ -179,6 +181,22 @@ export function runMigrations(sqlite: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS team_jobs_status_idx ON team_jobs(status, created_at);
   `);
+
+  const jobColumns = sqlite.prepare("PRAGMA table_info(team_jobs)").all() as {
+    name: string;
+  }[];
+
+  if (!jobColumns.some((column) => column.name === "images")) {
+    sqlite.exec(
+      "ALTER TABLE team_jobs ADD COLUMN images TEXT NOT NULL DEFAULT '[]'",
+    );
+  }
+
+  if (!jobColumns.some((column) => column.name === "user_visible")) {
+    sqlite.exec(
+      "ALTER TABLE team_jobs ADD COLUMN user_visible INTEGER NOT NULL DEFAULT 0",
+    );
+  }
 
   sqlite
     .prepare(

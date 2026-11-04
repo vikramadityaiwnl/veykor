@@ -152,3 +152,94 @@ test("a delayed start acknowledgement cannot restart a turn after its terminal e
     museHost.subscribe = subscribe;
   }
 });
+
+test("durable terminal history releases a turn when its live completion was missed", async () => {
+  const { readMuseChat, isMuseTurnRunning } =
+    await import("../../src/muse/chat-service.ts");
+  const connection = museHost.connection;
+  const subscribe = museHost.subscribe;
+  const events: string[] = [];
+  const todos: unknown[][] = [];
+  let notify!: (event: MuseNotification) => void;
+  museHost.subscribe = (_id, listener) => {
+    notify = listener;
+    return () => {};
+  };
+  museHost.connection = async () =>
+    ({
+      command: async (method: string) => {
+        if (method === "turn/start") {
+          queueMicrotask(() => {
+            notify({ method: "turn/started", params: { turnId: "recovered" } });
+            notify({
+              method: "session/todoListChanged",
+              params: {
+                items: [{ text: "Verify", status: "completed" }],
+                revision: 1,
+              },
+            });
+            notify({
+              method: "session/todoListChanged",
+              params: { items: [], revision: 2 },
+            });
+          });
+          return { turnId: "recovered" };
+        }
+        return { session: {}, history: { items: [] } };
+      },
+      request: async (method: string) =>
+        method === "view/page"
+          ? {
+              events: [
+                {
+                  method: "turn/completed",
+                  params: {
+                    turnId: "recovered",
+                    terminal: "completed",
+                    durationMs: 0,
+                  },
+                },
+              ],
+            }
+          : { approvals: [] },
+    }) as unknown as Connection;
+
+  try {
+    const pending = runMuseTurn({
+      museSessionId: "recovery",
+      text: "hello",
+      images: [],
+      onEvent: (event) => {
+        events.push(event.type);
+      },
+      onTodoSnapshot: (snapshot) => {
+        todos.push(snapshot.items);
+      },
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(isMuseTurnRunning("recovery"), true);
+    const detail = await readMuseChat({
+      id: "recovery",
+      title: "",
+      sectionId: "",
+      projectId: "",
+      agentId: "",
+      agentName: "",
+      museSessionId: "recovery",
+      running: true,
+      createdAt: "",
+      updatedAt: "",
+    });
+    await pending;
+    assert.equal(detail.running, false);
+    assert.equal(isMuseTurnRunning("recovery"), false);
+    assert.equal(
+      events.filter((event) => event === "turn-completed").length,
+      1,
+    );
+    assert.deepEqual(todos, [[{ text: "Verify", status: "completed" }], []]);
+  } finally {
+    museHost.connection = connection;
+    museHost.subscribe = subscribe;
+  }
+});

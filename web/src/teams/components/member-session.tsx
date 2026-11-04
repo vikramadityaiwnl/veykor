@@ -10,6 +10,7 @@ import { StopIcon } from "@heroicons/react/24/solid";
 import type { ChatDetail, ChatImageInput, TeamMember } from "@veykor/shared";
 import {
   cancelTurn,
+  queueTurn,
   fetchChat,
   steerTurn,
   streamTurn,
@@ -28,7 +29,11 @@ import LoadingSpinner from "../../components/loading-spinner/loading-spinner.tsx
 import { useTeamStore } from "../team-store.ts";
 import AgentAvatar from "../../agents/components/agent-avatar.tsx";
 import { useMemberDictation } from "../../chat/hooks/use-member-dictation.ts";
-import MemberApproval from "./member-approval.tsx";
+import ComposerFrame from "../../chat/components/composer-frame.tsx";
+import { composerAction } from "../../chat/composer-mode.ts";
+import { usePreferencesStore } from "../../workspace/preferences-store.ts";
+import { reconcileMemberSnapshot } from "../member-snapshot.ts";
+import MemberComposerPanel from "./member-composer-panel.tsx";
 
 interface Props {
   active: boolean;
@@ -54,6 +59,27 @@ function MemberSession(props: Props) {
   const requestRunRef = useRef(0);
   const turnRequestRef = useRef<AbortController | null>(null);
   const voice = useMemberDictation(draft, setDraft, props.active);
+  const interruption = usePreferencesStore(
+    (state) => state.interruptionBehavior,
+  );
+  const running =
+    detail?.running === true &&
+    !(
+      detail.activeTurnId &&
+      Object.hasOwn(detail.turnDurations, detail.activeTurnId)
+    );
+  const hasInput = draft.trim() !== "" || attachments.length > 0;
+  const action = composerAction(running, hasInput, interruption);
+  const taskCount = useTeamStore((state) =>
+    state.snapshot.members.reduce(
+      (count, member) => count + member.todos.length,
+      0,
+    ),
+  );
+  const panelOpen =
+    taskCount > 0 ||
+    props.member.queuedMessages.length > 0 ||
+    (detail?.pendingApprovals.length ?? 0) > 0;
 
   useEffect(() => {
     let alive = true;
@@ -105,7 +131,7 @@ function MemberSession(props: Props) {
     let alive = true;
     const accept = (snapshot: ChatDetail) => {
       if (alive) {
-        setDetail(snapshot);
+        setDetail((current) => reconcileMemberSnapshot(current, snapshot));
         setError("");
       }
     };
@@ -133,7 +159,7 @@ function MemberSession(props: Props) {
     const snapshot = await fetchChat(props.member.id);
 
     if (liveRef.current) {
-      setDetail(snapshot);
+      setDetail((current) => reconcileMemberSnapshot(current, snapshot));
     }
   }
 
@@ -195,12 +221,16 @@ function MemberSession(props: Props) {
     }));
 
     try {
-      if (detail.running) {
-        await steerTurn(props.member.id, {
-          text,
-          images,
-          expectedTurnId: detail.activeTurnId,
-        });
+      if (running) {
+        if (interruption === "queue") {
+          await queueTurn(props.member.id, text, images);
+        } else {
+          await steerTurn(props.member.id, {
+            text,
+            images,
+            expectedTurnId: detail.activeTurnId,
+          });
+        }
         acceptMessage();
       } else {
         await streamTurn(
@@ -361,7 +391,7 @@ function MemberSession(props: Props) {
         <MessageList
           imageUrls={sentImages}
           items={detail.items}
-          streaming={detail.running}
+          streaming={running && props.active}
           streamingTurnId={detail.activeTurnId}
           streamingStartedAt={detail.activeTurnStartedAt}
           thinkingSnapshots={{}}
@@ -373,152 +403,156 @@ function MemberSession(props: Props) {
         </div>
       )}
 
-      <div className="max-h-56 space-y-3 overflow-y-auto px-4">
-        {detail?.pendingApprovals.map((approval) => (
-          <MemberApproval
-            key={approval.approvalId}
-            chatId={props.member.id}
-            approval={approval}
-            onDecided={() => {
-              void refresh();
-            }}
-          />
-        ))}
-      </div>
-
-      <div className="shrink-0 space-y-2 p-4">
+      <div className="shrink-0 p-4">
         {(error || voice.error || props.member.error) && (
           <p role="alert" className="text-xs font-light text-rose-400">
             {error || voice.error || props.member.error}
           </p>
         )}
-        <form
-          className="rounded-2xl border border-zinc-700 bg-zinc-900 p-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void send();
+        <MemberComposerPanel
+          member={props.member}
+          approvals={detail?.pendingApprovals ?? []}
+          onDecided={() => {
+            void refresh();
           }}
-        >
-          <textarea
-            disabled={voice.active}
-            aria-label={`Message ${props.member.name}`}
-            placeholder={`Message ${props.member.name}…`}
-            className="max-h-40 w-full resize-none bg-transparent text-sm font-light text-zinc-100 outline-none placeholder:text-zinc-600"
-            rows={2}
-            maxLength={20000}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                void send();
-              }
+        />
+        <ComposerFrame mode="teammate" panelOpen={panelOpen}>
+          <form
+            className="p-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void send();
             }}
-          />
-          {attachments.length > 0 && (
-            <div className="flex flex-wrap gap-2 py-2">
-              {attachments.map((attachment, index) => (
-                <button
-                  type="button"
-                  className="flex items-center gap-1 rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-400"
-                  key={index}
-                  onClick={() =>
-                    setAttachments((current) =>
-                      current.filter((_, position) => position !== index),
-                    )
-                  }
-                >
-                  {attachment.name}
-                  <XMarkIcon className="size-3" />
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="flex items-center justify-between">
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              multiple
-              className="hidden"
-              onChange={(event) => {
-                void addAttachments(event.target.files);
+          >
+            <textarea
+              disabled={voice.active}
+              aria-label={`Message ${props.member.name}`}
+              placeholder={`Message ${props.member.name}…`}
+              className="max-h-40 w-full resize-none bg-transparent text-sm font-light text-zinc-100 outline-none placeholder:text-zinc-600"
+              rows={2}
+              maxLength={20000}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void send();
+                }
               }}
             />
-            <div className="flex min-w-0 items-center gap-1">
-              <button
-                type="button"
-                title="Attach images"
-                aria-label="Attach images to agent message"
-                className="rounded-full p-2 text-zinc-500 hover:text-zinc-100"
-                onClick={() => fileRef.current?.click()}
-              >
-                <PaperClipIcon className="size-4" />
-              </button>
-              <button
-                type="button"
-                disabled
-                aria-label={`Assigned agent: ${props.member.name}`}
-                title={props.member.name}
-                className="flex min-w-0 cursor-not-allowed items-center gap-2 rounded-lg px-2 py-1 text-xs font-light text-zinc-500"
-              >
-                <AgentAvatar name={props.member.name} size={24} />
-                <span className="truncate">{props.member.name}</span>
-                <ChevronDownIcon
-                  aria-hidden="true"
-                  className="size-3 shrink-0"
-                />
-              </button>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                aria-label={voice.active ? "Stop dictation" : "Voice input"}
-                title={voice.active ? "Stop dictation" : "Voice input"}
-                className={`rounded-full p-2 ${voice.active ? "text-red-400" : "text-zinc-400 hover:text-zinc-100"}`}
-                onClick={() => {
-                  void voice.toggle();
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 py-2">
+                {attachments.map((attachment, index) => (
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-400"
+                    key={index}
+                    onClick={() =>
+                      setAttachments((current) =>
+                        current.filter((_, position) => position !== index),
+                      )
+                    }
+                  >
+                    {attachment.name}
+                    <XMarkIcon className="size-3" />
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                multiple
+                className="hidden"
+                onChange={(event) => {
+                  void addAttachments(event.target.files);
                 }}
-              >
-                {voice.phase === "connecting" || voice.phase === "stopping" ? (
-                  <LoadingSpinner />
-                ) : voice.active ? (
-                  <StopIcon className="size-4" />
-                ) : (
-                  <MicrophoneIcon className="size-4" />
-                )}
-              </button>
-              {detail?.running && (
+              />
+              <div className="flex min-w-0 items-center gap-1">
                 <button
                   type="button"
-                  title={`Stop ${props.member.name}`}
-                  className="rounded-full bg-red-600 p-2 text-white hover:bg-red-500"
+                  title="Attach images"
+                  aria-label="Attach images to agent message"
+                  className="rounded-full p-2 text-zinc-500 hover:text-zinc-100"
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <PaperClipIcon className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  aria-label={`Assigned agent: ${props.member.name}`}
+                  title={props.member.name}
+                  className="flex min-w-0 cursor-not-allowed items-center gap-2 rounded-lg px-2 py-1 text-xs font-light text-zinc-500"
+                >
+                  <AgentAvatar name={props.member.name} size={24} />
+                  <span className="truncate">{props.member.name}</span>
+                  <ChevronDownIcon
+                    aria-hidden="true"
+                    className="size-3 shrink-0"
+                  />
+                </button>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  aria-label={voice.active ? "Stop dictation" : "Voice input"}
+                  title={voice.active ? "Stop dictation" : "Voice input"}
+                  className={`rounded-full p-2 ${voice.active ? "text-red-400" : "text-zinc-400 hover:text-zinc-100"}`}
                   onClick={() => {
-                    void stop();
+                    void voice.toggle();
                   }}
                 >
-                  <StopIcon className="size-4" />
+                  {voice.phase === "connecting" ||
+                  voice.phase === "stopping" ? (
+                    <LoadingSpinner />
+                  ) : voice.active ? (
+                    <StopIcon className="size-4" />
+                  ) : (
+                    <MicrophoneIcon className="size-4" />
+                  )}
                 </button>
-              )}
-              <button
-                type="submit"
-                title={
-                  detail?.running ? "Steer this agent" : "Send to this agent"
-                }
-                disabled={
-                  pending || !detail || (!draft.trim() && !attachments.length)
-                }
-                className="rounded-full bg-zinc-100 p-2 text-zinc-950 disabled:opacity-40"
-              >
-                {pending ? (
-                  <LoadingSpinner />
+                {action === "stop" ? (
+                  <button
+                    type="button"
+                    title={`Stop ${props.member.name}`}
+                    className="rounded-full bg-red-600 p-2 text-white hover:bg-red-500"
+                    onClick={() => {
+                      void stop();
+                    }}
+                  >
+                    <StopIcon className="size-4" />
+                  </button>
                 ) : (
-                  <ArrowUpIcon className="size-4" />
+                  <button
+                    type="submit"
+                    title={
+                      action === "queue"
+                        ? "Queue message"
+                        : action === "steer"
+                          ? "Steer this agent"
+                          : "Send to this agent"
+                    }
+                    disabled={
+                      pending ||
+                      !detail ||
+                      (!draft.trim() && !attachments.length)
+                    }
+                    className="rounded-full bg-zinc-100 p-2 text-zinc-950 disabled:opacity-40"
+                  >
+                    {pending ? (
+                      <LoadingSpinner />
+                    ) : (
+                      <ArrowUpIcon className="size-4" />
+                    )}
+                  </button>
                 )}
-              </button>
+              </div>
             </div>
-          </div>
-        </form>
+          </form>
+        </ComposerFrame>
       </div>
     </section>
   );

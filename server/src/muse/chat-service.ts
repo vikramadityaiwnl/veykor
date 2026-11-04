@@ -230,7 +230,44 @@ export async function startMuseSession(
   return { sessionId };
 }
 
-const activeTurns = new Map<string, { turnId: string; startedAt: number }>();
+interface TurnOutcome {
+  terminal: string;
+  error: string;
+  durationMs: number;
+}
+
+export interface NativeTodoSnapshot {
+  items: unknown[];
+  revision: number;
+  sourceTool: string;
+}
+
+interface ActiveTurn {
+  turnId: string;
+  startedAt: number;
+  finish?: (outcome: TurnOutcome) => void;
+}
+
+function turnOutcome(params: Record<string, unknown>): TurnOutcome {
+  const failure = record(params["error"]);
+  const duration = params["durationMs"];
+
+  return {
+    terminal: text(params["terminal"]),
+    error: text(failure["message"]) || text(params["reason"]),
+    durationMs: typeof duration === "number" && duration > 0 ? duration : 0,
+  };
+}
+
+function nativeTodos(value: Record<string, unknown>): NativeTodoSnapshot {
+  return {
+    items: list(value["items"] ?? value["todos"]),
+    revision: typeof value["revision"] === "number" ? value["revision"] : 0,
+    sourceTool: text(value["sourceTool"]),
+  };
+}
+
+const activeTurns = new Map<string, ActiveTurn>();
 
 export function activeMuseTurn(museSessionId: string): string {
   return activeTurns.get(museSessionId)?.turnId ?? "";
@@ -242,7 +279,10 @@ export function isMuseTurnRunning(museSessionId: string): boolean {
 
 export async function readMuseChat(
   chat: ChatSummary,
-  options: { mcpServers?: Record<string, SessionMcpServerConfig> } = {},
+  options: {
+    mcpServers?: Record<string, SessionMcpServerConfig>;
+    onTodoSnapshot?: (snapshot: NativeTodoSnapshot) => void;
+  } = {},
 ): Promise<Omit<ChatDetail, "chat">> {
   const connection = await museHost.connection();
 
@@ -262,6 +302,13 @@ export async function readMuseChat(
   const history = record(resumed["history"]);
   const snapshot = record(history["snapshot"]);
   const snapshotState = record(snapshot["state"]);
+  if (
+    typeof snapshotState["todoList"] === "object" &&
+    snapshotState["todoList"] !== null
+  ) {
+    options.onTodoSnapshot?.(nativeTodos(record(snapshotState["todoList"])));
+  }
+  const terminals = new Map<string, TurnOutcome>();
   const items = list(history["items"] ?? snapshotState["items"])
     .map(toHistoryItem)
     .filter(
@@ -270,16 +317,27 @@ export async function readMuseChat(
         item.text !== "" ||
         item.attachments.length > 0,
     );
-  const turnDurations = await readTurnDurations(async (cursor) =>
-    record(
+  const turnDurations = await readTurnDurations(async (cursor) => {
+    const page = record(
       await connection.request("view/page", {
         sessionId: chat.museSessionId,
         direction: "forward",
         limit: 1000,
         ...(cursor === "" ? {} : { cursor }),
       }),
-    ),
-  );
+    );
+
+    for (const raw of list(page["events"])) {
+      const event = record(raw);
+      const params = record(event["params"]);
+
+      if (event["method"] === "turn/completed" && text(params["turnId"])) {
+        terminals.set(text(params["turnId"]), turnOutcome(params));
+      }
+    }
+
+    return page;
+  });
 
   const pending = await connection.request("approval/listPending", {
     sessionId: chat.museSessionId,
@@ -290,8 +348,13 @@ export async function readMuseChat(
   const approvalMode = record(session["approvalMode"]);
   const activeTurn = activeTurns.get(chat.museSessionId);
 
-  if (activeTurn && Object.hasOwn(turnDurations, activeTurn.turnId)) {
-    activeTurns.delete(chat.museSessionId);
+  const terminal = activeTurn ? terminals.get(activeTurn.turnId) : undefined;
+
+  if (activeTurn && terminal) {
+    activeTurn.finish?.(terminal);
+    if (activeTurns.get(chat.museSessionId) === activeTurn) {
+      activeTurns.delete(chat.museSessionId);
+    }
   }
 
   return {
@@ -486,6 +549,7 @@ export async function runMuseTurn(input: {
   displayText?: string;
   reasoningEffort?: string;
   onEvent: (event: TurnEvent) => void | Promise<void>;
+  onTodoSnapshot?: (snapshot: NativeTodoSnapshot) => void;
 }): Promise<string> {
   const connection = await museHost.connection();
 
@@ -529,7 +593,7 @@ export async function runMuseTurn(input: {
     throw new Error("A turn is already running in this chat.");
   }
 
-  const activeTurn = { turnId: "", startedAt: Date.now() };
+  const activeTurn: ActiveTurn = { turnId: "", startedAt: Date.now() };
 
   activeTurns.set(input.museSessionId, activeTurn);
 
@@ -641,7 +705,10 @@ export async function runMuseTurn(input: {
             }
 
             if (notification.method === "session/todoListChanged") {
-              const todos = list(notification.params["todos"]).map(record);
+              const snapshot = nativeTodos(notification.params);
+              const todos = snapshot.items.map(record);
+
+              input.onTodoSnapshot?.(snapshot);
 
               await input.onEvent({ type: "todos", todos });
               return;
@@ -655,20 +722,7 @@ export async function runMuseTurn(input: {
               }
 
               if (finished !== "" && finished === turnId) {
-                terminalReceived = true;
-                unsubscribe();
-
-                const failure = record(notification.params["error"]);
-                const detail = text(failure["message"]);
-                const reason = text(notification.params["reason"]);
-                const duration = notification.params["durationMs"];
-
-                resolve({
-                  terminal: text(notification.params["terminal"]),
-                  error: detail !== "" ? detail : reason,
-                  durationMs:
-                    typeof duration === "number" && duration > 0 ? duration : 0,
-                });
+                activeTurn.finish?.(turnOutcome(notification.params));
               }
             }
           } catch (cause) {
@@ -678,6 +732,16 @@ export async function runMuseTurn(input: {
         })();
       },
     );
+
+    activeTurn.finish = (outcome) => {
+      if (terminalReceived) {
+        return;
+      }
+
+      terminalReceived = true;
+      unsubscribe();
+      resolve(outcome);
+    };
 
     void connection
       .command("turn/start", params)

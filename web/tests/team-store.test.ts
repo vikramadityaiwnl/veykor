@@ -15,6 +15,8 @@ function snapshot(rootId: string, name: string): TeamSnapshot {
         status: "idle",
         error: "",
         isMain: true,
+        todos: [],
+        queuedMessages: [],
       },
     ],
     events: [],
@@ -70,4 +72,50 @@ test("selecting the main conversation preserves open member tabs", () => {
 
   assert.equal(useTeamStore.getState().selectedId, "tester");
   assert.deepEqual(useTeamStore.getState().tabs, ["tester"]);
+});
+
+test("team tabs restore per chat and discard deleted members", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "localStorage",
+  );
+  const storage = new Map<string, string>();
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+    },
+  });
+  const team = snapshot("persist", "tester");
+  team.members[0].isMain = false;
+  globalThis.fetch = async () => Response.json(team);
+  let cleanup = () => {};
+
+  try {
+    cleanup = useTeamStore.getState().watch("persist");
+    await new Promise((resolve) => setImmediate(resolve));
+    useTeamStore.getState().select("tester");
+    cleanup();
+    cleanup = useTeamStore.getState().watch("elsewhere");
+    assert.equal(useTeamStore.getState().selectedId, "");
+    cleanup();
+    cleanup = useTeamStore.getState().watch("persist");
+    assert.equal(useTeamStore.getState().selectedId, "tester");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(useTeamStore.getState().tabs, ["tester"]);
+    team.members = [];
+    await useTeamStore.getState().refresh();
+    assert.equal(useTeamStore.getState().selectedId, "");
+    assert.deepEqual(useTeamStore.getState().tabs, []);
+  } finally {
+    cleanup();
+    globalThis.fetch = originalFetch;
+    if (originalStorage) {
+      Object.defineProperty(globalThis, "localStorage", originalStorage);
+    } else {
+      Reflect.deleteProperty(globalThis, "localStorage");
+    }
+  }
 });

@@ -9,6 +9,8 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   ownedChat,
   canonicalTeamChat,
+  queueTeamInput,
+  removeQueuedTeamInput,
   beginTeamDeletion,
   runTeamTurn,
   readTeamChat,
@@ -550,6 +552,45 @@ chatRoute.delete("/:id", requireAuth, async (c) => {
     return museFailure(c, cause);
   } finally {
     release();
+  }
+
+  return c.json({ deleted: true });
+});
+
+chatRoute.post("/:id/queue", requireAuth, async (c) => {
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row) {
+    return c.json({ error: "Chat not found" }, 404);
+  }
+
+  const body = await readJson(c);
+  const text = typeof body.text === "string" ? body.text : "";
+  const parsed = readTurnImages(Array.isArray(body.images) ? body.images : []);
+
+  if (
+    text.length > maxTextLength ||
+    parsed.error ||
+    (!text.trim() && parsed.images.length === 0)
+  ) {
+    return c.json(
+      {
+        error:
+          parsed.error ||
+          "Provide a message under 20,000 characters or attach an image.",
+      },
+      400,
+    );
+  }
+
+  return c.json(queueTeamInput(row, text, parsed.images), 202);
+});
+
+chatRoute.delete("/:id/queue/:jobId", requireAuth, (c) => {
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row || !removeQueuedTeamInput(row, c.req.param("jobId"))) {
+    return c.json({ error: "Queued message not found." }, 404);
   }
 
   return c.json({ deleted: true });

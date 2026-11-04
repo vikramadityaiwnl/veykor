@@ -17,6 +17,7 @@ import {
   teamRoot,
   teamRows,
   teamSnapshot,
+  updateTeamTodos,
 } from "./team-runtime.js";
 
 async function readBody(c: Context): Promise<Record<string, unknown>> {
@@ -91,6 +92,35 @@ const tools = [
       type: "object",
       properties: { memberId: { type: "string" }, message: { type: "string" } },
       required: ["memberId", "message"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "team_update_todos",
+    description:
+      "Replace your own todo checklist. Other teammates keep separate lists and can see yours through team_read. Update statuses as work progresses; send an empty array to clear only your own list.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        items: {
+          type: "array",
+          maxItems: 100,
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              text: { type: "string", minLength: 1, maxLength: 1000 },
+              status: {
+                type: "string",
+                enum: ["pending", "in_progress", "completed", "cancelled"],
+              },
+            },
+            required: ["text", "status"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["items"],
       additionalProperties: false,
     },
   },
@@ -187,6 +217,8 @@ teamMcpRoute.post("/:id", async (c) => {
       }
 
       result = messageTeamMember(row, args.memberId, args.message);
+    } else if (params?.name === "team_update_todos") {
+      result = { todos: updateTeamTodos(row, args.items) };
     } else if (params?.name === "team_read_session") {
       const member = teamRows(row).find((entry) => entry.id === args.memberId);
 

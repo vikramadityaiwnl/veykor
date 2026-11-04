@@ -16,6 +16,41 @@ interface TeamState {
   watch: (rootId: string) => () => void;
 }
 
+function savedView(rootId: string): { tabs: string[]; selectedId: string } {
+  try {
+    const value = JSON.parse(
+      localStorage.getItem(`veykor:team-view:${rootId}`) ?? "{}",
+    );
+    const tabs = Array.isArray(value.tabs)
+      ? value.tabs.filter((id: unknown) => typeof id === "string")
+      : [];
+    return {
+      tabs,
+      selectedId:
+        typeof value.selectedId === "string" && tabs.includes(value.selectedId)
+          ? value.selectedId
+          : "",
+    };
+  } catch {
+    return { tabs: [], selectedId: "" };
+  }
+}
+
+function saveView(state: TeamState) {
+  if (!state.rootId) {
+    return;
+  }
+
+  try {
+    localStorage.setItem(
+      `veykor:team-view:${state.rootId}`,
+      JSON.stringify({ tabs: state.tabs, selectedId: state.selectedId }),
+    );
+  } catch {
+    return;
+  }
+}
+
 const emptyTeam: TeamSnapshot = {
   rootId: "",
   members: [],
@@ -32,6 +67,7 @@ export const useTeamStore = create<TeamState>((set, get) => ({
   select: (id) => {
     if (!id) {
       set({ selectedId: "" });
+      saveView(get());
       return;
     }
 
@@ -39,6 +75,7 @@ export const useTeamStore = create<TeamState>((set, get) => ({
       selectedId: id,
       tabs: state.tabs.includes(id) ? state.tabs : [...state.tabs, id],
     }));
+    saveView(get());
   },
   close: (id) => {
     set((state) => {
@@ -50,6 +87,7 @@ export const useTeamStore = create<TeamState>((set, get) => ({
           state.selectedId === id ? (tabs.at(-1) ?? "") : state.selectedId,
       };
     });
+    saveView(get());
   },
   refresh: async () => {
     const rootId = get().rootId;
@@ -97,6 +135,7 @@ export const useTeamStore = create<TeamState>((set, get) => ({
                 : resolve(state.selectedId),
           };
         });
+        saveView(get());
       }
     } catch (cause) {
       if (get().rootId === rootId && generation === watchGeneration) {
@@ -114,8 +153,7 @@ export const useTeamStore = create<TeamState>((set, get) => ({
     set({
       rootId,
       snapshot: { ...emptyTeam, rootId },
-      selectedId: "",
-      tabs: [],
+      ...savedView(rootId),
       error: "",
     });
 

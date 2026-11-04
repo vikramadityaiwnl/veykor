@@ -337,6 +337,29 @@ export async function decideApproval(
   );
 }
 
+export async function queueTurn(
+  id: string,
+  text: string,
+  images: TurnImageInput[],
+): Promise<{ id: string }> {
+  return requestJson<{ id: string }>(
+    `${chatPaths.chat(id)}/queue`,
+    { method: "POST", body: JSON.stringify({ text, images }) },
+    true,
+  );
+}
+
+export async function removeQueuedTurn(
+  id: string,
+  jobId: string,
+): Promise<void> {
+  await requestJson<void>(
+    `${chatPaths.chat(id)}/queue/${encodeURIComponent(jobId)}`,
+    { method: "DELETE" },
+    false,
+  );
+}
+
 export async function cancelTurn(id: string, turnId: string): Promise<void> {
   await requestJson<void>(
     chatPaths.cancelTurn(id, turnId),

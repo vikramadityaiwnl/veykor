@@ -42,6 +42,8 @@ export const chats = sqliteTable("chats", {
   task: text("task").notNull().default(""),
   teamStatus: text("team_status").notNull().default("idle"),
   teamError: text("team_error").notNull().default(""),
+  todos: text("todos").notNull().default("[]"),
+  nativeTodoSnapshot: text("native_todo_snapshot").notNull().default(""),
   agentSnapshot: text("agent_snapshot").notNull().default("{}"),
   agentContext: text("agent_context").notNull().default(""),
   mcpSnapshot: text("mcp_snapshot").notNull().default("[]"),
@@ -125,6 +127,8 @@ export const teamJobs = sqliteTable("team_jobs", {
     .default("")
     .references(() => chats.id, { onDelete: "cascade" }),
   text: text("text").notNull().default(""),
+  images: text("images").notNull().default("[]"),
+  userVisible: integer("user_visible").notNull().default(0),
   status: text("status").notNull().default("pending"),
   createdAt: text("created_at").notNull().default(""),
 });
