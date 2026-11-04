@@ -242,6 +242,7 @@ export interface NativeTodoSnapshot {
 interface ActiveTurn {
   turnId: string;
   startedAt: number;
+  retarget?: (turnId: string) => Promise<void>;
   finish?: (outcome: TurnOutcome) => void;
 }
 
@@ -872,7 +873,42 @@ export async function steerMuseTurn(input: {
     params["reasoningEffort"] = input.reasoningEffort;
   }
 
-  await connection.command("turn/steer", params);
+  const ack = await connection.command("turn/steer", params);
+  const steeredTurnId = text(ack["turnId"]);
+
+  if (steeredTurnId !== "") {
+    const current = activeTurns.get(input.museSessionId);
+
+    if (current) {
+      if (current.turnId !== steeredTurnId) {
+        if (current.retarget) {
+          await current.retarget(steeredTurnId);
+        } else {
+          current.turnId = steeredTurnId;
+          current.startedAt = Date.now();
+        }
+      }
+    } else {
+      activeTurns.set(input.museSessionId, {
+        turnId: steeredTurnId,
+        startedAt: Date.now(),
+      });
+
+      const unsubscribe = museHost.subscribe(
+        input.museSessionId,
+        (notification) => {
+          if (
+            notification.method === "turn/completed" &&
+            text(notification.params["turnId"]) === steeredTurnId &&
+            activeTurns.get(input.museSessionId)?.turnId === steeredTurnId
+          ) {
+            activeTurns.delete(input.museSessionId);
+            unsubscribe();
+          }
+        },
+      );
+    }
+  }
 }
 
 export async function runMuseTurn(input: {
@@ -1033,6 +1069,8 @@ export async function runMuseTurn(input: {
     });
   }
 
+  activeTurn.retarget = announceTurn;
+
   const completion = new Promise<{
     terminal: string;
     error: string;
@@ -1052,7 +1090,7 @@ export async function runMuseTurn(input: {
             if (
               turnId !== "" &&
               eventTurnId !== "" &&
-              eventTurnId !== turnId &&
+              eventTurnId !== activeTurn.turnId &&
               notification.method !== "approval/requested" &&
               notification.method !== "approval/resolved" &&
               notification.method !== "session/todoListChanged"
@@ -1161,11 +1199,12 @@ export async function runMuseTurn(input: {
             if (notification.method === "turn/completed") {
               const finished = text(notification.params["turnId"]);
 
-              if (turnId === "" && finished !== "") {
+              if (activeTurn.turnId === "" && finished !== "") {
                 turnId = finished;
+                activeTurn.turnId = finished;
               }
 
-              if (finished !== "" && finished === turnId) {
+              if (finished !== "" && finished === activeTurn.turnId) {
                 activeTurn.finish?.(turnOutcome(notification.params));
               }
             }

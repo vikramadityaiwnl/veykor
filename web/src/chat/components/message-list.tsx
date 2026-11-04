@@ -61,11 +61,19 @@ function allocateImages(
   return assigned;
 }
 
+function hasVisibleUserText(text: string): boolean {
+  return text.replace(/\[Image #\d+\]/g, "").trim() !== "";
+}
+
 function collectUserTurns(items: Array<ChatHistoryItem>): Set<string> {
   const turns = new Set<string>();
 
   for (const item of items) {
-    if (item.kind === "userMessage" && item.turnId !== null) {
+    if (
+      item.kind === "userMessage" &&
+      item.turnId !== null &&
+      (hasVisibleUserText(item.text) || item.attachments.length > 0)
+    ) {
       turns.add(item.turnId);
     }
   }
@@ -486,6 +494,10 @@ function MessageList(props: Props) {
 
   function renderItem(item: ChatHistoryItem) {
     if (item.kind === "userMessage") {
+      if (!hasVisibleUserText(item.text) && item.attachments.length === 0) {
+        return null;
+      }
+
       return (
         <Fragment key={item.itemId}>
           <UserMessage
