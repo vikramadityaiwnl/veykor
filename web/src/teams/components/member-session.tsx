@@ -12,6 +12,8 @@ import {
   cancelTurn,
   queueTurn,
   fetchChat,
+  fetchQueuedTurn,
+  removeQueuedTurn,
   steerTurn,
   streamTurn,
   subscribeChat,
@@ -80,6 +82,7 @@ function MemberSession(props: Props) {
     taskCount > 0 ||
     props.member.queuedMessages.length > 0 ||
     (detail?.pendingApprovals.length ?? 0) > 0;
+  const composerError = error || voice.error || props.member.error;
 
   useEffect(() => {
     let alive = true;
@@ -124,6 +127,12 @@ function MemberSession(props: Props) {
   }, [props.member.id]);
 
   useEffect(() => {
+    if (composerError !== "") {
+      console.log(composerError);
+    }
+  }, [composerError]);
+
+  useEffect(() => {
     if (!props.active) {
       return;
     }
@@ -163,8 +172,24 @@ function MemberSession(props: Props) {
     }
   }
 
-  async function send() {
-    if ((!draft.trim() && attachments.length === 0) || pending || !detail) {
+  async function send(override?: { text: string; images: ChatImageInput[] }) {
+    if (pending || !detail) {
+      return;
+    }
+
+    if (
+      override !== undefined &&
+      override.text.trim() === "" &&
+      override.images.length === 0
+    ) {
+      return;
+    }
+
+    if (
+      override === undefined &&
+      draft.trim() === "" &&
+      attachments.length === 0
+    ) {
       return;
     }
 
@@ -177,25 +202,39 @@ function MemberSession(props: Props) {
 
     turnRequestRef.current = controller;
     const sentAttachments = [...attachments];
+    const overrideAttachments: Attachment[] = (override?.images ?? []).map(
+      (image) => ({
+        id: crypto.randomUUID(),
+        name: "queued-image",
+        mediaType: image.mediaType,
+        base64Data: image.base64Data,
+      }),
+    );
 
     function acceptMessage() {
-      setDraft((current) => (current === text ? "" : current));
-      setAttachments((current) =>
-        current.filter(
-          (attachment) =>
-            !sentAttachments.some((sent) => sent.id === attachment.id),
-        ),
-      );
+      if (override === undefined) {
+        setDraft((current) => (current === text ? "" : current));
+        setAttachments((current) =>
+          current.filter(
+            (attachment) =>
+              !sentAttachments.some((sent) => sent.id === attachment.id),
+          ),
+        );
+      }
+
+      const delivered =
+        override === undefined ? sentAttachments : overrideAttachments;
+
       setPending(false);
       setSentImages((current) => [
         ...current,
-        ...sentAttachments.map((attachment) => ({
+        ...delivered.map((attachment) => ({
           id: attachment.id,
           url: `data:${attachment.mediaType};base64,${attachment.base64Data}`,
         })),
       ]);
       void Promise.all(
-        sentAttachments.map((attachment) =>
+        delivered.map((attachment) =>
           saveAttachment({
             id: attachment.id,
             name: attachment.name,
@@ -207,18 +246,21 @@ function MemberSession(props: Props) {
         .then(() =>
           appendChatAttachmentIds(
             props.member.id,
-            sentAttachments.map((attachment) => attachment.id),
+            delivered.map((attachment) => attachment.id),
           ),
         )
         .catch(() => {});
     }
 
-    const dictated = voice.active ? await voice.stop() : null;
-    const text = dictated ?? draft;
-    const images: ChatImageInput[] = attachments.map((attachment) => ({
-      mediaType: attachment.mediaType,
-      base64Data: attachment.base64Data,
-    }));
+    const dictated =
+      override === undefined && voice.active ? await voice.stop() : null;
+    const text = override?.text ?? dictated ?? draft;
+    const images: ChatImageInput[] =
+      override?.images ??
+      attachments.map((attachment) => ({
+        mediaType: attachment.mediaType,
+        base64Data: attachment.base64Data,
+      }));
 
     try {
       if (running) {
@@ -314,6 +356,68 @@ function MemberSession(props: Props) {
     }
   }
 
+  async function steerQueuedMessage(id: string) {
+    if (detail === null) {
+      return;
+    }
+
+    setError("");
+
+    try {
+      const item = await fetchQueuedTurn(props.member.id, id);
+
+      if (running && detail.activeTurnId !== "") {
+        await steerTurn(props.member.id, {
+          text: item.text,
+          images: item.images,
+          expectedTurnId: detail.activeTurnId,
+        });
+        await removeQueuedTurn(props.member.id, id);
+        await refresh();
+        await useTeamStore.getState().refresh();
+      } else {
+        await removeQueuedTurn(props.member.id, id);
+        await send({ text: item.text, images: item.images });
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to steer this message.",
+      );
+    }
+  }
+
+  async function editQueuedMessage(id: string) {
+    if (detail === null) {
+      return;
+    }
+
+    setError("");
+
+    try {
+      const item = await fetchQueuedTurn(props.member.id, id);
+
+      await removeQueuedTurn(props.member.id, id);
+
+      setDraft(item.text);
+      setAttachments(
+        item.images.map((image) => ({
+          id: crypto.randomUUID(),
+          name: "queued-image",
+          mediaType: image.mediaType,
+          base64Data: image.base64Data,
+        })),
+      );
+
+      await useTeamStore.getState().refresh();
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Unable to edit this message.",
+      );
+    }
+  }
+
   async function stop() {
     if (!detail?.activeTurnId) {
       return;
@@ -404,16 +508,17 @@ function MemberSession(props: Props) {
       )}
 
       <div className="shrink-0 p-4">
-        {(error || voice.error || props.member.error) && (
-          <p role="alert" className="text-xs font-light text-rose-400">
-            {error || voice.error || props.member.error}
-          </p>
-        )}
         <MemberComposerPanel
           member={props.member}
           approvals={detail?.pendingApprovals ?? []}
           onDecided={() => {
             void refresh();
+          }}
+          onSteerQueuedMessage={(id) => {
+            void steerQueuedMessage(id);
+          }}
+          onEditQueuedMessage={(id) => {
+            void editQueuedMessage(id);
           }}
         />
         <ComposerFrame mode="teammate" panelOpen={panelOpen}>

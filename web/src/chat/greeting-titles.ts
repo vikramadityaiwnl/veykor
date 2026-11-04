@@ -1,33 +1,33 @@
 const morningTitles = [
-  "Good morning, what are we building today?",
-  "Morning! What is on your mind?",
-  "Good morning from veykor, ready when you are",
-  "Rise and shine, what shall we work on?",
-  "A fresh morning for fresh ideas",
+  "Good morning, what is on your mind?",
+  "Morning! What would you like to ask?",
+  "Good morning from veykor, ready to chat",
+  "Rise and shine, what are you curious about?",
+  "A fresh morning for good questions",
 ];
 
 const afternoonTitles = [
   "Good afternoon, how can veykor help?",
-  "Afternoon! What are we tackling next?",
+  "Afternoon! What is on your mind?",
   "Hope your day is going well, what is up?",
-  "Good afternoon, ready for the next task?",
-  "Let us make this afternoon count",
+  "Good afternoon, what would you like to know?",
+  "Ask away, veykor is listening",
 ];
 
 const eveningTitles = [
-  "Good evening, what are we creating tonight?",
+  "Good evening, what are you wondering tonight?",
   "Evening! How can veykor help?",
   "Winding down or just getting started?",
   "Good evening, what is on your mind?",
-  "Let us end the day on a high note",
+  "Settle in, what shall we talk about?",
 ];
 
 const nightTitles = [
-  "Up late? veykor is here to help",
-  "Burning the midnight oil, I see",
-  "Quiet hours are the best for building",
-  "Still awake? Let us get something done",
-  "Night owl mode, what are we working on?",
+  "Up late? veykor is here to chat",
+  "Still up? What is on your mind?",
+  "Night owl mode, what are you curious about?",
+  "Cannot sleep? Let us talk it through",
+  "Late night questions welcome here",
 ];
 
 export function greetingTitlesFor(now: Date): Array<string> {

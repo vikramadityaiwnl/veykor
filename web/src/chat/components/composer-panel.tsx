@@ -40,50 +40,79 @@ function ComposerPanel() {
   const current =
     pendingApprovals.length > 0 ? pendingApprovals[clamped] : null;
 
+  const showApprovals = current !== null && current !== undefined;
+  const showQueue = queuedMessages.length > 0;
+  const showTasks = taskCount > 0;
+
+  const first = showApprovals ? "approvals" : showQueue ? "queue" : "tasks";
+  const last = showTasks ? "tasks" : showQueue ? "queue" : "approvals";
+
   return (
-    <ComposerActivityPanel
-      approvalCount={pendingApprovals.length}
-      queueCount={queuedMessages.length}
-      taskCount={taskCount}
-      controls={
-        pendingApprovals.length > 1 ? (
-          <div className="flex items-center gap-1">
-            <button
-              className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-              onClick={() => setIndex(Math.max(clamped - 1, 0))}
-              title="Previous approval"
-              type="button"
-            >
-              <ChevronLeftIcon className="size-4" />
-            </button>
+    <>
+      {showApprovals ? (
+        <ComposerActivityPanel
+          controls={
+            pendingApprovals.length > 1 ? (
+              <div className="flex items-center gap-1">
+                <button
+                  className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                  onClick={() => setIndex(Math.max(clamped - 1, 0))}
+                  title="Previous approval"
+                  type="button"
+                >
+                  <ChevronLeftIcon className="size-4" />
+                </button>
 
-            <span className="text-xs text-zinc-500">
-              {clamped + 1} of {pendingApprovals.length}
-            </span>
+                <span className="text-xs text-zinc-500">
+                  {clamped + 1} of {pendingApprovals.length}
+                </span>
 
-            <button
-              className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-              onClick={() =>
-                setIndex(Math.min(clamped + 1, pendingApprovals.length - 1))
-              }
-              title="Next approval"
-              type="button"
-            >
-              <ChevronRightIcon className="size-4" />
-            </button>
-          </div>
-        ) : null
-      }
-    >
-      {current !== null && current !== undefined ? (
-        <div className="border-t border-zinc-800 pt-3">
-          <ApprovalCard approval={current} />
-        </div>
+                <button
+                  className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                  onClick={() =>
+                    setIndex(Math.min(clamped + 1, pendingApprovals.length - 1))
+                  }
+                  title="Next approval"
+                  type="button"
+                >
+                  <ChevronRightIcon className="size-4" />
+                </button>
+              </div>
+            ) : null
+          }
+          count={pendingApprovals.length}
+          first={first === "approvals"}
+          last={last === "approvals"}
+          title="Needs your approval"
+        >
+          {current !== null && current !== undefined ? (
+            <ApprovalCard approval={current} />
+          ) : null}
+        </ComposerActivityPanel>
       ) : null}
 
-      <QueuedMessages />
-      <TeamTodos memberId={activeChatId ?? ""} />
-    </ComposerActivityPanel>
+      {showQueue ? (
+        <ComposerActivityPanel
+          count={queuedMessages.length}
+          first={first === "queue"}
+          last={last === "queue"}
+          title="Queued messages"
+        >
+          <QueuedMessages />
+        </ComposerActivityPanel>
+      ) : null}
+
+      {showTasks ? (
+        <ComposerActivityPanel
+          count={taskCount}
+          first={first === "tasks"}
+          last={last === "tasks"}
+          title="Team tasks"
+        >
+          <TeamTodos memberId={activeChatId ?? ""} />
+        </ComposerActivityPanel>
+      ) : null}
+    </>
   );
 }
 

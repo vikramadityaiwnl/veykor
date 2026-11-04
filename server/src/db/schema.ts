@@ -130,5 +130,6 @@ export const teamJobs = sqliteTable("team_jobs", {
   images: text("images").notNull().default("[]"),
   userVisible: integer("user_visible").notNull().default(0),
   status: text("status").notNull().default("pending"),
+  sortOrder: integer("sort_order").notNull().default(0),
   createdAt: text("created_at").notNull().default(""),
 });

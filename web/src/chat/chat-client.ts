@@ -343,9 +343,29 @@ export async function queueTurn(
   images: TurnImageInput[],
 ): Promise<{ id: string }> {
   return requestJson<{ id: string }>(
-    `${chatPaths.chat(id)}/queue`,
+    chatPaths.queue(id),
     { method: "POST", body: JSON.stringify({ text, images }) },
     true,
+  );
+}
+
+export async function fetchQueuedTurn(
+  id: string,
+  jobId: string,
+): Promise<{ id: string; text: string; images: TurnImageInput[] }> {
+  return fetchJson<{ id: string; text: string; images: TurnImageInput[] }>(
+    chatPaths.queuedTurn(id, jobId),
+  );
+}
+
+export async function reorderQueuedTurns(
+  id: string,
+  ids: Array<string>,
+): Promise<void> {
+  await requestJson<void>(
+    chatPaths.queueOrder(id),
+    { method: "PATCH", body: JSON.stringify({ ids }) },
+    false,
   );
 }
 
@@ -354,7 +374,7 @@ export async function removeQueuedTurn(
   jobId: string,
 ): Promise<void> {
   await requestJson<void>(
-    `${chatPaths.chat(id)}/queue/${encodeURIComponent(jobId)}`,
+    chatPaths.queuedTurn(id, jobId),
     { method: "DELETE" },
     false,
   );

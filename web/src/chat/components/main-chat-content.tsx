@@ -8,7 +8,7 @@ import ChatComposer from "./chat-composer.tsx";
 import ChatNotFound from "./chat-not-found.tsx";
 import GreetingHeader from "./greeting-header.tsx";
 import MessageList from "./message-list.tsx";
-import SessionLoader from "./session-loader.tsx";
+import LoadingSpinner from "../../components/loading-spinner/loading-spinner.tsx";
 
 function MainChatContent() {
   const projectId = useWorkStore((state) => state.projectId);
@@ -30,7 +30,6 @@ function MainChatContent() {
   const thinkingSnapshots = useChatStore((state) => state.thinkingSnapshots);
   const turnDurations = useChatStore((state) => state.turnDurations);
   const error = useChatStore((state) => state.error);
-  const clearError = useChatStore((state) => state.clearError);
   const loadCatalog = useChatStore((state) => state.loadCatalog);
   const syncDraftPreferences = useChatStore(
     (state) => state.syncDraftPreferences,
@@ -46,6 +45,12 @@ function MainChatContent() {
       syncDraftPreferences();
     }
   }, [prefsLoaded, activeChatId, syncDraftPreferences]);
+
+  useEffect(() => {
+    if (error !== "") {
+      console.log(error);
+    }
+  }, [error]);
 
   const imageUrls =
     activeChatId === null ? [] : (sentAttachments[activeChatId] ?? []);
@@ -73,8 +78,8 @@ function MainChatContent() {
           {projectId ? <ProjectGreeting /> : <GreetingHeader key={draftSeq} />}
         </div>
       ) : historyLoading ? (
-        <div className="grid flex-1 place-items-center px-6">
-          <SessionLoader />
+        <div className="grid flex-1 place-items-center text-zinc-500">
+          <LoadingSpinner />
         </div>
       ) : (
         <MessageList
@@ -86,23 +91,6 @@ function MainChatContent() {
           turnDurations={turnDurations}
           streamingStartedAt={streamingStartedAt}
         />
-      )}
-
-      {error !== "" && !historyLoading && (
-        <div
-          className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 pb-2"
-          role="alert"
-        >
-          <p className="text-sm font-light text-rose-400">{error}</p>
-
-          <button
-            className="shrink-0 rounded-lg px-2 py-1 text-xs font-light text-zinc-400 hover:text-zinc-200"
-            onClick={clearError}
-            type="button"
-          >
-            Dismiss
-          </button>
-        </div>
       )}
 
       <ChatComposer key={projectId} />

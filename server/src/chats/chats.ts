@@ -10,7 +10,9 @@ import {
   ownedChat,
   canonicalTeamChat,
   queueTeamInput,
+  readQueuedTeamInput,
   removeQueuedTeamInput,
+  reorderQueuedTeamInput,
   beginTeamDeletion,
   runTeamTurn,
   readTeamChat,
@@ -594,6 +596,39 @@ chatRoute.delete("/:id/queue/:jobId", requireAuth, (c) => {
   }
 
   return c.json({ deleted: true });
+});
+
+chatRoute.get("/:id/queue/:jobId", requireAuth, (c) => {
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row) {
+    return c.json({ error: "Chat not found" }, 404);
+  }
+
+  const job = readQueuedTeamInput(row, c.req.param("jobId"));
+
+  if (!job) {
+    return c.json({ error: "Queued message not found." }, 404);
+  }
+
+  return c.json(job);
+});
+
+chatRoute.patch("/:id/queue/order", requireAuth, async (c) => {
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row) {
+    return c.json({ error: "Chat not found" }, 404);
+  }
+
+  const body = await readJson(c);
+  const ids = Array.isArray(body.ids) ? body.ids : [];
+
+  if (!reorderQueuedTeamInput(row, ids)) {
+    return c.json({ error: "That queue order does not match." }, 400);
+  }
+
+  return c.json({ ordered: true });
 });
 
 chatRoute.post("/:id/turns", requireAuth, async (c) => {

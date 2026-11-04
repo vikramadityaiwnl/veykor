@@ -119,7 +119,7 @@ function ProjectSessions(props: Props) {
           className="px-2 py-1.5 text-xs font-light text-zinc-500 hover:text-zinc-200"
           onClick={() => setShowAll(!showAll)}
         >
-          {showAll ? "Show less" : `Show more (${sessions.length - 5})`}
+          {showAll ? "Show less" : `Show ${sessions.length - 5} more`}
         </button>
       )}
 

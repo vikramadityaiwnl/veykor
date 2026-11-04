@@ -9,6 +9,8 @@ interface Props {
   member: TeamMember;
   approvals: ChatApprovalRequest[];
   onDecided: () => void;
+  onSteerQueuedMessage: (id: string) => void;
+  onEditQueuedMessage: (id: string) => void;
 }
 
 function MemberComposerPanel(props: Props) {
@@ -19,24 +21,61 @@ function MemberComposerPanel(props: Props) {
     ),
   );
 
+  const showApprovals = props.approvals.length > 0;
+  const showQueue = props.member.queuedMessages.length > 0;
+  const showTasks = taskCount > 0;
+
+  const first = showApprovals ? "approvals" : showQueue ? "queue" : "tasks";
+  const last = showTasks ? "tasks" : showQueue ? "queue" : "approvals";
+
   return (
-    <ComposerActivityPanel
-      approvalCount={props.approvals.length}
-      queueCount={props.member.queuedMessages.length}
-      taskCount={taskCount}
-    >
-      {props.approvals.map((approval) => (
-        <div key={approval.approvalId} className="px-4 py-3">
-          <MemberApproval
-            chatId={props.member.id}
-            approval={approval}
-            onDecided={props.onDecided}
+    <>
+      {showApprovals ? (
+        <ComposerActivityPanel
+          count={props.approvals.length}
+          first={first === "approvals"}
+          last={last === "approvals"}
+          title="Needs your approval"
+        >
+          <div className="space-y-3 px-4 pb-3">
+            {props.approvals.map((approval) => (
+              <MemberApproval
+                key={approval.approvalId}
+                chatId={props.member.id}
+                approval={approval}
+                onDecided={props.onDecided}
+              />
+            ))}
+          </div>
+        </ComposerActivityPanel>
+      ) : null}
+
+      {showQueue ? (
+        <ComposerActivityPanel
+          count={props.member.queuedMessages.length}
+          first={first === "queue"}
+          last={last === "queue"}
+          title="Queued messages"
+        >
+          <MemberQueue
+            member={props.member}
+            onEdit={props.onEditQueuedMessage}
+            onSteer={props.onSteerQueuedMessage}
           />
-        </div>
-      ))}
-      <MemberQueue member={props.member} />
-      <TeamTodos memberId={props.member.id} />
-    </ComposerActivityPanel>
+        </ComposerActivityPanel>
+      ) : null}
+
+      {showTasks ? (
+        <ComposerActivityPanel
+          count={taskCount}
+          first={first === "tasks"}
+          last={last === "tasks"}
+          title="Team tasks"
+        >
+          <TeamTodos memberId={props.member.id} />
+        </ComposerActivityPanel>
+      ) : null}
+    </>
   );
 }
 

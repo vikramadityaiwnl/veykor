@@ -107,6 +107,12 @@ function ChatComposer(props: Props) {
   }
 
   useEffect(() => {
+    if (voiceError !== "") {
+      console.log(voiceError);
+    }
+  }, [voiceError]);
+
+  useEffect(() => {
     if (composerRestore.seq === 0) {
       return;
     }
@@ -323,12 +329,6 @@ function ChatComposer(props: Props) {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-4">
-      {voiceError !== "" && (
-        <p className="pb-2 text-sm font-light text-rose-400" role="alert">
-          {voiceError}
-        </p>
-      )}
-
       <ComposerPanel />
 
       <ComposerFrame

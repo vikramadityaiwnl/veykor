@@ -19,7 +19,7 @@ function TeamTodos(props: Props) {
   }
 
   return (
-    <div aria-label="Shared team tasks" className="space-y-4 px-4 py-3">
+    <div aria-label="Shared team tasks" className="space-y-4 px-4 pb-3">
       {lists.map((member) => (
         <section
           key={member.id}

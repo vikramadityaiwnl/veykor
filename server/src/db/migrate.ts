@@ -198,6 +198,12 @@ export function runMigrations(sqlite: Database.Database): void {
     );
   }
 
+  if (!jobColumns.some((column) => column.name === "sort_order")) {
+    sqlite.exec(
+      "ALTER TABLE team_jobs ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+
   sqlite
     .prepare(
       "INSERT OR IGNORE INTO preferences (user_id, data) SELECT id, ? FROM users",

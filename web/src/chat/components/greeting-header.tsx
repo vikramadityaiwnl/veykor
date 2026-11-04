@@ -15,7 +15,7 @@ function GreetingHeader() {
         <h2 className="text-xl font-semibold text-zinc-100">{title}</h2>
 
         <p className="text-sm font-light text-zinc-400">
-          Ask anything or build something new with veykor.
+          Ask anything or think something through with veykor.
         </p>
       </div>
     </div>

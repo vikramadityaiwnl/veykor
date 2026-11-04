@@ -1,6 +1,6 @@
 import { teamMessageInput, readTeamMessage } from "./team-messages.js";
 import { randomBytes, randomUUID } from "node:crypto";
-import { and, asc, desc, eq, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, max, or, sql } from "drizzle-orm";
 import type { SessionMcpServerConfig } from "@muse-code/sdk/dist/src/msp.js";
 import {
   normalizeTeamTodos,
@@ -210,6 +210,7 @@ function teamMember(row: TeamChat): TeamMember {
         ),
       )
       .orderBy(
+        asc(teamJobs.sortOrder),
         asc(teamJobs.createdAt),
         asc(
           sql`cast(substr(${teamJobs.id}, 1, instr(${teamJobs.id}, ':') - 1) as integer)`,
@@ -295,6 +296,59 @@ function syncNativeTodos(row: TeamChat, snapshot: NativeTodoSnapshot): void {
   }
 }
 
+function nextQueueSortOrder(targetId: string): number {
+  const peak = db
+    .select({ value: max(teamJobs.sortOrder) })
+    .from(teamJobs)
+    .where(and(eq(teamJobs.targetId, targetId), eq(teamJobs.status, "pending")))
+    .get();
+
+  return (peak?.value ?? 0) + 1;
+}
+
+function pendingQueuedJobs(targetId: string) {
+  return db
+    .select()
+    .from(teamJobs)
+    .where(
+      and(
+        eq(teamJobs.targetId, targetId),
+        eq(teamJobs.userVisible, 1),
+        eq(teamJobs.status, "pending"),
+      ),
+    )
+    .all();
+}
+
+function queuedImages(value: string): ChatImageInput[] {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return [];
+  }
+
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+
+  return parsed.flatMap((entry) => {
+    if (
+      typeof entry !== "object" ||
+      entry === null ||
+      typeof (entry as { mediaType?: unknown }).mediaType !== "string" ||
+      typeof (entry as { base64Data?: unknown }).base64Data !== "string"
+    ) {
+      return [];
+    }
+
+    const image = entry as ChatImageInput;
+
+    return image.mediaType === "" || image.base64Data === "" ? [] : [image];
+  });
+}
+
 export function queueTeamInput(
   row: TeamChat,
   text: string,
@@ -313,6 +367,7 @@ export function queueTeamInput(
       text,
       images: JSON.stringify(images),
       userVisible: 1,
+      sortOrder: nextQueueSortOrder(member.id),
       createdAt: event.createdAt,
     })
     .run();
@@ -343,6 +398,63 @@ export function removeQueuedTeamInput(row: TeamChat, id: string): boolean {
     .run();
 
   return result.changes > 0;
+}
+
+export function readQueuedTeamInput(
+  row: TeamChat,
+  id: string,
+): { id: string; text: string; images: ChatImageInput[] } | null {
+  const member = canonicalTeamChat(row);
+  const job = db
+    .select()
+    .from(teamJobs)
+    .where(
+      and(
+        eq(teamJobs.id, id),
+        eq(teamJobs.targetId, member.id),
+        eq(teamJobs.userVisible, 1),
+        eq(teamJobs.status, "pending"),
+      ),
+    )
+    .get();
+
+  if (!job) {
+    return null;
+  }
+
+  return { id: job.id, text: job.text, images: queuedImages(job.images) };
+}
+
+export function reorderQueuedTeamInput(
+  row: TeamChat,
+  ids: Array<string>,
+): boolean {
+  const member = canonicalTeamChat(row);
+  const jobs = pendingQueuedJobs(member.id);
+
+  if (ids.length !== jobs.length) {
+    return false;
+  }
+
+  const known = new Set(jobs.map((job) => job.id));
+  const seen = new Set<string>();
+
+  for (const id of ids) {
+    if (typeof id !== "string" || !known.has(id) || seen.has(id)) {
+      return false;
+    }
+
+    seen.add(id);
+  }
+
+  ids.forEach((id, position) => {
+    db.update(teamJobs)
+      .set({ sortOrder: position + 1 })
+      .where(eq(teamJobs.id, id))
+      .run();
+  });
+
+  return true;
 }
 
 export function teamSnapshot(row: TeamChat): TeamSnapshot {
@@ -513,6 +625,7 @@ function queueEvent(row: TeamChat, targetId: string, event: TeamEvent): void {
       rootId: teamRoot(row),
       targetId,
       text: eventInput(event),
+      sortOrder: nextQueueSortOrder(targetId),
       createdAt: new Date().toISOString(),
     })
     .onConflictDoNothing()
@@ -954,6 +1067,7 @@ export async function pumpTeamJobs(): Promise<void> {
       .from(teamJobs)
       .where(eq(teamJobs.status, "pending"))
       .orderBy(
+        asc(teamJobs.sortOrder),
         asc(teamJobs.createdAt),
         asc(
           sql`cast(substr(${teamJobs.id}, 1, instr(${teamJobs.id}, ':') - 1) as integer)`,

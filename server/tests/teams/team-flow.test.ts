@@ -34,7 +34,9 @@ const {
   readTeamChat,
   updateTeamTodos,
   queueTeamInput,
+  readQueuedTeamInput,
   removeQueuedTeamInput,
+  reorderQueuedTeamInput,
 } = await import("../../src/teams/team-runtime.ts");
 
 const owner = db
@@ -610,6 +612,53 @@ test("linked sessions coordinate, share interruptions, isolate ownership and pre
     assert.equal(removeQueuedTeamInput(main, queuedInput.id), false);
     assert.equal(removeQueuedTeamInput(plannerRow, queuedInput.id), true);
     assert.equal(removeQueuedTeamInput(plannerRow, queuedInput.id), false);
+
+    const firstQueued = queueTeamInput(
+      plannerRow,
+      "First queued follow-up",
+      [],
+    );
+    const secondQueued = queueTeamInput(
+      plannerRow,
+      "Second queued follow-up",
+      [],
+    );
+
+    function plannerQueue(): Array<string> {
+      return (
+        teamSnapshot(main)
+          .members.find((member) => member.id === planner.id)
+          ?.queuedMessages.map((message) => message.text) ?? []
+      );
+    }
+
+    assert.deepEqual(plannerQueue(), [
+      "First queued follow-up",
+      "Second queued follow-up",
+    ]);
+    assert.equal(
+      reorderQueuedTeamInput(plannerRow, [secondQueued.id, firstQueued.id]),
+      true,
+    );
+    assert.deepEqual(plannerQueue(), [
+      "Second queued follow-up",
+      "First queued follow-up",
+    ]);
+    assert.equal(reorderQueuedTeamInput(plannerRow, [firstQueued.id]), false);
+    assert.equal(
+      reorderQueuedTeamInput(plannerRow, [firstQueued.id, firstQueued.id]),
+      false,
+    );
+    assert.equal(reorderQueuedTeamInput(main, [firstQueued.id]), false);
+
+    const stored = readQueuedTeamInput(plannerRow, firstQueued.id);
+
+    assert.equal(stored?.text, "First queued follow-up");
+    assert.deepEqual(stored?.images, []);
+    assert.equal(readQueuedTeamInput(main, firstQueued.id), null);
+
+    assert.equal(removeQueuedTeamInput(plannerRow, firstQueued.id), true);
+    assert.equal(removeQueuedTeamInput(plannerRow, secondQueued.id), true);
 
     const outsider = db
       .insert(chats)

@@ -1,11 +1,16 @@
 import { useState } from "react";
-import { XMarkIcon } from "@heroicons/react/24/outline";
 import type { TeamMember } from "@veykor/shared";
-import { removeQueuedTurn } from "../../chat/chat-client.ts";
+import QueueList from "../../chat/components/queue-list.tsx";
+import {
+  removeQueuedTurn,
+  reorderQueuedTurns,
+} from "../../chat/chat-client.ts";
 import { useTeamStore } from "../team-store.ts";
 
 interface Props {
   member: TeamMember;
+  onSteer: (id: string) => void;
+  onEdit: (id: string) => void;
 }
 
 function MemberQueue(props: Props) {
@@ -25,42 +30,67 @@ function MemberQueue(props: Props) {
     }
   }
 
+  async function reorder(draggedId: string, targetId: string, before: boolean) {
+    const ids = props.member.queuedMessages.map((message) => message.id);
+    const from = ids.indexOf(draggedId);
+    const to = ids.indexOf(targetId);
+
+    if (from === -1 || to === -1) {
+      return;
+    }
+
+    const next = [...ids];
+    const moved = next.splice(from, 1)[0];
+
+    if (moved === undefined) {
+      return;
+    }
+
+    let insertAt = next.indexOf(targetId);
+
+    if (!before) {
+      insertAt += 1;
+    }
+
+    next.splice(insertAt, 0, moved);
+
+    try {
+      await reorderQueuedTurns(props.member.id, next);
+      await useTeamStore.getState().refresh();
+      setError("");
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to reorder these messages.",
+      );
+    }
+  }
+
   if (props.member.queuedMessages.length === 0) {
     return null;
   }
 
   return (
-    <div
-      className="space-y-2 px-4 py-3"
-      aria-label={`${props.member.name} queued messages`}
-    >
-      <p className="text-xs font-semibold text-zinc-400">
-        Queued messages · {props.member.queuedMessages.length}
-      </p>
-      {props.member.queuedMessages.map((message) => (
-        <div
-          key={message.id}
-          className="flex items-start justify-between gap-2 text-xs font-light text-zinc-400"
-        >
-          <p className="line-clamp-2 whitespace-pre-wrap">
-            {message.text ||
-              `${message.imageCount} attached image${message.imageCount === 1 ? "" : "s"}`}
-          </p>
-          <button
-            type="button"
-            title="Remove queued message"
-            aria-label="Remove queued message"
-            className="shrink-0 rounded p-1 hover:bg-zinc-800 hover:text-zinc-100"
-            onClick={() => {
-              void remove(message.id);
-            }}
-          >
-            <XMarkIcon className="size-3" />
-          </button>
-        </div>
-      ))}
-      {error && (
-        <p role="alert" className="text-xs text-rose-400">
+    <div>
+      <QueueList
+        items={props.member.queuedMessages.map((message) => ({
+          id: message.id,
+          text: message.text,
+          imageCount: message.imageCount,
+        }))}
+        onDelete={(id) => {
+          void remove(id);
+        }}
+        onEdit={props.onEdit}
+        onReorder={(draggedId, targetId, before) => {
+          void reorder(draggedId, targetId, before);
+        }}
+        onSteer={props.onSteer}
+      />
+
+      {error !== "" && (
+        <p role="alert" className="px-4 pb-3 text-xs text-rose-400">
           {error}
         </p>
       )}
