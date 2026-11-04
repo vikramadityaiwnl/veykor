@@ -41,3 +41,28 @@ test("duplicate user records render one thought block per turn", () => {
 
   assert.equal([...html.matchAll(/Thought for 78 seconds/g)].length, 1);
 });
+
+test("internal user messages keep the delegated turn's thought block", () => {
+  const internalMessage = {
+    ...userMessage("internal-1"),
+    text: "",
+  };
+  const html = renderToStaticMarkup(
+    createElement(MessageList, {
+      chatId: "chat-1",
+      generatedImages: [],
+      imageUrls: [],
+      hideThinkingByDefault: false,
+      items: [internalMessage],
+      livePreviews: {},
+      questions: [],
+      streaming: false,
+      streamingTurnId: "",
+      streamingStartedAt: 0,
+      turnDurations: { "turn-1": 38000 },
+    }),
+  );
+
+  assert.match(html, /Thought for 38 seconds/);
+  assert.doesNotMatch(html, /Continue after the teammate returns/);
+});

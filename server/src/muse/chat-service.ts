@@ -242,6 +242,7 @@ export interface NativeTodoSnapshot {
 interface ActiveTurn {
   turnId: string;
   startedAt: number;
+  previousTurnIds: Set<string>;
   retarget?: (turnId: string) => Promise<void>;
   finish?: (outcome: TurnOutcome) => void;
 }
@@ -594,6 +595,18 @@ export function activeMuseTurn(museSessionId: string): string {
   return activeTurns.get(museSessionId)?.turnId ?? "";
 }
 
+export function isActiveMuseTurn(
+  museSessionId: string,
+  turnId: string,
+): boolean {
+  const active = activeTurns.get(museSessionId);
+
+  return (
+    active !== undefined &&
+    (active.turnId === turnId || active.previousTurnIds.has(turnId))
+  );
+}
+
 export function isMuseTurnRunning(museSessionId: string): boolean {
   return activeTurns.has(museSessionId);
 }
@@ -829,10 +842,13 @@ export async function cancelMuseTurn(
   turnId: string,
 ): Promise<void> {
   const connection = await museHost.connection();
+  const active = activeTurns.get(museSessionId);
+  const currentTurnId =
+    active?.previousTurnIds.has(turnId) === true ? active.turnId : turnId;
 
   await connection.command("turn/cancel", {
     sessionId: museSessionId,
-    turnId,
+    turnId: currentTurnId,
   });
 }
 
@@ -884,6 +900,9 @@ export async function steerMuseTurn(input: {
         if (current.retarget) {
           await current.retarget(steeredTurnId);
         } else {
+          if (current.turnId !== "") {
+            current.previousTurnIds.add(current.turnId);
+          }
           current.turnId = steeredTurnId;
           current.startedAt = Date.now();
         }
@@ -892,6 +911,7 @@ export async function steerMuseTurn(input: {
       activeTurns.set(input.museSessionId, {
         turnId: steeredTurnId,
         startedAt: Date.now(),
+        previousTurnIds: new Set(),
       });
 
       const unsubscribe = museHost.subscribe(
@@ -1050,13 +1070,21 @@ export async function runMuseTurn(input: {
     throw new Error("A turn is already running in this chat.");
   }
 
-  const activeTurn: ActiveTurn = { turnId: "", startedAt: Date.now() };
+  const activeTurn: ActiveTurn = {
+    turnId: "",
+    startedAt: Date.now(),
+    previousTurnIds: new Set(),
+  };
 
   activeTurns.set(input.museSessionId, activeTurn);
 
   async function announceTurn(id: string) {
     if (terminalReceived || !id || turnId === id) {
       return;
+    }
+
+    if (activeTurn.turnId !== "") {
+      activeTurn.previousTurnIds.add(activeTurn.turnId);
     }
 
     turnId = id;

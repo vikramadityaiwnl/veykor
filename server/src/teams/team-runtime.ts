@@ -37,6 +37,7 @@ import {
   applyChatSettings,
   cancelMuseTurn,
   isMuseTurnRunning,
+  isActiveMuseTurn,
   leaveMuseSession,
   museErrorMessage,
   readMuseChat,
@@ -925,7 +926,7 @@ export async function stopTeamMember(
 ): Promise<void> {
   const active = activeMuseTurn(row.museSessionId);
 
-  if (active && active !== turnId) {
+  if (active && !isActiveMuseTurn(row.museSessionId, turnId)) {
     throw new Error("That turn is no longer running.");
   }
 

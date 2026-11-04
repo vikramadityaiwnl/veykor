@@ -9,8 +9,14 @@ import type { MuseNotification } from "../../src/muse/muse-host.ts";
 
 const folder = mkdtempSync(join(tmpdir(), "veykor-steer-test-"));
 process.env["DATABASE_URL"] = join(folder, "test.db");
-const { activeMuseTurn, isMuseTurnRunning, runMuseTurn, steerMuseTurn } =
-  await import("../../src/muse/chat-service.ts");
+const {
+  activeMuseTurn,
+  cancelMuseTurn,
+  isActiveMuseTurn,
+  isMuseTurnRunning,
+  runMuseTurn,
+  steerMuseTurn,
+} = await import("../../src/muse/chat-service.ts");
 
 test("steered turns stay tracked as running until their terminal event", async () => {
   const connection = museHost.connection;
@@ -226,6 +232,77 @@ test("a replacement start notification retargets the main turn when steer omits 
       isMuseTurnRunning("main-session-with-acknowledgement-gap"),
       false,
     );
+  } finally {
+    museHost.connection = connection;
+    museHost.subscribe = subscribe;
+  }
+});
+
+test("a stale turn id cancels the active steered turn", async () => {
+  const connection = museHost.connection;
+  const subscribe = museHost.subscribe;
+  let notify!: (event: MuseNotification) => void;
+  let resolveInitialTurn!: () => void;
+  let cancelledTurnId = "";
+  const initialTurnStarted = new Promise<void>((resolve) => {
+    resolveInitialTurn = resolve;
+  });
+
+  museHost.subscribe = (_id, listener) => {
+    notify = listener;
+    return () => {};
+  };
+  museHost.connection = async () =>
+    ({
+      command: async (method: string, params: Record<string, unknown>) => {
+        if (method === "turn/start") {
+          return { turnId: "turn-1" };
+        }
+
+        if (method === "turn/steer") {
+          return { turnId: "turn-2" };
+        }
+
+        if (method === "turn/cancel") {
+          cancelledTurnId = String(params["turnId"]);
+        }
+
+        return {};
+      },
+      request: async () => ({ events: [], nextCursor: "" }),
+    }) as unknown as Connection;
+
+  try {
+    const running = runMuseTurn({
+      museSessionId: "cancel-after-steer",
+      previewRoot: folder,
+      text: "Run the main turn.",
+      images: [],
+      onEvent: (event) => {
+        if (event.type === "turn-started" && event.turnId === "turn-1") {
+          resolveInitialTurn();
+        }
+      },
+    });
+
+    await initialTurnStarted;
+    await steerMuseTurn({
+      museSessionId: "cancel-after-steer",
+      expectedTurnId: "turn-1",
+      text: "The teammate finished.",
+      images: [],
+    });
+
+    assert.equal(isActiveMuseTurn("cancel-after-steer", "turn-1"), true);
+    assert.equal(activeMuseTurn("cancel-after-steer"), "turn-2");
+    await cancelMuseTurn("cancel-after-steer", "turn-1");
+    assert.equal(cancelledTurnId, "turn-2");
+
+    notify({
+      method: "turn/completed",
+      params: { turnId: "turn-2", terminal: "cancelled" },
+    });
+    await running;
   } finally {
     museHost.connection = connection;
     museHost.subscribe = subscribe;
