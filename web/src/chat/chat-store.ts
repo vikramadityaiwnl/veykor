@@ -1040,12 +1040,15 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     let chatId = get().activeChatId;
     let failed = false;
 
+    const title = trimmed === "" ? null : titleFromText(trimmed);
+
     try {
       if (chatId === null) {
         const detail = await createChat(
           get().pendingSectionId,
           work.projectId,
           work.agentId,
+          title ?? "",
         );
 
         chatId = detail.chat.id;
@@ -1066,7 +1069,6 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       localTurns.set(chatId, submissionId);
 
       const turnChatId = chatId;
-      const title = trimmed === "" ? null : titleFromText(trimmed);
 
       set((current) => ({
         chats: moveToSectionTop(current.chats, turnChatId, true).map((chat) =>

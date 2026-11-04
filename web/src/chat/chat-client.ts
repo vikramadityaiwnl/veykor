@@ -259,12 +259,13 @@ export async function createChat(
   sectionId: string,
   projectId = "",
   agentId = "",
+  title = "",
 ): Promise<ChatDetail> {
   return requestJson<ChatDetail>(
     chatPaths.chats,
     {
       method: "POST",
-      body: JSON.stringify({ sectionId, projectId, agentId }),
+      body: JSON.stringify({ sectionId, projectId, agentId, title }),
     },
     true,
   );
