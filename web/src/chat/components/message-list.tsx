@@ -326,7 +326,7 @@ function MessageList(props: Props) {
             key={item.itemId}
             screenshot={props.liveScreenshots[item.itemId] ?? null}
             screenshotSrc={
-              props.chatId !== "" && item.tool.includes("take_screenshot")
+              props.chatId !== "" && item.tool.includes("screenshot")
                 ? chatPaths.screenshot(props.chatId, item.itemId)
                 : undefined
             }
@@ -404,7 +404,7 @@ function MessageList(props: Props) {
             key={item.itemId}
             screenshot={props.liveScreenshots[item.itemId] ?? null}
             screenshotSrc={
-              props.chatId !== "" && item.tool.includes("take_screenshot")
+              props.chatId !== "" && item.tool.includes("screenshot")
                 ? chatPaths.screenshot(props.chatId, item.itemId)
                 : undefined
             }

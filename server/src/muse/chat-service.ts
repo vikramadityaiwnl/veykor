@@ -290,17 +290,23 @@ function screenshotRef(
 function screenshotFilePath(payload: unknown, item: ChatHistoryItem): string {
   const raw = record(payload);
   const rawArgs = raw["args"] ?? raw["arguments"];
-  let filePath = "";
+  let args: Record<string, unknown> = {};
 
   if (typeof rawArgs !== "string") {
-    filePath = text(record(rawArgs)["filePath"]);
+    args = record(rawArgs);
   } else {
     try {
-      filePath = text(record(JSON.parse(rawArgs))["filePath"]);
+      args = record(JSON.parse(rawArgs));
     } catch {
-      filePath = "";
+      args = {};
     }
   }
+
+  const filePath =
+    text(args["filePath"]) ||
+    (item.kind === "toolCall" && item.tool.includes("screenshot")
+      ? text(args["path"])
+      : "");
 
   if (filePath !== "") {
     return filePath;
@@ -370,7 +376,7 @@ export async function readScreenshotForItem(
   item: ChatHistoryItem,
   screenshotRoot: string,
 ): Promise<{ mediaType: string; base64Data: string } | null> {
-  if (item.kind !== "toolCall" || !item.tool.includes("take_screenshot")) {
+  if (item.kind !== "toolCall" || !item.tool.includes("screenshot")) {
     return null;
   }
 
@@ -875,8 +881,7 @@ export async function runMuseTurn(input: {
               if (notification.method === "item/completed") {
                 const ref = screenshotRef(payload, item);
                 const filePath =
-                  item.kind === "toolCall" &&
-                  item.tool.includes("take_screenshot")
+                  item.kind === "toolCall" && item.tool.includes("screenshot")
                     ? screenshotFilePath(payload, item)
                     : "";
 
