@@ -45,24 +45,28 @@ function QuestionPanel(props: Props) {
         pending.length > 1 ? (
           <div className="flex items-center gap-1">
             <button
-              className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+              className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
               onClick={() => setIndex(Math.max(clamped - 1, 0))}
-              title="Previous question"
+              aria-label="Previous question request"
+              disabled={clamped === 0}
+              title="Previous request"
               type="button"
             >
               <ChevronLeftIcon className="size-4" />
             </button>
 
             <span className="text-xs text-zinc-500">
-              {clamped + 1} of {pending.length}
+              Request {clamped + 1} of {pending.length}
             </span>
 
             <button
-              className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+              className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
               onClick={() =>
                 setIndex(Math.min(clamped + 1, pending.length - 1))
               }
-              title="Next question"
+              aria-label="Next question request"
+              disabled={clamped === pending.length - 1}
+              title="Next request"
               type="button"
             >
               <ChevronRightIcon className="size-4" />
@@ -70,7 +74,13 @@ function QuestionPanel(props: Props) {
           </div>
         ) : null
       }
-      count={pending.length + attention.length}
+      count={pending.reduce(
+        (total, request) => total + request.questions.length,
+        attention.reduce(
+          (total, request) => total + request.questions.length,
+          0,
+        ),
+      )}
       first={props.first}
       last={props.last}
       title="Questions"

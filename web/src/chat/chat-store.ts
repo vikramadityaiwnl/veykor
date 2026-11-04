@@ -143,7 +143,7 @@ interface ChatState {
     targetId: string,
     before: boolean,
   ) => void;
-  deleteChat: (id: string) => Promise<void>;
+  deleteChat: (id: string) => Promise<boolean>;
   clearError: () => void;
 }
 
@@ -1837,8 +1837,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           error: "",
         });
       }
+      return true;
     } catch (cause) {
       set({ error: errorMessage(cause, "Unable to delete chat.") });
+      return false;
     }
   },
 

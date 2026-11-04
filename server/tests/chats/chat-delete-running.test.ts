@@ -46,6 +46,7 @@ const originalConnection = museHost.connection;
 const originalSubscribe = museHost.subscribe;
 let leaveFails = true;
 let leaveCalls = 0;
+const unloadedSessions = new Map<string, string>();
 let notifyTurn:
   | ((notification: {
       method: string;
@@ -56,7 +57,7 @@ let markStarted: (() => void) | null = null;
 
 museHost.connection = async () =>
   ({
-    command: async (method: string) => {
+    command: async (method: string, params: Record<string, unknown>) => {
       if (method === "turn/start") {
         markStarted?.();
 
@@ -65,6 +66,14 @@ museHost.connection = async () =>
 
       if (method === "session/leave") {
         leaveCalls += 1;
+        const kind = unloadedSessions.get(String(params["sessionId"]));
+
+        if (kind) {
+          throw Object.assign(
+            new Error("Session is unavailable on this host"),
+            { kind },
+          );
+        }
 
         if (leaveFails) {
           throw new Error("Muse leave failed");
@@ -94,7 +103,7 @@ async function deleteChat() {
   });
 }
 
-test("running chat deletion blocks, retains rows on leave failure, then deletes after success", async () => {
+test("chat deletion guards active work and failures while allowing unloaded teams", async () => {
   const started = new Promise<void>((resolve) => {
     markStarted = resolve;
   });
@@ -154,6 +163,40 @@ test("running chat deletion blocks, retains rows on leave failure, then deletes 
         .all().length,
       0,
     );
+    for (const kind of ["sessionNotLoaded", "sessionNotFound"]) {
+      const rootId = `unloaded-${kind}`;
+      const childId = `${rootId}-child`;
+
+      for (const id of [rootId, childId]) {
+        unloadedSessions.set(id, kind);
+        db.insert(chats)
+          .values({
+            id,
+            userId: owner.id,
+            museSessionId: id,
+            parentChatId: id === childId ? rootId : "",
+          })
+          .run();
+      }
+
+      const response = await chatRoute.request(`/${rootId}`, {
+        method: "DELETE",
+        headers: {
+          Cookie: "veykor_session=chat-delete-session",
+          [veykorRequestHeaderName]: veykorRequestHeaderValue,
+        },
+      });
+
+      assert.equal(response.status, 200);
+      assert.equal(
+        db.select().from(chats).where(eq(chats.id, rootId)).all().length,
+        0,
+      );
+      assert.equal(
+        db.select().from(chats).where(eq(chats.id, childId)).all().length,
+        0,
+      );
+    }
   } finally {
     notifyTurn?.({
       method: "turn/completed",

@@ -14,16 +14,9 @@ function QuestionHistoryRecord(props: Props) {
         ? "Cancelled"
         : "No longer waiting";
 
-  const showOrigin = !request.isMain || request.agentName !== "";
-
   return (
     <div className="w-full min-w-0 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
-      <p className="text-[11px] font-light text-zinc-500">
-        {status}
-        {showOrigin
-          ? ` · ${request.agentName === "" ? "teammate" : request.agentName}`
-          : ""}
-      </p>
+      <p className="text-[11px] font-light text-zinc-500">{status}</p>
 
       <div className="mt-2 space-y-2.5">
         {request.questions.map((question) => {

@@ -482,12 +482,25 @@ export async function decideMuseApproval(input: {
 }
 
 export async function leaveMuseSession(museSessionId: string): Promise<void> {
+  if (museSessionId === "") {
+    return;
+  }
+
   const connection = await museHost.connection();
 
-  await connection.command("session/leave", {
-    sessionId: museSessionId,
-    stop: true,
-  });
+  try {
+    await connection.command("session/leave", {
+      sessionId: museSessionId,
+      stop: true,
+    });
+  } catch (cause) {
+    const error = record(cause);
+    const kind = text(error["kind"]) || text(record(error["data"])["kind"]);
+
+    if (kind !== "sessionNotLoaded" && kind !== "sessionNotFound") {
+      throw cause;
+    }
+  }
 }
 
 export async function cancelMuseTurn(

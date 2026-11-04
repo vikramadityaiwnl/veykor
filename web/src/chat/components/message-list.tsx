@@ -21,7 +21,6 @@ interface Props {
 
 interface TimelineEntry {
   at: string;
-  order: number;
   node: ReactNode;
 }
 
@@ -234,23 +233,37 @@ function MessageList(props: Props) {
 
   const timeline: Array<TimelineEntry> = [];
 
-  props.items.forEach((item, order) => {
+  props.items.forEach((item) => {
     const node = renderItem(item);
 
     if (node !== null) {
-      timeline.push({ at: item.recordedAt || "", order, node });
+      timeline.push({ at: item.recordedAt, node });
     }
   });
 
-  props.questions.forEach((request, index) => {
-    timeline.push({
-      at: request.settledAt || request.createdAt,
-      order: props.items.length + index,
-      node: <QuestionHistoryRecord key={request.id} request={request} />,
-    });
+  const questions = [...props.questions].sort((a, b) => {
+    const first = a.settledAt || a.createdAt;
+    const second = b.settledAt || b.createdAt;
+
+    return first.localeCompare(second);
   });
 
-  timeline.sort((a, b) => a.at.localeCompare(b.at) || a.order - b.order);
+  for (const request of questions) {
+    const at = request.settledAt || request.createdAt;
+    const entry: TimelineEntry = {
+      at,
+      node: <QuestionHistoryRecord key={request.id} request={request} />,
+    };
+    const index = timeline.findIndex(
+      (item) => item.at !== "" && item.at.localeCompare(at) > 0,
+    );
+
+    if (index === -1) {
+      timeline.push(entry);
+    } else {
+      timeline.splice(index, 0, entry);
+    }
+  }
 
   return (
     <div

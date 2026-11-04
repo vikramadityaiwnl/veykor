@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import { customAnswerLabel, customAnswerOptionId } from "@veykor/shared";
 import type {
   AnswerInput,
@@ -36,17 +37,22 @@ function QuestionCard(props: Props) {
   const [draft, setDraft] = useState<QuestionDraft>(() =>
     readQuestionDraft(props.request.id),
   );
+  const [questionIndex, setQuestionIndex] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState("");
 
   const request = props.request;
   const busy = submitting || cancelling;
+  const index = Math.min(
+    questionIndex,
+    Math.max(request.questions.length - 1, 0),
+  );
+  const currentQuestion = request.questions[index];
+  const lastQuestion = index === request.questions.length - 1;
   const remaining = request.questions.filter(
     (question) => !isAnswered(question, draft),
   ).length;
-  const showOrigin =
-    props.hideOrigin !== true && (!request.isMain || request.agentName !== "");
 
   function select(questionId: string, optionId: string) {
     setDraft((current) => {
@@ -264,16 +270,37 @@ function QuestionCard(props: Props) {
 
   return (
     <div className="space-y-4 px-4 pb-3">
-      {showOrigin ? (
-        <p className="text-[11px] font-light text-zinc-500">
-          From {request.agentName === "" ? "teammate" : request.agentName}
-          {request.isMain ? "" : " · delegated agent"}
-        </p>
+      {request.questions.length > 1 ? (
+        <div className="flex items-center justify-between gap-3">
+          <span aria-live="polite" className="text-xs font-light text-zinc-500">
+            Question {index + 1} of {request.questions.length}
+          </span>
+
+          <div className="flex items-center gap-1">
+            <button
+              aria-label="Previous question"
+              className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={busy || index === 0}
+              onClick={() => setQuestionIndex(index - 1)}
+              type="button"
+            >
+              <ChevronLeftIcon className="size-4" />
+            </button>
+
+            <button
+              aria-label="Next question"
+              className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={busy || lastQuestion}
+              onClick={() => setQuestionIndex(index + 1)}
+              type="button"
+            >
+              <ChevronRightIcon className="size-4" />
+            </button>
+          </div>
+        </div>
       ) : null}
 
-      {request.questions.map((question, index) =>
-        questionBlock(question, index),
-      )}
+      {currentQuestion ? questionBlock(currentQuestion, index) : null}
 
       {error !== "" ? (
         <p className="text-xs font-light text-red-400" role="alert">
@@ -281,16 +308,30 @@ function QuestionCard(props: Props) {
         </p>
       ) : null}
 
+      {lastQuestion && remaining > 0 && request.questions.length > 1 ? (
+        <p className="text-xs font-light text-zinc-500">
+          Answer all questions before sending. {remaining} remaining.
+        </p>
+      ) : null}
+
       <div className="flex flex-wrap items-center gap-2">
         <button
           className="rounded-full bg-zinc-100 px-4 py-1.5 text-[13px] font-medium text-zinc-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40 light:hover:bg-zinc-200"
-          disabled={busy || remaining > 0}
-          onClick={() => void handleSubmit()}
+          disabled={busy || (lastQuestion && remaining > 0)}
+          onClick={() => {
+            if (lastQuestion) {
+              void handleSubmit();
+            } else {
+              setQuestionIndex(index + 1);
+            }
+          }}
           type="button"
         >
-          {submitting
-            ? "Sending…"
-            : `Send ${request.questions.length === 1 ? "answer" : "answers"}`}
+          {lastQuestion
+            ? submitting
+              ? "Sending…"
+              : `Send ${request.questions.length === 1 ? "answer" : "answers"}`
+            : "Next"}
         </button>
 
         <button

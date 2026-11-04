@@ -64,19 +64,18 @@ function ProjectSessions(props: Props) {
     setDialog(null);
   }
 
-  function handleConfirmDelete() {
+  async function handleConfirmDelete() {
     if (!deleting) {
       return;
     }
 
-    if (deleting.id === activeChatId) {
-      useChatStore
-        .getState()
-        .startDraft(useChatStore.getState().pendingSectionId);
+    const chatId = deleting.id;
+    const deleted = await removeChat(chatId);
+
+    if (deleted && chatId === activeChatId) {
       navigate(`/work/${props.projectId}`, { replace: true });
     }
 
-    void removeChat(deleting.id);
     setDeleting(null);
   }
 
