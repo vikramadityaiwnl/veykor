@@ -185,6 +185,11 @@ test("default agents seed once and auto-add to new projects", async () => {
         assert.match(agent.instructions, /Conventional Commits/);
       }
 
+      if (agent.name === "Reviewer") {
+        assert.match(agent.instructions, /browser MCP/);
+        assert.match(agent.instructions, /agent device MCP/);
+      }
+
       assert.equal(agent.modelId, config.modelId);
       assert.equal(agent.providerId, config.providerId);
       assert.equal(agent.reasoningEffort, config.reasoningEffort);

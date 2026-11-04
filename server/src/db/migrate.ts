@@ -365,11 +365,10 @@ export function runMigrations(sqlite: Database.Database): void {
       continue;
     }
 
-    const legacyInstructions = legacyDefaultInstructions[definition.name];
+    const legacyInstructions = legacyDefaultInstructions[definition.name] ?? [];
     const untouchedInstructions =
       data["instructions"] === definition.instructions ||
-      (legacyInstructions !== undefined &&
-        data["instructions"] === legacyInstructions);
+      legacyInstructions.some((entry) => entry === data["instructions"]);
     const stockModel =
       data["modelId"] === "" || data["modelId"] === definition.modelId;
 

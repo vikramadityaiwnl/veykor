@@ -127,7 +127,7 @@ test("upgrades untouched default agents without touching customized ones", () =>
         JSON.stringify({
           ...manager,
           description: "Owns branches, commits, pull requests, and releases.",
-          instructions: legacyDefaultInstructions["GitHub Manager"],
+          instructions: legacyDefaultInstructions["GitHub Manager"]?.[0] ?? "",
           modelId: "",
           providerId: "",
           reasoningEffort: "",
