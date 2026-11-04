@@ -96,6 +96,48 @@ test("a member waiting on a question opens its panel tab", async () => {
   }
 });
 
+test("newly delegated members open tabs", async () => {
+  const originalFetch = globalThis.fetch;
+  const team = snapshot("delegated", "Main");
+  globalThis.fetch = async () => Response.json(team);
+  let cleanup = () => {};
+
+  try {
+    useTeamStore.setState({ tabs: [], selectedId: "" });
+    cleanup = useTeamStore.getState().watch("delegated");
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(useTeamStore.getState().tabs, []);
+
+    for (const id of ["coder", "reviewer"]) {
+      team.members.push({
+        id,
+        agentId: `agent-${id}`,
+        name: id,
+        task: "Work",
+        status: "running",
+        error: "",
+        isMain: false,
+        todos: [],
+        queuedMessages: [],
+        pendingQuestions: 0,
+      });
+    }
+
+    await useTeamStore.getState().refresh();
+
+    assert.deepEqual(useTeamStore.getState().tabs, ["coder", "reviewer"]);
+    assert.equal(useTeamStore.getState().selectedId, "coder");
+
+    await useTeamStore.getState().refresh();
+
+    assert.deepEqual(useTeamStore.getState().tabs, ["coder", "reviewer"]);
+  } finally {
+    cleanup();
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("selecting the main conversation preserves open member tabs", () => {
   useTeamStore.setState({ tabs: [], selectedId: "" });
   useTeamStore.getState().select("planner");

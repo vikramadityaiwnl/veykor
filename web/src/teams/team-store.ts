@@ -10,6 +10,7 @@ interface TeamState {
   snapshot: TeamSnapshot;
   selectedId: string;
   tabs: string[];
+  seenIds: Array<string> | null;
   pendingPr: { chatId: string; number: number } | null;
   error: string;
   select: (id: string) => void;
@@ -66,6 +67,7 @@ export const useTeamStore = create<TeamState>((set, get) => ({
   snapshot: emptyTeam,
   selectedId: "",
   tabs: [],
+  seenIds: null,
   pendingPr: null,
   error: "",
   select: (id) => {
@@ -148,7 +150,20 @@ export const useTeamStore = create<TeamState>((set, get) => ({
                 !tabs.includes(member.id),
             )
             .map((member) => member.id);
-          const opened = waiting.length > 0 ? waiting[0] : "";
+          const seen = state.seenIds;
+          const fresh =
+            seen === null
+              ? []
+              : snapshot.members
+                  .filter(
+                    (member) =>
+                      !member.isMain &&
+                      member.id !== snapshot.rootId &&
+                      !seen.includes(member.id),
+                  )
+                  .map((member) => member.id);
+          const opened =
+            waiting.length > 0 ? waiting[0] : fresh.length > 0 ? fresh[0] : "";
           const resolved =
             resolve(state.selectedId) === snapshot.rootId
               ? ""
@@ -157,7 +172,8 @@ export const useTeamStore = create<TeamState>((set, get) => ({
           return {
             snapshot,
             error: "",
-            tabs: [...tabs, ...waiting],
+            seenIds: snapshot.members.map((member) => member.id),
+            tabs: [...new Set([...tabs, ...waiting, ...fresh])],
             selectedId: resolved === "" && opened !== "" ? opened : resolved,
           };
         });
@@ -182,6 +198,7 @@ export const useTeamStore = create<TeamState>((set, get) => ({
       rootId,
       snapshot: { ...emptyTeam, rootId },
       ...savedView(rootId),
+      seenIds: null,
       error: "",
     });
 

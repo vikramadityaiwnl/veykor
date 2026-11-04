@@ -1,8 +1,8 @@
 import { ChatBubbleLeftIcon, FolderIcon } from "@heroicons/react/24/outline";
 import type { TeamMember } from "@veykor/shared";
 import AgentTabs from "../../teams/components/agent-tabs.tsx";
+import AgentStack from "./agent-stack.tsx";
 import GitDiffBadge from "./git-diff-badge.tsx";
-import TeamAvatar from "../../teams/components/team-avatar.tsx";
 
 interface Props {
   title: string;
@@ -50,25 +50,11 @@ function ChatNavbar(props: Props) {
 
         {props.workMode && (
           <div className="flex min-w-0 shrink-0 items-center gap-3">
-            <div
-              className="flex max-w-[45%] min-w-0 items-center gap-1.5 overflow-x-auto px-1.5 py-2"
-              aria-label="Agent avatars"
-            >
-              {props.members.map((member) => (
-                <TeamAvatar
-                  key={member.id}
-                  member={member}
-                  selected={
-                    member.isMain
-                      ? !props.selectedId
-                      : props.selectedId === member.id
-                  }
-                  onSelect={(id) =>
-                    props.onSelectMember(member.isMain ? "" : id)
-                  }
-                />
-              ))}
-            </div>
+            <AgentStack
+              members={props.members}
+              onSelectMember={props.onSelectMember}
+              selectedId={props.selectedId}
+            />
 
             <GitDiffBadge />
           </div>
