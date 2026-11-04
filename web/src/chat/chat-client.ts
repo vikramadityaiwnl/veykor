@@ -13,6 +13,7 @@ import type {
   ChatTurnEvent,
   DecideApprovalRequest,
   GeneratedImageArtifact,
+  PullRequestDetail,
   SteerTurnRequest,
   UpdateChatSettingsRequest,
 } from "@veykor/shared";
@@ -325,6 +326,39 @@ export async function deleteChat(id: string): Promise<void> {
       method: "DELETE",
     },
     false,
+  );
+}
+
+export async function fetchPullRequest(
+  id: string,
+  number: number,
+): Promise<PullRequestDetail> {
+  return fetchJson<PullRequestDetail>(chatPaths.pull(id, number));
+}
+
+export async function mergePullRequest(
+  id: string,
+  number: number,
+): Promise<{ merged: boolean; message: string }> {
+  return requestJson<{ merged: boolean; message: string }>(
+    chatPaths.pullMerge(id, number),
+    {
+      method: "POST",
+    },
+    true,
+  );
+}
+
+export async function closePullRequest(
+  id: string,
+  number: number,
+): Promise<{ closed: boolean; message: string }> {
+  return requestJson<{ closed: boolean; message: string }>(
+    chatPaths.pullClose(id, number),
+    {
+      method: "POST",
+    },
+    true,
   );
 }
 

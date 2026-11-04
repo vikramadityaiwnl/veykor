@@ -18,6 +18,12 @@ export const chatPaths = {
   queueOrder: (id: string) => `/api/chats/${id}/queue/order`,
   approvals: (id: string) => `/api/chats/${id}/approvals`,
   settings: (id: string) => `/api/chats/${id}/settings`,
+  pulls: (id: string) => `/api/chats/${id}/pulls`,
+  pull: (id: string, number: number) => `/api/chats/${id}/pulls/${number}`,
+  pullMerge: (id: string, number: number) =>
+    `/api/chats/${id}/pulls/${number}/merge`,
+  pullClose: (id: string, number: number) =>
+    `/api/chats/${id}/pulls/${number}/close`,
   models: "/api/models",
 } as const;
 

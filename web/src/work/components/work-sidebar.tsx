@@ -6,11 +6,16 @@ import type { MouseEvent } from "react";
 import { defaultProjectSectionId } from "@veykor/shared";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { FolderIcon, PencilIcon, PlusIcon } from "@heroicons/react/24/outline";
+import {
+  Cog6ToothIcon,
+  FolderIcon,
+  PlusIcon,
+} from "@heroicons/react/24/outline";
 import { FolderOpenIcon } from "@heroicons/react/24/solid";
 import { fetchStatus } from "../../auth/auth-client.ts";
 import CollapsibleSection from "../../components/collapsible-section/collapsible-section.tsx";
 import EmptyState from "../../components/empty-state/empty-state.tsx";
+import GitTreeIcon from "../../components/icons/git-tree-icon.tsx";
 import { usePreferencesStore } from "../../workspace/preferences-store.ts";
 import {
   clearableProjectChats,
@@ -192,7 +197,21 @@ function WorkSidebar(props: Props) {
                           ) : (
                             <FolderIcon className="size-4 shrink-0" />
                           )}
-                          <span className="truncate">{project.name}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate">
+                              {project.name}
+                            </span>
+
+                            {project.hasGit && (
+                              <span className="mt-0.5 flex items-center gap-1 text-[11px] font-light text-zinc-500">
+                                <GitTreeIcon className="size-3 shrink-0" />
+
+                                <span className="truncate">
+                                  {project.branch}
+                                </span>
+                              </span>
+                            )}
+                          </span>
                         </button>
 
                         <button
@@ -205,7 +224,7 @@ function WorkSidebar(props: Props) {
                             })
                           }
                         >
-                          <PencilIcon className="size-3.5" />
+                          <Cog6ToothIcon className="size-3.5" />
                         </button>
 
                         <button
@@ -241,7 +260,7 @@ function WorkSidebar(props: Props) {
               kind: "item",
               id: "edit",
               label: "Edit",
-              icon: <PencilIcon className="size-4" />,
+              icon: <Cog6ToothIcon className="size-4" />,
             },
             { kind: "divider" },
             {

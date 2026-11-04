@@ -193,6 +193,7 @@ export function chatSummary(row: TeamChat): ChatSummary {
     agentName: agent.name ?? "",
     museSessionId: row.museSessionId,
     running: isMuseTurnRunning(row.museSessionId),
+    pullRequests: [],
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

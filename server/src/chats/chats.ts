@@ -43,6 +43,14 @@ import type {
 import { museHost } from "../muse/muse-host.js";
 import { requireAuth } from "../auth/auth.js";
 import type { AuthEnv } from "../auth/auth.js";
+import { isHostRequest } from "../auth/host-access.js";
+import { ghPrClose, ghPrMerge, ghPrView } from "../git/git.js";
+import {
+  listPullRequestLinks,
+  pullRequestsForChats,
+  readPullRequestLink,
+  refreshPullRequestMerged,
+} from "../git/pull-request-store.js";
 import { db } from "../db/client.js";
 import { chats } from "../db/schema.js";
 import {
@@ -128,9 +136,25 @@ function toSummary(row: ChatRow): ChatSummary {
     running:
       isMuseTurnRunning(museSessionId) ||
       (!row.parentChatId && teamHasWork(row)),
+    pullRequests: [],
     createdAt: row.createdAt ?? "",
     updatedAt: row.updatedAt ?? "",
   };
+}
+
+function withPullRequests(
+  userId: number,
+  summaries: Array<ChatSummary>,
+): Array<ChatSummary> {
+  const grouped = pullRequestsForChats(
+    userId,
+    summaries.map((summary) => summary.id),
+  );
+
+  return summaries.map((summary) => ({
+    ...summary,
+    pullRequests: grouped.get(summary.id) ?? [],
+  }));
 }
 
 function readChat(userId: number, id: string): ChatRow | undefined {
@@ -286,7 +310,7 @@ chatRoute.get("/", requireAuth, (c) => {
     .orderBy(desc(chats.updatedAt))
     .all();
 
-  return c.json(rows.map(toSummary));
+  return c.json(withPullRequests(c.get("user").id, rows.map(toSummary)));
 });
 
 chatRoute.post("/", requireAuth, async (c) => {
@@ -424,9 +448,10 @@ chatRoute.get("/:id", requireAuth, async (c) => {
 
   try {
     const detail = await readTeamChat(row);
+    const [chat] = withPullRequests(row.userId, [toSummary(row)]);
 
     const response: ChatDetail = {
-      chat: toSummary(row),
+      chat: chat ?? toSummary(row),
       ...detail,
       ...questionState(row),
       generatedImages: generatedImagesForChat(row.id, detail.items),
@@ -615,7 +640,139 @@ chatRoute.patch("/:id", requireAuth, async (c) => {
     return c.json({ error: "Chat not found" }, 404);
   }
 
-  return c.json(toSummary(updated));
+  const [summary] = withPullRequests(row.userId, [toSummary(updated)]);
+
+  return c.json(summary ?? toSummary(updated));
+});
+
+function readPullNumber(value: string): number {
+  const number = Number.parseInt(value, 10);
+
+  return Number.isInteger(number) && number > 0 ? number : 0;
+}
+
+chatRoute.get("/:id/pulls", requireAuth, (c) => {
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row) {
+    return c.json({ error: "Chat not found" }, 404);
+  }
+
+  return c.json(listPullRequestLinks(row.userId, row.id));
+});
+
+chatRoute.get("/:id/pulls/:number", requireAuth, (c) => {
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row) {
+    return c.json({ error: "Chat not found" }, 404);
+  }
+
+  const number = readPullNumber(c.req.param("number"));
+  const link =
+    number === 0 ? undefined : readPullRequestLink(row.userId, row.id, number);
+
+  if (!link) {
+    return c.json({ error: "Pull request not found." }, 404);
+  }
+
+  try {
+    const detail = ghPrView(link.repo, link.number);
+
+    refreshPullRequestMerged(row.userId, row.id, link.number, detail.merged);
+
+    return c.json(detail);
+  } catch (cause) {
+    return c.json(
+      {
+        error:
+          cause instanceof Error
+            ? cause.message
+            : "Unable to load this pull request.",
+      },
+      502,
+    );
+  }
+});
+
+chatRoute.post("/:id/pulls/:number/merge", requireAuth, (c) => {
+  if (!isHostRequest(c)) {
+    return c.json(
+      { error: "Pull requests can only be merged on the host computer." },
+      403,
+    );
+  }
+
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row) {
+    return c.json({ error: "Chat not found" }, 404);
+  }
+
+  const number = readPullNumber(c.req.param("number"));
+  const link =
+    number === 0 ? undefined : readPullRequestLink(row.userId, row.id, number);
+
+  if (!link) {
+    return c.json({ error: "Pull request not found." }, 404);
+  }
+
+  try {
+    const message = ghPrMerge(link.repo, link.number);
+
+    refreshPullRequestMerged(row.userId, row.id, link.number, true);
+
+    return c.json({ merged: true, message });
+  } catch (cause) {
+    return c.json(
+      {
+        error:
+          cause instanceof Error
+            ? cause.message
+            : "Unable to merge this pull request.",
+      },
+      502,
+    );
+  }
+});
+
+chatRoute.post("/:id/pulls/:number/close", requireAuth, (c) => {
+  if (!isHostRequest(c)) {
+    return c.json(
+      { error: "Pull requests can only be closed on the host computer." },
+      403,
+    );
+  }
+
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row) {
+    return c.json({ error: "Chat not found" }, 404);
+  }
+
+  const number = readPullNumber(c.req.param("number"));
+  const link =
+    number === 0 ? undefined : readPullRequestLink(row.userId, row.id, number);
+
+  if (!link) {
+    return c.json({ error: "Pull request not found." }, 404);
+  }
+
+  try {
+    const message = ghPrClose(link.repo, link.number);
+
+    return c.json({ closed: true, message });
+  } catch (cause) {
+    return c.json(
+      {
+        error:
+          cause instanceof Error
+            ? cause.message
+            : "Unable to close this pull request.",
+      },
+      502,
+    );
+  }
 });
 
 chatRoute.delete("/:id", requireAuth, async (c) => {

@@ -17,6 +17,7 @@ function detail() {
       sectionId: "recent",
       museSessionId: "native",
       running: false,
+      pullRequests: [],
       createdAt: "",
       updatedAt: "",
     },

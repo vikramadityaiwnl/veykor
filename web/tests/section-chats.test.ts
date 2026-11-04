@@ -24,6 +24,7 @@ function chat(
     agentName: "",
     museSessionId: "",
     running: options.running ?? false,
+    pullRequests: [],
     createdAt: "",
     updatedAt: "",
   };

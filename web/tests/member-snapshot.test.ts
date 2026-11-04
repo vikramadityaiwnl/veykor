@@ -18,6 +18,7 @@ function detail(turnId: string): ChatDetail {
       agentName: "",
       museSessionId: "",
       running: true,
+      pullRequests: [],
       createdAt: "",
       updatedAt: "",
     },

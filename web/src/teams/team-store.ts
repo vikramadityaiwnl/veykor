@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { TeamSnapshot } from "@veykor/shared";
 import { fetchTeam } from "./team-client.ts";
+import { parsePullRequestTab, pullRequestTabId } from "./pull-request-tabs.ts";
 
 let watchGeneration = 0;
 
@@ -9,9 +10,11 @@ interface TeamState {
   snapshot: TeamSnapshot;
   selectedId: string;
   tabs: string[];
+  pendingPr: { chatId: string; number: number } | null;
   error: string;
   select: (id: string) => void;
   close: (id: string) => void;
+  openPullRequest: (chatId: string, number: number) => void;
   refresh: () => Promise<void>;
   watch: (rootId: string) => () => void;
 }
@@ -63,6 +66,7 @@ export const useTeamStore = create<TeamState>((set, get) => ({
   snapshot: emptyTeam,
   selectedId: "",
   tabs: [],
+  pendingPr: null,
   error: "",
   select: (id) => {
     if (!id) {
@@ -89,6 +93,14 @@ export const useTeamStore = create<TeamState>((set, get) => ({
     });
     saveView(get());
   },
+  openPullRequest: (chatId, number) => {
+    if (get().rootId === chatId) {
+      get().select(pullRequestTabId(number));
+      return;
+    }
+
+    set({ pendingPr: { chatId, number } });
+  },
   refresh: async () => {
     const rootId = get().rootId;
     const generation = watchGeneration;
@@ -103,6 +115,10 @@ export const useTeamStore = create<TeamState>((set, get) => ({
       if (get().rootId === rootId && generation === watchGeneration) {
         set((state) => {
           const resolve = (id: string) => {
+            if (parsePullRequestTab(id) > 0) {
+              return id;
+            }
+
             if (snapshot.members.some((member) => member.id === id)) {
               return id;
             }
@@ -160,12 +176,19 @@ export const useTeamStore = create<TeamState>((set, get) => ({
   },
   watch: (rootId) => {
     watchGeneration += 1;
+    const pending = get().pendingPr;
+
     set({
       rootId,
       snapshot: { ...emptyTeam, rootId },
       ...savedView(rootId),
       error: "",
     });
+
+    if (pending && pending.chatId === rootId) {
+      set({ pendingPr: null });
+      get().select(pullRequestTabId(pending.number));
+    }
 
     if (!rootId) {
       return () => {};

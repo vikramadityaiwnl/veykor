@@ -40,6 +40,8 @@ import {
   waitForSettlement,
 } from "../questions/question-store.js";
 import { questionToolGuidance } from "@veykor/shared";
+import { readProject } from "../work/work.js";
+import { resolveAndRecordPullRequest } from "../git/pull-request-store.js";
 
 async function readBody(c: Context): Promise<Record<string, unknown>> {
   const body: unknown = await c.req.json().catch(() => ({}));
@@ -275,6 +277,19 @@ const tools = [
       type: "object",
       properties: { id: { type: "string", minLength: 1, maxLength: 200 } },
       required: ["id"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "record_pull_request",
+    description:
+      "Record a GitHub pull request you created on this chat so the user sees it in the sidebar and can open it as a tab. Call this right after gh pr create succeeds, with the pull request url from its output. The link is verified against GitHub before it is saved.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", maxLength: 500 },
+        number: { type: "integer", minimum: 1 },
+      },
       additionalProperties: false,
     },
   },
@@ -561,6 +576,18 @@ teamMcpRoute.post("/:id", async (c) => {
 
         throw cause;
       }
+    } else if (params?.name === "record_pull_request") {
+      const project = row.projectId
+        ? readProject(row.userId, row.projectId)
+        : undefined;
+
+      result = resolveAndRecordPullRequest({
+        userId: row.userId,
+        chatId: teamRoot(row),
+        folder: project?.folder ?? "",
+        url: args.url,
+        number: args.number,
+      });
     } else if (params?.name === generateImageToolName) {
       result = await callGenerateImageTool(row, args, String(id));
     } else if (params?.name === "memory_delete") {
