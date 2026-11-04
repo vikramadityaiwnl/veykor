@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import Divider from "../../components/divider/divider.tsx";
+import { formatDuration } from "../format-duration.ts";
 
 interface Props {
   durationMs: number;
@@ -43,9 +44,9 @@ function ThinkingBlock(props: Props) {
   const spent = nativeSeconds;
 
   const title = props.running
-    ? `Thinking for ${elapsed} ${elapsed === 1 ? "second" : "seconds"}`
+    ? `Thinking for ${formatDuration(elapsed)}`
     : spent > 0
-      ? `Thought for ${spent} ${spent === 1 ? "second" : "seconds"}`
+      ? `Thought for ${formatDuration(spent)}`
       : "Thought";
   const hasContent = props.children !== undefined && props.children !== null;
 
