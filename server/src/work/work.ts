@@ -1,3 +1,4 @@
+import { beginTeamDeletion, teamHasWork } from "../teams/team-runtime.js";
 import { pickNativeFolder } from "./native-folder-picker.js";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -19,8 +20,9 @@ import { requireAuth } from "../auth/auth.js";
 import type { AuthEnv } from "../auth/auth.js";
 import { isHostRequest } from "../auth/host-access.js";
 import { db } from "../db/client.js";
-import { agents, projects, chats } from "../db/schema.js";
-import { leaveMuseSession } from "../muse/chat-service.js";
+import { agents, projects, chats, memories } from "../db/schema.js";
+import { isMuseTurnRunning, leaveMuseSession } from "../muse/chat-service.js";
+import { settleRootQuestions } from "../questions/question-store.js";
 
 export function readAgent(
   userId: number,
@@ -368,18 +370,66 @@ projectRoute.delete("/:id", async (c) => {
     .where(and(eq(chats.projectId, id), eq(chats.userId, userId)))
     .all();
 
-  await Promise.allSettled(
-    doomed.map((chat) => leaveMuseSession(chat.museSessionId)),
-  );
+  if (
+    doomed.some(
+      (chat) =>
+        isMuseTurnRunning(chat.museSessionId) ||
+        (!chat.parentChatId && teamHasWork(chat)),
+    )
+  ) {
+    return c.json(
+      { error: "Stop all running chats before deleting this project." },
+      409,
+    );
+  }
 
-  db.transaction((tx) => {
-    tx.delete(chats)
-      .where(and(eq(chats.projectId, id), eq(chats.userId, userId)))
-      .run();
-    tx.delete(projects)
-      .where(and(eq(projects.id, id), eq(projects.userId, userId)))
-      .run();
-  });
+  const releases: (() => void)[] = [];
+
+  try {
+    for (const root of doomed.filter((chat) => !chat.parentChatId)) {
+      releases.push(beginTeamDeletion(root));
+    }
+  } catch (cause) {
+    releases.forEach((release) => release());
+    return c.json(
+      { error: cause instanceof Error ? cause.message : "This team is busy." },
+      409,
+    );
+  }
+
+  try {
+    for (const root of doomed.filter((chat) => !chat.parentChatId)) {
+      settleRootQuestions(root.id, "cancelled", "The project was deleted.");
+    }
+
+    await Promise.all(
+      doomed.map((chat) => leaveMuseSession(chat.museSessionId)),
+    );
+    db.transaction((tx) => {
+      tx.delete(chats)
+        .where(and(eq(chats.projectId, id), eq(chats.userId, userId)))
+        .run();
+      tx.delete(memories)
+        .where(
+          and(
+            eq(memories.userId, userId),
+            eq(memories.scope, "project"),
+            eq(memories.projectId, id),
+          ),
+        )
+        .run();
+      tx.delete(projects)
+        .where(and(eq(projects.id, id), eq(projects.userId, userId)))
+        .run();
+    });
+  } catch {
+    return c.json(
+      { error: "Unable to stop project sessions. Try again." },
+      502,
+    );
+  } finally {
+    releases.forEach((release) => release());
+  }
 
   return c.json({ deleted: true });
 });

@@ -63,7 +63,7 @@ function ProfilePage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="w-full space-y-6 px-6 py-10">
+      <div className="w-full space-y-6 px-6 py-4">
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold text-zinc-50">Profile</h1>
 
@@ -75,7 +75,7 @@ function ProfilePage() {
         <Divider />
 
         <div className="grid grid-cols-2 items-start gap-10 2xl:grid-cols-3">
-          <div className="min-w-0">
+          <div className="grid min-w-0 place-items-center self-stretch">
             <div className="flex items-center gap-4">
               <Avatar name={draft.username} size={80} />
 

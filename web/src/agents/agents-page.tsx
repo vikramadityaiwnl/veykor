@@ -40,7 +40,7 @@ function AgentsPage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="w-full space-y-6 px-6 py-10">
+      <div className="w-full space-y-6 px-6 py-4">
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold text-zinc-50">Agents</h1>
 
@@ -57,53 +57,73 @@ function AgentsPage() {
           </p>
         )}
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <button
-            type="button"
-            aria-label="Add agent"
-            onClick={() => setEditing(null)}
-            className="grid place-items-center rounded-2xl border border-dashed border-zinc-700 transition hover:bg-zinc-900"
-          >
+        {agents.length === 0 ? (
+          <div className="py-16">
             <EmptyState
-              title="Add agent"
-              icon={
-                <PlusIcon aria-hidden="true" className="size-5 text-zinc-500" />
-              }
+              actionLabel="Add agent"
+              description="Create your first agent to get started."
+              framedIcon={false}
+              iconSize={40}
+              onAction={() => setEditing(null)}
+              title="No agents yet"
             />
-          </button>
-
-          {agents.map((agent) => (
-            <div
-              key={agent.id}
-              className="space-y-4 rounded-2xl border border-zinc-800 p-5"
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <button
+              type="button"
+              aria-label="Add agent"
+              onClick={() => setEditing(null)}
+              className="grid place-items-center rounded-2xl border border-dashed border-zinc-700 transition hover:bg-zinc-900"
             >
-              <div className="flex items-center gap-3">
-                <AgentAvatar name={agent.name} size={40} />
-                <h2 className="font-semibold">{agent.name}</h2>
+              <EmptyState
+                title="Add agent"
+                icon={
+                  <PlusIcon
+                    aria-hidden="true"
+                    className="size-5 text-zinc-500"
+                  />
+                }
+              />
+            </button>
+
+            {agents.map((agent) => (
+              <div
+                key={agent.id}
+                className="cursor-pointer space-y-4 rounded-2xl border border-zinc-800 p-5 transition hover:border-zinc-700"
+                onClick={() => setEditing(agent)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setEditing(agent);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+              >
+                <div className="flex items-center gap-3">
+                  <AgentAvatar name={agent.name} size={40} />
+                  <h2 className="font-semibold">{agent.name}</h2>
+                </div>
+
+                <p className="text-sm font-light text-zinc-400">
+                  {agent.description || "Ready for project work."}
+                </p>
+
+                <div className="flex gap-4 text-xs">
+                  <button
+                    className="text-zinc-500 hover:text-rose-400"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setDeleting(agent);
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
-
-              <p className="text-sm font-light text-zinc-400">
-                {agent.description || "Ready for project work."}
-              </p>
-
-              <div className="flex gap-4 text-xs">
-                <button onClick={() => setEditing(agent)}>Edit</button>
-
-                <button
-                  className="text-zinc-500 hover:text-rose-400"
-                  onClick={() => setDeleting(agent)}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {agents.length === 0 && (
-          <p className="py-20 text-center text-sm font-light text-zinc-500">
-            Create your first agent to get started.
-          </p>
+            ))}
+          </div>
         )}
 
         {editing !== undefined && (

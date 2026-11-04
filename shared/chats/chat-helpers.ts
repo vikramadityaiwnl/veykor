@@ -8,6 +8,10 @@ export const chatPaths = {
   cancelTurn: (id: string, turnId: string) =>
     `/api/chats/${id}/turns/${turnId}/cancel`,
   steer: (id: string) => `/api/chats/${id}/steer`,
+  queue: (id: string) => `/api/chats/${id}/queue`,
+  queuedTurn: (id: string, jobId: string) =>
+    `/api/chats/${id}/queue/${encodeURIComponent(jobId)}`,
+  queueOrder: (id: string) => `/api/chats/${id}/queue/order`,
   approvals: (id: string) => `/api/chats/${id}/approvals`,
   settings: (id: string) => `/api/chats/${id}/settings`,
   models: "/api/models",

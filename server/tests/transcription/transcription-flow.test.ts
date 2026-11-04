@@ -214,17 +214,17 @@ async function connectClient(
     closeCode: null,
   };
 
-  await new Promise<void>((resolve, reject) => {
-    capture.socket.once("open", () => resolve());
-    capture.socket.once("error", (cause) => reject(cause));
-  });
-
   capture.socket.on("message", (data) => {
     capture.frames.push(String(data));
   });
 
   capture.socket.on("close", (code) => {
     capture.closeCode = code;
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    capture.socket.once("open", () => resolve());
+    capture.socket.once("error", (cause) => reject(cause));
   });
 
   return capture;

@@ -64,19 +64,18 @@ function ProjectSessions(props: Props) {
     setDialog(null);
   }
 
-  function handleConfirmDelete() {
+  async function handleConfirmDelete() {
     if (!deleting) {
       return;
     }
 
-    if (deleting.id === activeChatId) {
-      useChatStore
-        .getState()
-        .startDraft(useChatStore.getState().pendingSectionId);
+    const chatId = deleting.id;
+    const deleted = await removeChat(chatId);
+
+    if (deleted && chatId === activeChatId) {
       navigate(`/work/${props.projectId}`, { replace: true });
     }
 
-    void removeChat(deleting.id);
     setDeleting(null);
   }
 
@@ -119,7 +118,7 @@ function ProjectSessions(props: Props) {
           className="px-2 py-1.5 text-xs font-light text-zinc-500 hover:text-zinc-200"
           onClick={() => setShowAll(!showAll)}
         >
-          {showAll ? "Show less" : `Show more (${sessions.length - 5})`}
+          {showAll ? "Show less" : `Show ${sessions.length - 5} more`}
         </button>
       )}
 
@@ -139,7 +138,14 @@ function ProjectSessions(props: Props) {
             {
               kind: "item",
               id: "delete",
-              label: "Delete",
+              disabled: chats.some(
+                (chat) => chat.id === menu.chat.id && chat.running,
+              ),
+              label: chats.some(
+                (chat) => chat.id === menu.chat.id && chat.running,
+              )
+                ? "Stop to delete"
+                : "Delete",
               danger: true,
               icon: <TrashIcon className="size-4 text-red-400" />,
             },

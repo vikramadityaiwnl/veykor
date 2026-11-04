@@ -20,18 +20,19 @@ npm run install:all
 The server reads its configuration from environment variables, loading
 `server/.env` when it exists. `PORT` and `DATABASE_URL` are required, and
 the server stops with a clear error when one is missing or invalid.
-`MODEL_API_KEY` is required only for voice transcription. Copy the example
+`MODEL_API_KEY` is required only for voice transcription and image
+generation. Copy the example
 file and adjust the values:
 
 ```sh
 cp server/.env.example server/.env
 ```
 
-| Variable        | Example            | Description                                |
-| --------------- | ------------------ | ------------------------------------------ |
-| `PORT`          | `3001`             | TCP port the API listens on                |
-| `DATABASE_URL`  | `./data/veykor.db` | Path to the local SQLite file              |
-| `MODEL_API_KEY` | `sk-...`           | Meta Model API key for voice transcription |
+| Variable        | Example            | Description                                                     |
+| --------------- | ------------------ | --------------------------------------------------------------- |
+| `PORT`          | `3001`             | TCP port the API listens on                                     |
+| `DATABASE_URL`  | `./data/veykor.db` | Path to the local SQLite file                                   |
+| `MODEL_API_KEY` | `sk-...`           | Meta Model API key for voice transcription and image generation |
 
 Start the API from `server/`:
 

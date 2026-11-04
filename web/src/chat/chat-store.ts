@@ -2,6 +2,7 @@ import { useWorkStore } from "../work/work-store.ts";
 import { create } from "zustand";
 import { defaultChatTitle, preferredEffortKey } from "@veykor/shared";
 import type {
+  AnswerInput,
   ChatDetail,
   ChatApprovalRequest,
   ChatHistoryItem,
@@ -9,6 +10,9 @@ import type {
   ChatPermission,
   ChatSummary,
   DecideApprovalRequest,
+  GeneratedImageArtifact,
+  MemoryReceipt,
+  QuestionRequest,
   UpdateChatSettingsRequest,
 } from "@veykor/shared";
 import { usePreferencesStore } from "../workspace/preferences-store.ts";
@@ -28,6 +32,12 @@ import {
   updateSettings,
 } from "./chat-client.ts";
 import type { TurnImageInput } from "./chat-client.ts";
+import { answerQuestions, cancelQuestions } from "./question-client.ts";
+import {
+  clearQuestionDraft,
+  readDismissedQuestions,
+  writeDismissedQuestions,
+} from "./question-drafts.ts";
 import {
   appendChatAttachmentIds,
   blobFromBase64,
@@ -77,6 +87,10 @@ interface ChatState {
   streamingStartedAt: number;
   error: string;
   pendingApprovals: Array<ChatApprovalRequest>;
+  pendingQuestions: Array<QuestionRequest>;
+  recentQuestions: Array<QuestionRequest>;
+  generatedImages: Array<GeneratedImageArtifact>;
+  dismissedQuestions: Array<string>;
   turnDurations: Record<string, number>;
   thinkingSnapshots: Record<string, Array<string>>;
   todos: Array<Record<string, unknown>>;
@@ -88,9 +102,12 @@ interface ChatState {
   composerImages: Array<ComposerImage>;
   sentAttachments: Record<string, Array<SentAttachment>>;
   queuedMessages: Array<QueuedMessage>;
+  queuePaused: boolean;
   composerRestore: ComposerRestore;
   catalog: ChatModelCatalog | null;
   catalogLoading: boolean;
+  memoryReceipts: Array<MemoryReceipt>;
+  dismissMemoryReceipt: (memoryId: string) => void;
   loadChats: () => Promise<void>;
   startDraft: (sectionId: string) => void;
   syncDraftPreferences: () => void;
@@ -98,6 +115,7 @@ interface ChatState {
   openChat: (id: string, expectedProjectId?: string) => Promise<void>;
   hydrateAttachments: (chatId: string) => Promise<void>;
   send: (text: string) => Promise<void>;
+  flushQueuedMessage: (chatId: string) => Promise<void>;
   steerQueuedMessage: (id: string) => Promise<void>;
   editQueuedMessage: (id: string) => void;
   removeQueuedMessage: (id: string) => void;
@@ -107,6 +125,12 @@ interface ChatState {
     choiceId: string,
     feedback?: string,
   ) => Promise<void>;
+  answerQuestion: (
+    requestId: string,
+    answers: Array<AnswerInput>,
+  ) => Promise<void>;
+  cancelQuestion: (requestId: string) => Promise<void>;
+  dismissOrphaned: (requestId: string) => void;
   loadCatalog: (chatId?: string) => Promise<void>;
   setModel: (modelId: string, providerId: string) => void;
   setReasoningEffort: (effort: string) => void;
@@ -121,13 +145,13 @@ interface ChatState {
     targetId: string,
     before: boolean,
   ) => void;
-  deleteChat: (id: string) => Promise<void>;
+  deleteChat: (id: string) => Promise<boolean>;
   clearError: () => void;
 }
 
 let chatsLoading = false;
 
-const localTurns = new Set<string>();
+const localTurns = new Map<string, string>();
 
 let openingChatId: string | null = null;
 
@@ -461,6 +485,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   streamingStartedAt: 0,
   error: "",
   pendingApprovals: [],
+  pendingQuestions: [],
+  recentQuestions: [],
+  generatedImages: [],
+  dismissedQuestions: readDismissedQuestions(),
   turnDurations: {},
   thinkingSnapshots: {},
   todos: [],
@@ -472,9 +500,19 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   composerImages: [],
   sentAttachments: {},
   queuedMessages: [],
+  queuePaused: false,
   composerRestore: { seq: 0, text: "" },
   catalog: null,
   catalogLoading: false,
+  memoryReceipts: [],
+
+  dismissMemoryReceipt: (memoryId) => {
+    set((current) => ({
+      memoryReceipts: current.memoryReceipts.filter(
+        (receipt) => receipt.memoryId !== memoryId,
+      ),
+    }));
+  },
 
   loadChats: async () => {
     if (chatsLoading) {
@@ -565,9 +603,13 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       streamingStartedAt: 0,
       error: "",
       pendingApprovals: [],
+      pendingQuestions: [],
+      recentQuestions: [],
+      generatedImages: [],
       todos: [],
       composerImages: [],
       queuedMessages: [],
+      queuePaused: false,
       composerRestore: { seq: 0, text: "" },
     });
 
@@ -595,14 +637,44 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   syncChat: (detail) => {
-    if (
-      get().activeChatId !== detail.chat.id ||
-      localTurns.has(detail.chat.id)
-    ) {
+    const current = get();
+
+    if (current.activeChatId !== detail.chat.id) {
       return;
     }
 
     if (detail.chat.projectId !== useWorkStore.getState().projectId) {
+      return;
+    }
+
+    const stillPending = new Set(
+      detail.pendingQuestions.map((request) => request.id),
+    );
+
+    for (const previous of current.pendingQuestions) {
+      if (!stillPending.has(previous.id)) {
+        clearQuestionDraft(previous.id);
+      }
+    }
+
+    const completedLocalTurn =
+      current.streaming &&
+      !detail.running &&
+      current.streamingTurnId !== "" &&
+      Object.hasOwn(detail.turnDurations, current.streamingTurnId) &&
+      detail.items.some(
+        (item) =>
+          item.turnId === current.streamingTurnId &&
+          item.kind === "agentMessage" &&
+          item.status === "completed",
+      );
+
+    if (localTurns.has(detail.chat.id) && !completedLocalTurn) {
+      set({
+        pendingQuestions: detail.pendingQuestions,
+        recentQuestions: detail.recentQuestions,
+      });
+
       return;
     }
 
@@ -623,6 +695,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         items: detail.items,
         turnDurations: detail.turnDurations,
         pendingApprovals: detail.pendingApprovals,
+        pendingQuestions: detail.pendingQuestions,
+        recentQuestions: detail.recentQuestions,
+        generatedImages: detail.generatedImages,
         streaming: detail.running,
         streamingTurnId: detail.activeTurnId,
         streamingStartedAt: detail.activeTurnStartedAt,
@@ -644,6 +719,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           : state.finishedChatIds,
       };
     });
+
+    if (!detail.running) {
+      void get().flushQueuedMessage(detail.chat.id);
+    }
   },
 
   openChat: async (id, expectedProjectId = "") => {
@@ -665,9 +744,13 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       chatNotFound: false,
       items: [],
       pendingApprovals: [],
+      pendingQuestions: [],
+      recentQuestions: [],
+      generatedImages: [],
       todos: [],
       error: "",
       queuedMessages: [],
+      queuePaused: false,
       composerRestore: { seq: 0, text: "" },
       finishedChatIds: current.finishedChatIds.filter(
         (finishedId) => finishedId !== id,
@@ -694,6 +777,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
               error: "",
               items: [],
               pendingApprovals: [],
+              pendingQuestions: [],
+              recentQuestions: [],
+              generatedImages: [],
               todos: [],
             });
 
@@ -707,6 +793,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             items: detail.items,
             turnDurations: detail.turnDurations,
             pendingApprovals: detail.pendingApprovals,
+            pendingQuestions: detail.pendingQuestions,
+            recentQuestions: detail.recentQuestions,
+            generatedImages: detail.generatedImages,
             permission: detail.permission,
             historyLoading: false,
             chatNotFound: false,
@@ -917,7 +1006,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       mediaType: image.mediaType,
       base64Data: image.base64Data,
     }));
-    optimisticItemId = `local-${crypto.randomUUID()}`;
+    const submissionId = `local-${crypto.randomUUID()}`;
+    optimisticItemId = submissionId;
 
     const optimisticItem: ChatHistoryItem = {
       itemId: optimisticItemId,
@@ -938,6 +1028,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     set({
       streaming: true,
+      queuePaused: false,
       streamingTurnId: "",
       streamingStartedAt: startedAt,
       items: [...state.items, optimisticItem],
@@ -949,16 +1040,19 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     let chatId = get().activeChatId;
     let failed = false;
 
+    const title = trimmed === "" ? null : titleFromText(trimmed);
+
     try {
       if (chatId === null) {
         const detail = await createChat(
           get().pendingSectionId,
           work.projectId,
           work.agentId,
+          title ?? "",
         );
 
         chatId = detail.chat.id;
-        localTurns.add(chatId);
+        localTurns.set(chatId, submissionId);
 
         set((current) => ({
           activeChatId: chatId,
@@ -967,13 +1061,14 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           items: current.items,
           turnDurations: detail.turnDurations,
           pendingApprovals: detail.pendingApprovals,
+          pendingQuestions: detail.pendingQuestions,
+          recentQuestions: detail.recentQuestions,
         }));
       }
 
-      localTurns.add(chatId);
+      localTurns.set(chatId, submissionId);
 
       const turnChatId = chatId;
-      const title = trimmed === "" ? null : titleFromText(trimmed);
 
       set((current) => ({
         chats: moveToSectionTop(current.chats, turnChatId, true).map((chat) =>
@@ -1013,15 +1108,35 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         await updateSettings(chatId, settings);
       }
 
+      let currentTurnId = "";
+
       await streamTurn(chatId, trimmed, payload, (event) => {
-        if (get().activeChatId !== chatId) {
+        if (
+          get().activeChatId !== chatId ||
+          localTurns.get(turnChatId) !== submissionId ||
+          (currentTurnId !== "" &&
+            !get().streaming &&
+            Object.hasOwn(get().turnDurations, currentTurnId))
+        ) {
           return;
         }
 
         switch (event.type) {
           case "turn-started":
+            if (
+              !get().streaming &&
+              Object.hasOwn(get().turnDurations, event.turnId)
+            ) {
+              break;
+            }
+
+            currentTurnId = event.turnId;
             set((current) => ({
               streamingTurnId: event.turnId,
+              streamingStartedAt:
+                event.startedAt && event.startedAt > 0
+                  ? event.startedAt
+                  : current.streamingStartedAt,
               items:
                 optimisticItemId === null
                   ? current.items
@@ -1146,10 +1261,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
               streamingStartedAt: 0,
               turnDurations: {
                 ...current.turnDurations,
-                [event.turnId]:
-                  event.durationMs > 0
-                    ? event.durationMs
-                    : Math.max(1, Date.now() - startedAt),
+                [event.turnId]: event.durationMs > 0 ? event.durationMs : 0,
               },
               chats: moveToSectionTop(current.chats, turnChatId, false),
               finishedChatIds: markFinished(
@@ -1163,10 +1275,25 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
           case "error":
             break;
+
+          case "memory-saved":
+            set((current) => ({
+              memoryReceipts: [
+                ...current.memoryReceipts.filter(
+                  (receipt) => receipt.memoryId !== event.receipt.memoryId,
+                ),
+                event.receipt,
+              ].slice(-3),
+            }));
+            break;
         }
       });
 
-      if (get().activeChatId === chatId) {
+      if (
+        get().activeChatId === chatId &&
+        chatId !== null &&
+        localTurns.get(chatId) === submissionId
+      ) {
         set((current) => ({
           streaming: false,
           streamingTurnId: "",
@@ -1178,10 +1305,17 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     } catch (cause) {
       failed = true;
 
-      const failedId = optimisticItemId;
-      optimisticItemId = null;
+      const ownsSubmission =
+        chatId === null
+          ? get().draftSeq === state.draftSeq
+          : localTurns.get(chatId) === submissionId;
+      const failedId = submissionId;
 
-      if (get().activeChatId === chatId) {
+      if (optimisticItemId === submissionId) {
+        optimisticItemId = null;
+      }
+
+      if (get().activeChatId === chatId && ownsSubmission) {
         set((current) => ({
           streaming: false,
           streamingTurnId: "",
@@ -1198,31 +1332,40 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       }
     }
 
-    if (chatId !== null) {
+    if (chatId !== null && localTurns.get(chatId) === submissionId) {
       localTurns.delete(chatId);
     }
 
-    if (!failed) {
-      const next = get().queuedMessages[0];
-
-      if (
-        next !== undefined &&
-        get().activeChatId === chatId &&
-        !get().streaming
-      ) {
-        set((current) => ({
-          queuedMessages: current.queuedMessages.filter(
-            (entry) => entry.id !== next.id,
-          ),
-          composerImages: mergeComposerImages(
-            current.composerImages,
-            rehydrateQueuedImages(next.images),
-          ),
-        }));
-
-        await get().send(next.text);
-      }
+    if (!failed && chatId !== null) {
+      await get().flushQueuedMessage(chatId);
     }
+  },
+
+  flushQueuedMessage: async (chatId) => {
+    const state = get();
+    const next = state.queuedMessages[0];
+
+    if (
+      !next ||
+      state.activeChatId !== chatId ||
+      state.streaming ||
+      state.historyLoading ||
+      state.queuePaused
+    ) {
+      return;
+    }
+
+    set((current) => ({
+      queuedMessages: current.queuedMessages.filter(
+        (entry) => entry.id !== next.id,
+      ),
+      composerImages: mergeComposerImages(
+        current.composerImages,
+        rehydrateQueuedImages(next.images),
+      ),
+    }));
+
+    await get().send(next.text);
   },
 
   steerQueuedMessage: async (id) => {
@@ -1304,11 +1447,14 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     const cancelledChatId = state.activeChatId;
 
+    set({ queuePaused: true });
+
     try {
       await cancelTurnRequest(state.activeChatId, state.streamingTurnId);
 
       set((current) => ({
         streaming: false,
+        queuePaused: true,
         streamingTurnId: "",
         error: "",
         chats: current.chats.map((chat) =>
@@ -1318,6 +1464,76 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     } catch (cause) {
       set({ error: errorMessage(cause, "Unable to cancel turn.") });
     }
+  },
+
+  answerQuestion: async (requestId, answers) => {
+    const state = get();
+
+    if (state.activeChatId === null) {
+      throw new Error("Open a chat first.");
+    }
+
+    const { request } = await answerQuestions(
+      state.activeChatId,
+      requestId,
+      answers,
+    );
+
+    clearQuestionDraft(requestId);
+
+    set((current) => ({
+      pendingQuestions: current.pendingQuestions.filter(
+        (entry) => entry.id !== requestId,
+      ),
+      recentQuestions: request.isMain
+        ? [
+            request,
+            ...current.recentQuestions.filter(
+              (entry) => entry.id !== requestId,
+            ),
+          ].slice(0, 50)
+        : current.recentQuestions,
+    }));
+  },
+
+  cancelQuestion: async (requestId) => {
+    const state = get();
+
+    if (state.activeChatId === null) {
+      throw new Error("Open a chat first.");
+    }
+
+    const { request } = await cancelQuestions(state.activeChatId, requestId);
+
+    clearQuestionDraft(requestId);
+
+    set((current) => ({
+      pendingQuestions: current.pendingQuestions.filter(
+        (entry) => entry.id !== requestId,
+      ),
+      recentQuestions: request.isMain
+        ? [
+            request,
+            ...current.recentQuestions.filter(
+              (entry) => entry.id !== requestId,
+            ),
+          ].slice(0, 50)
+        : current.recentQuestions,
+    }));
+  },
+
+  dismissOrphaned: (requestId) => {
+    set((current) => {
+      if (current.dismissedQuestions.includes(requestId)) {
+        return current;
+      }
+
+      const dismissedQuestions = [...current.dismissedQuestions, requestId];
+
+      writeDismissedQuestions(dismissedQuestions);
+
+      return { dismissedQuestions };
+    });
   },
 
   decideApproval: async (approvalId, choiceId, feedback) => {
@@ -1616,9 +1832,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           streamingTurnId: "",
           streamingStartedAt: 0,
           pendingApprovals: [],
+          generatedImages: [],
           todos: [],
           composerImages: [],
           queuedMessages: [],
+          queuePaused: false,
           error: "",
         });
       } else {
@@ -1630,8 +1848,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           error: "",
         });
       }
+      return true;
     } catch (cause) {
       set({ error: errorMessage(cause, "Unable to delete chat.") });
+      return false;
     }
   },
 

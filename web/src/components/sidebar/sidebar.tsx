@@ -174,7 +174,14 @@ function Sidebar(props: Props) {
             />
           ),
           id: "delete-chat",
-          label: "Delete",
+          disabled: chats.some(
+            (chat) => chat.id === context.chatId && chat.running,
+          ),
+          label: chats.some(
+            (chat) => chat.id === context.chatId && chat.running,
+          )
+            ? "Stop to delete"
+            : "Delete",
           danger: true,
         },
       ];
@@ -347,14 +354,14 @@ function Sidebar(props: Props) {
     setDialog(null);
   }
 
-  function handleConfirmAlert() {
+  async function handleConfirmAlert() {
     if (alert?.kind === "delete-chat") {
-      if (alert.chatId === activeChatId) {
-        startDraft(useChatStore.getState().pendingSectionId);
+      const chatId = alert.chatId;
+      const deleted = await removeChat(chatId);
+
+      if (deleted && chatId === activeChatId) {
         navigate("/", { replace: true });
       }
-
-      void removeChat(alert.chatId);
     }
 
     if (alert?.kind === "delete-section") {

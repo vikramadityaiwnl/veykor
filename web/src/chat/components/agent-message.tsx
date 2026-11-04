@@ -1,6 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { isGeneratedImageUrl } from "@veykor/shared";
 import type { ChatHistoryItem } from "@veykor/shared";
 
 interface Props {
@@ -21,6 +22,21 @@ const markdownComponents: Components = {
       <a className="text-sky-400 underline" href={href}>
         {children}
       </a>
+    );
+  },
+
+  img({ src }) {
+    if (typeof src === "string" && isGeneratedImageUrl(src)) {
+      return null;
+    }
+
+    return (
+      <img
+        src={src}
+        alt=""
+        loading="lazy"
+        className="max-h-[480px] w-full rounded-xl border border-zinc-800 object-contain"
+      />
     );
   },
 

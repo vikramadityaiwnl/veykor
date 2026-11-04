@@ -1,10 +1,32 @@
+import { compileAgentContext } from "../work/agent-context.js";
 import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import {
+  ownedChat,
+  canonicalTeamChat,
+  queueTeamInput,
+  readQueuedTeamInput,
+  removeQueuedTeamInput,
+  reorderQueuedTeamInput,
+  beginTeamDeletion,
+  runTeamTurn,
+  readTeamChat,
+  sessionMcp as sessionMcpForChat,
+  shareInterruption,
+  stopTeamMember,
+  teamHasWork,
+  teamRoot,
+  teamRows,
+} from "../teams/team-runtime.js";
+import {
+  listQuestions,
+  settleRootQuestions,
+} from "../questions/question-store.js";
 import { defaultChatTitle } from "@veykor/shared";
 import type {
   ChatDetail,
@@ -23,8 +45,16 @@ import type { AuthEnv } from "../auth/auth.js";
 import { db } from "../db/client.js";
 import { chats } from "../db/schema.js";
 import {
+  deleteChatImages,
+  generatedImagesForChat,
+} from "../images/image-service.js";
+import {
+  McpRestoreError,
+  buildSessionMcp,
+} from "../integrations/integrations.js";
+import { syncAccountSkills } from "../integrations/skills.js";
+import {
   applyChatSettings,
-  cancelMuseTurn,
   decideMuseApproval,
   isMuseHostMissing,
   isMuseTurnRunning,
@@ -32,11 +62,10 @@ import {
   listMuseModels,
   listPendingApprovals,
   museErrorMessage,
-  readMuseChat,
-  runMuseTurn,
   startMuseSession,
   steerMuseTurn,
 } from "../muse/chat-service.js";
+import type { TurnEvent } from "../muse/chat-service.js";
 import { readAgent, readProject } from "../work/work.js";
 import type { AgentDefinition } from "@veykor/shared";
 
@@ -58,14 +87,6 @@ const imageTypes = new Set([
   "image/webp",
   "image/gif",
 ]);
-
-function agentTurnText(row: ChatRow, text: string): string {
-  const agent = JSON.parse(row.agentSnapshot) as Partial<AgentDefinition>;
-
-  return agent.instructions
-    ? `<agent-instructions name=${JSON.stringify(agent.name)}>\n${agent.instructions}\n</agent-instructions>\n\n${text}`
-    : text;
-}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -100,18 +121,30 @@ function toSummary(row: ChatRow): ChatSummary {
       (JSON.parse(row.agentSnapshot) as Partial<AgentDefinition>).id ?? "",
     agentName:
       (JSON.parse(row.agentSnapshot) as Partial<AgentDefinition>).name ?? "",
-    running: isMuseTurnRunning(museSessionId),
+    running:
+      isMuseTurnRunning(museSessionId) ||
+      (!row.parentChatId && teamHasWork(row)),
     createdAt: row.createdAt ?? "",
     updatedAt: row.updatedAt ?? "",
   };
 }
 
 function readChat(userId: number, id: string): ChatRow | undefined {
-  return db
+  const row = db
     .select()
     .from(chats)
     .where(and(eq(chats.id, id), eq(chats.userId, userId)))
     .get();
+
+  return row?.parentChatId ? canonicalTeamChat(row) : row;
+}
+
+function questionState(
+  row: ChatRow,
+): Pick<ChatDetail, "pendingQuestions" | "recentQuestions"> {
+  const listed = listQuestions(row.userId, teamRoot(row), row.id);
+
+  return { pendingQuestions: listed.pending, recentQuestions: listed.settled };
 }
 
 async function readJson(c: Context): Promise<Record<string, unknown>> {
@@ -184,11 +217,57 @@ function readTurnImages(
 }
 
 function museFailure(c: Context, cause: unknown) {
+  if (cause instanceof McpRestoreError) {
+    return c.json({ error: cause.message }, 502);
+  }
+
   if (isMuseHostMissing(cause)) {
     return c.json({ error: "Muse is not installed on the server." }, 503);
   }
 
   return c.json({ error: museErrorMessage(cause) }, 502);
+}
+
+function withMcpTurnHint(event: TurnEvent): TurnEvent {
+  if (event.type !== "turn-completed" || event.error === undefined) {
+    return event;
+  }
+
+  if (!event.error.toLowerCase().includes("mcp")) {
+    return event;
+  }
+
+  return {
+    ...event,
+    error:
+      `${event.error} Check Integrations: a required MCP server may be ` +
+      "unavailable. Disable it or set it to optional, then try again.",
+  };
+}
+
+function mcpStartupHint(
+  c: Context,
+  cause: unknown,
+  serverCount: number,
+): Response | null {
+  if (serverCount === 0 || isMuseHostMissing(cause)) {
+    return null;
+  }
+
+  const message = museErrorMessage(cause);
+
+  if (!message.toLowerCase().includes("mcp")) {
+    return null;
+  }
+
+  return c.json(
+    {
+      error:
+        `${message} Check Integrations: a required MCP server may be ` +
+        "unavailable. Disable it or set it to optional, then try again.",
+    },
+    502,
+  );
 }
 
 export const chatRoute = new Hono<AuthEnv>();
@@ -199,7 +278,7 @@ chatRoute.get("/", requireAuth, (c) => {
   const rows = db
     .select()
     .from(chats)
-    .where(eq(chats.userId, c.get("user").id))
+    .where(and(eq(chats.userId, c.get("user").id), eq(chats.parentChatId, "")))
     .orderBy(desc(chats.updatedAt))
     .all();
 
@@ -253,10 +332,36 @@ chatRoute.post("/", requireAuth, async (c) => {
     }
   }
 
-  let museSessionId: string;
+  let museSessionId = "";
+  const id = randomUUID();
+  const stamp = nowIso();
+
+  const sessionMcp = buildSessionMcp(userId);
+  const mcpServerCount = Object.keys(sessionMcp.runtime).length;
+
+  if (!project) {
+    syncAccountSkills(userId);
+  }
+
+  db.insert(chats)
+    .values({
+      id,
+      userId,
+      title,
+      sectionId,
+      projectId,
+      agentSnapshot: JSON.stringify(agent ?? {}),
+      agentContext: agent && project ? compileAgentContext(agent, project) : "",
+      mcpSnapshot: JSON.stringify(sessionMcp.snapshot),
+      createdAt: stamp,
+      updatedAt: stamp,
+    })
+    .run();
 
   try {
-    const started = await startMuseSession(userId, project?.folder);
+    const started = await startMuseSession(userId, project?.folder, {
+      mcpServers: sessionMcpForChat(ownedChat(userId, id)!),
+    });
 
     museSessionId = started.sessionId;
 
@@ -270,25 +375,15 @@ chatRoute.post("/", requireAuth, async (c) => {
       });
     }
   } catch (cause) {
-    return museFailure(c, cause);
+    if (museSessionId) {
+      await leaveMuseSession(museSessionId).catch(() => {});
+    }
+
+    db.delete(chats).where(eq(chats.id, id)).run();
+    return mcpStartupHint(c, cause, mcpServerCount) ?? museFailure(c, cause);
   }
 
-  const id = randomUUID();
-  const stamp = nowIso();
-
-  db.insert(chats)
-    .values({
-      id,
-      userId: c.get("user").id,
-      title,
-      sectionId,
-      projectId,
-      agentSnapshot: JSON.stringify(agent ?? {}),
-      museSessionId,
-      createdAt: stamp,
-      updatedAt: stamp,
-    })
-    .run();
+  db.update(chats).set({ museSessionId }).where(eq(chats.id, id)).run();
 
   const row = readChat(c.get("user").id, id);
 
@@ -304,6 +399,9 @@ chatRoute.post("/", requireAuth, async (c) => {
     items: [],
     turnDurations: {},
     pendingApprovals: [],
+    pendingQuestions: [],
+    recentQuestions: [],
+    generatedImages: [],
     modelId: agent?.modelId ?? "",
     providerId: agent?.providerId ?? "",
     reasoningEffort: agent?.reasoningEffort ?? "",
@@ -321,11 +419,13 @@ chatRoute.get("/:id", requireAuth, async (c) => {
   }
 
   try {
-    const detail = await readMuseChat(toSummary(row));
+    const detail = await readTeamChat(row);
 
     const response: ChatDetail = {
       chat: toSummary(row),
       ...detail,
+      ...questionState(row),
+      generatedImages: generatedImagesForChat(row.id, detail.items),
     };
 
     return c.json(response);
@@ -339,6 +439,12 @@ chatRoute.get("/:id/events", requireAuth, async (c) => {
 
   if (!row) {
     return c.json({ error: "Chat not found" }, 404);
+  }
+
+  try {
+    sessionMcpForChat(row);
+  } catch (cause) {
+    return museFailure(c, cause);
   }
 
   c.header("X-Accel-Buffering", "no");
@@ -370,9 +476,15 @@ chatRoute.get("/:id/events", requireAuth, async (c) => {
             break;
           }
 
+          const teamDetail = await readTeamChat(current);
           const detail: ChatDetail = {
             chat: toSummary(current),
-            ...(await readMuseChat(toSummary(current))),
+            ...teamDetail,
+            ...questionState(current),
+            generatedImages: generatedImagesForChat(
+              current.id,
+              teamDetail.items,
+            ),
           };
           const snapshot = JSON.stringify(detail);
 
@@ -431,17 +543,124 @@ chatRoute.delete("/:id", requireAuth, async (c) => {
     return c.json({ error: "Chat not found" }, 404);
   }
 
-  try {
-    await leaveMuseSession(toSummary(row).museSessionId);
-  } catch {
-    // Best effort; the listing is removed either way.
+  if (row.parentChatId) {
+    return c.json(
+      {
+        error:
+          "Team sessions belong to their main chat. Delete the main chat to remove the team.",
+      },
+      400,
+    );
   }
 
-  db.delete(chats)
-    .where(and(eq(chats.id, row.id), eq(chats.userId, row.userId)))
-    .run();
+  let release: () => void;
+
+  try {
+    release = beginTeamDeletion(row);
+  } catch (cause) {
+    return c.json({ error: museErrorMessage(cause) }, 409);
+  }
+
+  try {
+    const members = teamRows(row);
+
+    settleRootQuestions(teamRoot(row), "cancelled", "The chat was deleted.");
+
+    deleteChatImages(members.map((member) => member.id));
+
+    await Promise.all(
+      members.map((member) => leaveMuseSession(member.museSessionId)),
+    );
+    db.delete(chats)
+      .where(
+        and(
+          eq(chats.userId, row.userId),
+          inArray(
+            chats.id,
+            members.map((member) => member.id),
+          ),
+        ),
+      )
+      .run();
+  } catch (cause) {
+    return museFailure(c, cause);
+  } finally {
+    release();
+  }
 
   return c.json({ deleted: true });
+});
+
+chatRoute.post("/:id/queue", requireAuth, async (c) => {
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row) {
+    return c.json({ error: "Chat not found" }, 404);
+  }
+
+  const body = await readJson(c);
+  const text = typeof body.text === "string" ? body.text : "";
+  const parsed = readTurnImages(Array.isArray(body.images) ? body.images : []);
+
+  if (
+    text.length > maxTextLength ||
+    parsed.error ||
+    (!text.trim() && parsed.images.length === 0)
+  ) {
+    return c.json(
+      {
+        error:
+          parsed.error ||
+          "Provide a message under 20,000 characters or attach an image.",
+      },
+      400,
+    );
+  }
+
+  return c.json(queueTeamInput(row, text, parsed.images), 202);
+});
+
+chatRoute.delete("/:id/queue/:jobId", requireAuth, (c) => {
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row || !removeQueuedTeamInput(row, c.req.param("jobId"))) {
+    return c.json({ error: "Queued message not found." }, 404);
+  }
+
+  return c.json({ deleted: true });
+});
+
+chatRoute.get("/:id/queue/:jobId", requireAuth, (c) => {
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row) {
+    return c.json({ error: "Chat not found" }, 404);
+  }
+
+  const job = readQueuedTeamInput(row, c.req.param("jobId"));
+
+  if (!job) {
+    return c.json({ error: "Queued message not found." }, 404);
+  }
+
+  return c.json(job);
+});
+
+chatRoute.patch("/:id/queue/order", requireAuth, async (c) => {
+  const row = readChat(c.get("user").id, c.req.param("id"));
+
+  if (!row) {
+    return c.json({ error: "Chat not found" }, 404);
+  }
+
+  const body = await readJson(c);
+  const ids = Array.isArray(body.ids) ? body.ids : [];
+
+  if (!reorderQueuedTeamInput(row, ids)) {
+    return c.json({ error: "That queue order does not match." }, 400);
+  }
+
+  return c.json({ ordered: true });
 });
 
 chatRoute.post("/:id/turns", requireAuth, async (c) => {
@@ -481,25 +700,19 @@ chatRoute.post("/:id/turns", requireAuth, async (c) => {
         .where(and(eq(chats.id, row.id), eq(chats.userId, row.userId)))
         .run();
 
-      const modelText = agentTurnText(row, text);
+      await runTeamTurn(row, text, images, async (event) => {
+        if (!stream.aborted) {
+          try {
+            const outgoing = withMcpTurnHint(event);
 
-      await runMuseTurn({
-        museSessionId: summary.museSessionId,
-        text: modelText,
-        displayText: modelText === text || text === "" ? undefined : text,
-        images,
-        onEvent: async (event) => {
-          if (!stream.aborted) {
-            try {
-              await stream.writeSSE({
-                event: event.type,
-                data: JSON.stringify(event),
-              });
-            } catch {
-              return;
-            }
+            await stream.writeSSE({
+              event: outgoing.type,
+              data: JSON.stringify(outgoing),
+            });
+          } catch {
+            return;
           }
-        },
+        }
       });
 
       const patch: { updatedAt: string; title?: string } = {
@@ -534,7 +747,7 @@ chatRoute.post("/:id/turns/:turnId/cancel", requireAuth, async (c) => {
   }
 
   try {
-    await cancelMuseTurn(toSummary(row).museSessionId, c.req.param("turnId"));
+    await stopTeamMember(row, c.req.param("turnId"));
 
     return c.json({ cancelled: true });
   } catch (cause) {
@@ -581,6 +794,8 @@ chatRoute.post("/:id/steer", requireAuth, async (c) => {
       text,
       images,
     });
+
+    await shareInterruption(row, `The user redirected this session: ${text}`);
 
     return c.json({ steered: true });
   } catch (cause) {
@@ -641,9 +856,18 @@ chatRoute.put("/:id/settings", requireAuth, async (c) => {
   }
 
   if (row.projectId !== "") {
-    const detail = await readMuseChat(toSummary(row));
+    try {
+      const detail = await readTeamChat(row);
 
-    return c.json({ chat: toSummary(row), ...detail });
+      return c.json({
+        chat: toSummary(row),
+        ...detail,
+        ...questionState(row),
+        generatedImages: generatedImagesForChat(row.id, detail.items),
+      });
+    } catch (cause) {
+      return museFailure(c, cause);
+    }
   }
 
   const body = (await readJson(c)) as Partial<UpdateChatSettingsRequest>;
@@ -668,11 +892,13 @@ chatRoute.put("/:id/settings", requireAuth, async (c) => {
       permission,
     });
 
-    const detail = await readMuseChat(toSummary(row));
+    const detail = await readTeamChat(row);
 
     const response: ChatDetail = {
       chat: toSummary(row),
       ...detail,
+      ...questionState(row),
+      generatedImages: generatedImagesForChat(row.id, detail.items),
     };
 
     return c.json(response);

@@ -1,20 +1,34 @@
 import { Fragment, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import type { ChatHistoryItem } from "@veykor/shared";
+import { extractGeneratedImageIds, isGenerateImageTool } from "@veykor/shared";
+import type {
+  ChatHistoryItem,
+  GeneratedImageArtifact,
+  QuestionRequest,
+} from "@veykor/shared";
 import type { SentAttachment } from "../chat-store.ts";
 import AgentMessage from "./agent-message.tsx";
+import GeneratedImage from "./generated-image.tsx";
+import QuestionHistoryRecord from "./question-history-record.tsx";
 import ThinkingBlock from "./thinking-block.tsx";
 import ToolCallBlock from "./tool-call-block.tsx";
 import UserMessage from "./user-message.tsx";
 
 interface Props {
+  generatedImages: Array<GeneratedImageArtifact>;
   imageUrls: Array<SentAttachment>;
   items: Array<ChatHistoryItem>;
+  questions: Array<QuestionRequest>;
   streaming: boolean;
   streamingTurnId: string;
   streamingStartedAt: number;
   thinkingSnapshots: Record<string, Array<string>>;
   turnDurations: Record<string, number>;
+}
+
+interface TimelineEntry {
+  at: string;
+  node: ReactNode;
 }
 
 interface ThinkingGroup {
@@ -91,6 +105,87 @@ function summarySize(summary: Array<string>): number {
   return summary.reduce((total, part) => total + part.length, 0);
 }
 
+function toolPrompt(item: ChatHistoryItem): string {
+  try {
+    const parsed: unknown = JSON.parse(item.args);
+
+    if (typeof parsed !== "object" || parsed === null) {
+      return "";
+    }
+
+    const prompt = (parsed as Record<string, unknown>)["prompt"];
+
+    return typeof prompt === "string" ? prompt : "";
+  } catch {
+    return "";
+  }
+}
+
+interface BoundImages {
+  bound: Array<GeneratedImageArtifact>;
+  pending: Array<string>;
+}
+
+function bindToolImages(
+  item: ChatHistoryItem,
+  images: Array<GeneratedImageArtifact>,
+): BoundImages {
+  const empty: BoundImages = { bound: [], pending: [] };
+
+  if (!isGenerateImageTool(item.tool)) {
+    return empty;
+  }
+
+  const direct = images.filter((image) => image.toolItemId === item.itemId);
+
+  if (direct.length > 0) {
+    return { bound: direct, pending: [] };
+  }
+
+  const byId = new Map(images.map((image) => [image.id, image]));
+  const bound: Array<GeneratedImageArtifact> = [];
+  const pending: Array<string> = [];
+
+  for (const id of extractGeneratedImageIds(item.visibleOutput)) {
+    const found = byId.get(id);
+
+    if (found === undefined) {
+      pending.push(id);
+    } else {
+      bound.push(found);
+    }
+  }
+
+  if (bound.length + pending.length > 0) {
+    return { bound, pending };
+  }
+
+  const prompt = toolPrompt(item);
+
+  if (item.turnId !== null && prompt !== "") {
+    const sameTurn = images.filter(
+      (image) => image.turnId === item.turnId && image.prompt === prompt,
+    );
+
+    if (sameTurn.length > 0) {
+      return { bound: sameTurn, pending: [] };
+    }
+  }
+
+  if (item.status === "inProgress") {
+    const generating = images
+      .filter((image) => image.status === "generating")
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .at(-1);
+
+    if (generating !== undefined) {
+      return { bound: [generating], pending: [] };
+    }
+  }
+
+  return empty;
+}
+
 function MessageList(props: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
@@ -116,7 +211,7 @@ function MessageList(props: Props) {
     }
 
     container.scrollTop = container.scrollHeight;
-  }, [props.items, props.streaming]);
+  }, [props.items, props.questions, props.streaming, props.generatedImages]);
 
   const imageByItem = allocateImages(props.items, props.imageUrls);
   const thinkingByTurn = collectThinking(props.items);
@@ -218,11 +313,140 @@ function MessageList(props: Props) {
     }
 
     if (item.kind === "toolCall") {
-      return <ToolCallBlock item={item} key={item.itemId} />;
+      if (!isGenerateImageTool(item.tool)) {
+        return <ToolCallBlock item={item} key={item.itemId} />;
+      }
+
+      const images = bindToolImages(item, props.generatedImages);
+      const cards: Array<ReactNode> = images.bound.map((artifact) => (
+        <GeneratedImage
+          key={artifact.id}
+          artifact={artifact}
+          artifactId=""
+          generating={false}
+          prompt=""
+          error=""
+        />
+      ));
+
+      for (const id of images.pending) {
+        cards.push(
+          <GeneratedImage
+            key={id}
+            artifact={null}
+            artifactId={id}
+            generating={false}
+            prompt={toolPrompt(item)}
+            error=""
+          />,
+        );
+      }
+
+      if (
+        cards.length === 0 &&
+        (item.status === "inProgress" || item.status === "")
+      ) {
+        cards.push(
+          <GeneratedImage
+            key={`${item.itemId}-generating`}
+            artifact={null}
+            artifactId=""
+            generating={true}
+            prompt={toolPrompt(item)}
+            error=""
+          />,
+        );
+      }
+
+      if (
+        cards.length === 0 &&
+        item.status !== "inProgress" &&
+        item.status !== "" &&
+        item.status !== "completed"
+      ) {
+        cards.push(
+          <GeneratedImage
+            key={`${item.itemId}-failed`}
+            artifact={null}
+            artifactId=""
+            generating={false}
+            prompt=""
+            error={
+              item.visibleOutput.trim() === ""
+                ? "Image generation did not return an image."
+                : item.visibleOutput.trim().slice(0, 300)
+            }
+          />,
+        );
+      }
+
+      if (cards.length === 0) {
+        return <ToolCallBlock item={item} key={item.itemId} />;
+      }
+
+      return (
+        <Fragment key={item.itemId}>
+          <ToolCallBlock item={item} />
+
+          <div className="space-y-3 pt-3">{cards}</div>
+        </Fragment>
+      );
     }
 
     return null;
   }
+
+  const timeline: Array<TimelineEntry> = [];
+
+  props.items.forEach((item) => {
+    const node = renderItem(item);
+
+    if (node !== null) {
+      timeline.push({ at: item.recordedAt, node });
+    }
+  });
+
+  const questions = [...props.questions].sort((a, b) => {
+    const first = a.settledAt || a.createdAt;
+    const second = b.settledAt || b.createdAt;
+
+    return first.localeCompare(second);
+  });
+
+  for (const request of questions) {
+    const at = request.settledAt || request.createdAt;
+    const entry: TimelineEntry = {
+      at,
+      node: <QuestionHistoryRecord key={request.id} request={request} />,
+    };
+    const index = timeline.findIndex(
+      (item) => item.at !== "" && item.at.localeCompare(at) > 0,
+    );
+
+    if (index === -1) {
+      timeline.push(entry);
+    } else {
+      timeline.splice(index, 0, entry);
+    }
+  }
+
+  const claimed = new Set<string>();
+
+  for (const item of props.items) {
+    const images = bindToolImages(item, props.generatedImages);
+
+    for (const artifact of images.bound) {
+      claimed.add(artifact.id);
+    }
+
+    for (const id of images.pending) {
+      claimed.add(id);
+    }
+  }
+
+  const orphaned = props.generatedImages
+    .filter((image) => !claimed.has(image.id))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
   return (
     <div
@@ -231,7 +455,18 @@ function MessageList(props: Props) {
       ref={containerRef}
     >
       <div className="mx-auto w-full max-w-3xl space-y-6 px-4 pb-24 pt-6">
-        {props.items.map((item) => renderItem(item))}
+        {timeline.map((entry) => entry.node)}
+
+        {orphaned.map((artifact) => (
+          <GeneratedImage
+            key={artifact.id}
+            artifact={artifact}
+            artifactId=""
+            generating={false}
+            prompt=""
+            error=""
+          />
+        ))}
 
         {props.streaming && !liveAnchored && !liveHasThinking
           ? thinkingBlock(liveKey, true, [])

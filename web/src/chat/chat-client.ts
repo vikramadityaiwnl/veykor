@@ -1,5 +1,6 @@
 import {
   chatPaths,
+  imagePaths,
   veykorRequestHeaderName,
   veykorRequestHeaderValue,
 } from "@veykor/shared";
@@ -9,26 +10,14 @@ import type {
   ChatHistoryItem,
   ChatModelCatalog,
   ChatSummary,
+  ChatTurnEvent,
   DecideApprovalRequest,
+  GeneratedImageArtifact,
   SteerTurnRequest,
   UpdateChatSettingsRequest,
 } from "@veykor/shared";
 
-export type TurnEvent =
-  | { type: "turn-started"; turnId: string }
-  | { type: "item"; item: ChatHistoryItem }
-  | { type: "delta"; itemId: string; field: string; delta: string }
-  | { type: "approval"; approval: ChatApprovalRequest }
-  | { type: "approval-resolved"; approvalId: string }
-  | { type: "todos"; todos: Array<Record<string, unknown>> }
-  | {
-      type: "turn-completed";
-      turnId: string;
-      terminal: string;
-      error?: string;
-      durationMs: number;
-    }
-  | { type: "error"; message: string };
+export type TurnEvent = ChatTurnEvent;
 
 export interface TurnImageInput {
   mediaType: string;
@@ -139,6 +128,7 @@ function toTurnEvent(name: string, data: unknown): TurnEvent | null {
       case "todos":
       case "turn-completed":
       case "error":
+      case "memory-saved":
         return typed as TurnEvent;
       default:
         return null;
@@ -159,7 +149,11 @@ function toTurnEvent(name: string, data: unknown): TurnEvent | null {
 
   switch (name) {
     case "turn-started":
-      return { type: "turn-started", turnId: readString(data, "turnId") };
+      return {
+        type: "turn-started",
+        turnId: readString(data, "turnId"),
+        startedAt: readDuration(data, "startedAt"),
+      };
 
     case "item": {
       const item = isRecord(data.item) ? data.item : data;
@@ -212,6 +206,15 @@ function toTurnEvent(name: string, data: unknown): TurnEvent | null {
     case "error":
       return { type: "error", message: readString(data, "message") };
 
+    case "memory-saved": {
+      const receipt = isRecord(data.receipt) ? data.receipt : data;
+
+      return {
+        type: "memory-saved",
+        receipt: receipt as unknown as import("@veykor/shared").MemoryReceipt,
+      };
+    }
+
     default:
       return null;
   }
@@ -256,12 +259,13 @@ export async function createChat(
   sectionId: string,
   projectId = "",
   agentId = "",
+  title = "",
 ): Promise<ChatDetail> {
   return requestJson<ChatDetail>(
     chatPaths.chats,
     {
       method: "POST",
-      body: JSON.stringify({ sectionId, projectId, agentId }),
+      body: JSON.stringify({ sectionId, projectId, agentId, title }),
     },
     true,
   );
@@ -269,6 +273,12 @@ export async function createChat(
 
 export async function fetchChat(id: string): Promise<ChatDetail> {
   return fetchJson<ChatDetail>(chatPaths.chat(id));
+}
+
+export async function fetchGeneratedImage(
+  id: string,
+): Promise<GeneratedImageArtifact> {
+  return fetchJson<GeneratedImageArtifact>(imagePaths.meta(id));
 }
 
 export async function renameChat(
@@ -346,6 +356,49 @@ export async function decideApproval(
   );
 }
 
+export async function queueTurn(
+  id: string,
+  text: string,
+  images: TurnImageInput[],
+): Promise<{ id: string }> {
+  return requestJson<{ id: string }>(
+    chatPaths.queue(id),
+    { method: "POST", body: JSON.stringify({ text, images }) },
+    true,
+  );
+}
+
+export async function fetchQueuedTurn(
+  id: string,
+  jobId: string,
+): Promise<{ id: string; text: string; images: TurnImageInput[] }> {
+  return fetchJson<{ id: string; text: string; images: TurnImageInput[] }>(
+    chatPaths.queuedTurn(id, jobId),
+  );
+}
+
+export async function reorderQueuedTurns(
+  id: string,
+  ids: Array<string>,
+): Promise<void> {
+  await requestJson<void>(
+    chatPaths.queueOrder(id),
+    { method: "PATCH", body: JSON.stringify({ ids }) },
+    false,
+  );
+}
+
+export async function removeQueuedTurn(
+  id: string,
+  jobId: string,
+): Promise<void> {
+  await requestJson<void>(
+    chatPaths.queuedTurn(id, jobId),
+    { method: "DELETE" },
+    false,
+  );
+}
+
 export async function cancelTurn(id: string, turnId: string): Promise<void> {
   await requestJson<void>(
     chatPaths.cancelTurn(id, turnId),
@@ -385,11 +438,13 @@ export async function streamTurn(
   text: string,
   images: Array<TurnImageInput>,
   onEvent: (event: TurnEvent) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   let response: Response;
 
   try {
     response = await fetch(chatPaths.turns(id), {
+      signal,
       method: "POST",
       credentials: "same-origin",
       headers: {

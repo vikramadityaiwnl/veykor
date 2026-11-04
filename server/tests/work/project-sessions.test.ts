@@ -1,3 +1,4 @@
+import Database from "better-sqlite3";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
@@ -223,6 +224,25 @@ test("project sessions isolate chats, enforce access, pin folder and agent confi
     assert.notEqual(sessionBody.chat.museSessionId, "");
     assert.equal(sessionBody.permission, "approved");
     const sessionId = sessionBody.chat.id;
+    const storedContext = (id: string) => {
+      const connection = new Database(join(temporary, "test.db"), {
+        readonly: true,
+      });
+
+      try {
+        return (
+          connection
+            .prepare("SELECT agent_context FROM chats WHERE id = ?")
+            .get(id) as { agent_context: string }
+        ).agent_context;
+      } finally {
+        connection.close();
+      }
+    };
+    const initialContext = storedContext(sessionId);
+    assert.match(initialContext, /Session Agent/);
+    assert.match(initialContext, /Follow the project conventions/);
+    assert.match(initialContext, /session-project/);
 
     const general = await request(chatPaths.chats, {
       cookie,
@@ -230,6 +250,7 @@ test("project sessions isolate chats, enforce access, pin folder and agent confi
     });
     assert.equal(general.status, 201);
     const generalId = (general.body as { chat: { id: string } }).chat.id;
+    assert.equal(storedContext(generalId), "");
 
     const listed = (await request(chatPaths.chats, { cookie }))
       .body as unknown as Array<{
@@ -284,6 +305,7 @@ test("project sessions isolate chats, enforce access, pin folder and agent confi
     );
 
     const preserved = await request(chatPaths.chat(sessionId), { cookie });
+    assert.equal(storedContext(sessionId), initialContext);
     assert.equal(preserved.status, 200);
     assert.equal(
       (preserved.body as { chat: { agentName: string } }).chat.agentName,

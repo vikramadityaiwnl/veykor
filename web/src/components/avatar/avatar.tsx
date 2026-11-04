@@ -1,3 +1,5 @@
+import { avatarInitials } from "./avatar-initials.ts";
+
 interface Props {
   name: string;
   size?: number;
@@ -5,7 +7,7 @@ interface Props {
 
 function Avatar(props: Props) {
   const size = props.size ?? 32;
-  const initials = props.name.slice(0, 2).toUpperCase() || "??";
+  const initials = avatarInitials(props.name);
   const fontSize = Math.max(size * 0.375, 10);
 
   return (

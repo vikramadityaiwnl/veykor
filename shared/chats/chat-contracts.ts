@@ -1,3 +1,7 @@
+import type { GeneratedImageArtifact } from "../images/image-contracts.js";
+import type { MemoryReceipt } from "../memory/memory-contracts.js";
+import type { QuestionRequest } from "../questions/question-contracts.js";
+
 export type ChatPermission = "read-only" | "approved" | "full-access";
 
 export type ChatMode = "chat" | "agent";
@@ -64,6 +68,9 @@ export interface ChatDetail {
   chat: ChatSummary;
   items: Array<ChatHistoryItem>;
   pendingApprovals: Array<ChatApprovalRequest>;
+  pendingQuestions: Array<QuestionRequest>;
+  recentQuestions: Array<QuestionRequest>;
+  generatedImages: Array<GeneratedImageArtifact>;
   modelId: string;
   providerId: string;
   reasoningEffort: string;
@@ -135,3 +142,20 @@ export interface UpdateChatSettingsRequest {
   reasoningEffort?: string;
   permission?: ChatPermission;
 }
+
+export type ChatTurnEvent =
+  | { type: "turn-started"; turnId: string; startedAt?: number }
+  | { type: "item"; item: ChatHistoryItem }
+  | { type: "delta"; itemId: string; field: string; delta: string }
+  | { type: "approval"; approval: ChatApprovalRequest }
+  | { type: "approval-resolved"; approvalId: string }
+  | { type: "todos"; todos: Array<Record<string, unknown>> }
+  | {
+      type: "turn-completed";
+      turnId: string;
+      terminal: string;
+      error?: string;
+      durationMs: number;
+    }
+  | { type: "error"; message: string }
+  | { type: "memory-saved"; receipt: MemoryReceipt };

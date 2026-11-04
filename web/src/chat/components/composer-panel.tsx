@@ -1,61 +1,28 @@
 import { useState } from "react";
-import {
-  ChevronDownIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ChevronUpIcon,
-} from "@heroicons/react/24/outline";
+import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
+import ComposerActivityPanel from "./composer-activity-panel.tsx";
+import TeamTodos from "../../teams/components/team-todos.tsx";
+import { useTeamStore } from "../../teams/team-store.ts";
 import ApprovalCard from "./approval-card.tsx";
 import QueuedMessages from "./queued-messages.tsx";
+import QuestionPanel from "./question-panel.tsx";
 import { useChatStore } from "../chat-store.ts";
-
-function todoTitle(todo: unknown): string {
-  if (typeof todo === "string") {
-    return todo;
-  }
-
-  if (typeof todo === "object" && todo !== null) {
-    const record = todo as Record<string, unknown>;
-    const title = record.title ?? record.text ?? record.label ?? "";
-
-    return typeof title === "string" ? title : "";
-  }
-
-  return "";
-}
-
-function todoDone(todo: unknown): boolean {
-  if (typeof todo === "object" && todo !== null) {
-    const record = todo as Record<string, unknown>;
-    const status = record.status;
-
-    return status === "done" || status === "completed" || status === "complete";
-  }
-
-  return false;
-}
-
-function todoActive(todo: unknown): boolean {
-  if (typeof todo === "object" && todo !== null) {
-    const record = todo as Record<string, unknown>;
-    const status = record.status;
-
-    return (
-      status === "active" ||
-      status === "in-progress" ||
-      status === "in_progress"
-    );
-  }
-
-  return false;
-}
+import { visibleOrphanedQuestions } from "../question-drafts.ts";
 
 function ComposerPanel() {
   const pendingApprovals = useChatStore((s) => s.pendingApprovals);
-  const todos = useChatStore((s) => s.todos);
   const queuedMessages = useChatStore((s) => s.queuedMessages);
+  const pendingQuestions = useChatStore((s) => s.pendingQuestions);
+  const recentQuestions = useChatStore((s) => s.recentQuestions);
+  const dismissedQuestions = useChatStore((s) => s.dismissedQuestions);
 
-  const [collapsed, setCollapsed] = useState(false);
+  const activeChatId = useChatStore((state) => state.activeChatId);
+  const taskCount = useTeamStore((state) =>
+    state.snapshot.members.reduce(
+      (count, member) => count + member.todos.length,
+      0,
+    ),
+  );
   const [index, setIndex] = useState(0);
   const [knownIds, setKnownIds] = useState("");
 
@@ -66,10 +33,17 @@ function ComposerPanel() {
     setIndex(0);
   }
 
+  const attention = visibleOrphanedQuestions(
+    recentQuestions,
+    dismissedQuestions,
+  );
+  const showQuestions = pendingQuestions.length > 0 || attention.length > 0;
+
   if (
     pendingApprovals.length === 0 &&
-    todos.length === 0 &&
-    queuedMessages.length === 0
+    queuedMessages.length === 0 &&
+    taskCount === 0 &&
+    !showQuestions
   ) {
     return null;
   }
@@ -78,116 +52,100 @@ function ComposerPanel() {
   const current =
     pendingApprovals.length > 0 ? pendingApprovals[clamped] : null;
 
+  const showApprovals = current !== null && current !== undefined;
+  const showQueue = queuedMessages.length > 0;
+  const showTasks = taskCount > 0;
+
+  const first = showApprovals
+    ? "approvals"
+    : showQuestions
+      ? "questions"
+      : showQueue
+        ? "queue"
+        : "tasks";
+  const last = showTasks
+    ? "tasks"
+    : showQueue
+      ? "queue"
+      : showQuestions
+        ? "questions"
+        : "approvals";
+
   return (
-    <div className="rounded-3xl rounded-b-none border border-b-0 border-zinc-700 bg-zinc-900/70">
-      <div className="flex items-center gap-2 px-4 py-2.5">
-        {pendingApprovals.length > 0 ? (
-          <>
-            <p className="text-sm font-medium text-zinc-200">
-              Needs your approval
-            </p>
+    <>
+      {showApprovals ? (
+        <ComposerActivityPanel
+          controls={
+            pendingApprovals.length > 1 ? (
+              <div className="flex items-center gap-1">
+                <button
+                  className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                  onClick={() => setIndex(Math.max(clamped - 1, 0))}
+                  title="Previous approval"
+                  type="button"
+                >
+                  <ChevronLeftIcon className="size-4" />
+                </button>
 
-            <span className="rounded-full bg-zinc-700 px-2 py-0.5 text-[11px] text-zinc-100">
-              {pendingApprovals.length}
-            </span>
-          </>
-        ) : queuedMessages.length > 0 ? (
-          <>
-            <p className="text-sm font-medium text-zinc-200">Queued messages</p>
+                <span className="text-xs text-zinc-500">
+                  {clamped + 1} of {pendingApprovals.length}
+                </span>
 
-            <span className="rounded-full bg-zinc-700 px-2 py-0.5 text-[11px] text-zinc-100">
-              {queuedMessages.length}
-            </span>
-          </>
-        ) : (
-          <p className="text-sm font-medium text-zinc-200">Tasks</p>
-        )}
-
-        <div className="flex-1" />
-
-        {pendingApprovals.length > 1 ? (
-          <div className="flex items-center gap-1">
-            <button
-              className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-              onClick={() => setIndex(Math.max(clamped - 1, 0))}
-              title="Previous approval"
-              type="button"
-            >
-              <ChevronLeftIcon className="size-4" />
-            </button>
-
-            <span className="text-xs text-zinc-500">
-              {clamped + 1} of {pendingApprovals.length}
-            </span>
-
-            <button
-              className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-              onClick={() =>
-                setIndex(Math.min(clamped + 1, pendingApprovals.length - 1))
-              }
-              title="Next approval"
-              type="button"
-            >
-              <ChevronRightIcon className="size-4" />
-            </button>
-          </div>
-        ) : null}
-
-        <button
-          className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-          onClick={() => setCollapsed(!collapsed)}
-          title={collapsed ? "Expand panel" : "Collapse panel"}
-          type="button"
+                <button
+                  className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                  onClick={() =>
+                    setIndex(Math.min(clamped + 1, pendingApprovals.length - 1))
+                  }
+                  title="Next approval"
+                  type="button"
+                >
+                  <ChevronRightIcon className="size-4" />
+                </button>
+              </div>
+            ) : null
+          }
+          count={pendingApprovals.length}
+          first={first === "approvals"}
+          last={last === "approvals"}
+          title="Needs your approval"
         >
-          {collapsed ? (
-            <ChevronDownIcon className="size-4" />
-          ) : (
-            <ChevronUpIcon className="size-4" />
-          )}
-        </button>
-      </div>
-
-      {collapsed ? null : (
-        <>
           {current !== null && current !== undefined ? (
-            <div className="border-t border-zinc-800 pt-3">
-              <ApprovalCard approval={current} />
-            </div>
+            <ApprovalCard approval={current} />
           ) : null}
+        </ComposerActivityPanel>
+      ) : null}
 
-          {todos.length > 0 ? (
-            <div className="border-t border-zinc-800 px-4 py-3">
-              <p className="text-xs font-medium text-zinc-500">Tasks</p>
+      {showQuestions ? (
+        <QuestionPanel
+          first={first === "questions"}
+          last={last === "questions"}
+          pending={pendingQuestions}
+          recent={recentQuestions}
+        />
+      ) : null}
 
-              <ul className="mt-2 space-y-1.5">
-                {todos.slice(0, 5).map((todo, position) => {
-                  return (
-                    <li
-                      className="flex items-center gap-2 text-xs text-zinc-300"
-                      key={position}
-                    >
-                      <span
-                        className={
-                          todoDone(todo)
-                            ? "size-2 shrink-0 rounded-full bg-emerald-500"
-                            : todoActive(todo)
-                              ? "size-2 shrink-0 rounded-full bg-sky-500"
-                              : "size-2 shrink-0 rounded-full bg-zinc-600"
-                        }
-                      />
-
-                      <span className="truncate">{todoTitle(todo)}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ) : null}
-
+      {showQueue ? (
+        <ComposerActivityPanel
+          count={queuedMessages.length}
+          first={first === "queue"}
+          last={last === "queue"}
+          title="Queued messages"
+        >
           <QueuedMessages />
-        </>
-      )}
-    </div>
+        </ComposerActivityPanel>
+      ) : null}
+
+      {showTasks ? (
+        <ComposerActivityPanel
+          count={taskCount}
+          first={first === "tasks"}
+          last={last === "tasks"}
+          title="Team tasks"
+        >
+          <TeamTodos memberId={activeChatId ?? ""} />
+        </ComposerActivityPanel>
+      ) : null}
+    </>
   );
 }
 

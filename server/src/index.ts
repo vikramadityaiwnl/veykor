@@ -1,4 +1,5 @@
 import { serve } from "@hono/node-server";
+import { Server } from "node:http";
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { WebSocketServer } from "ws";
@@ -8,6 +9,11 @@ import type { AuthEnv } from "./auth/auth.js";
 import { loadServerConfig } from "./auth/config.js";
 import { chatRoute, modelRoute } from "./chats/chats.js";
 import { db } from "./db/client.js";
+import { failInterruptedGenerations } from "./images/image-service.js";
+import { imageRoute } from "./images/images.js";
+import { integrationsRoute } from "./integrations/integrations.js";
+import { skillsRoute } from "./integrations/skills.js";
+import { memoryRoute } from "./memory/memories.js";
 import { preferencesRoute } from "./preferences/preferences.js";
 import { profileRoute } from "./profile/profile.js";
 import {
@@ -16,6 +22,9 @@ import {
   transcriptionMaxPayloadBytes,
 } from "./transcription/transcription-upgrade.js";
 import { agentRoute, projectRoute } from "./work/work.js";
+import { teamRoute, teamMcpRoute } from "./teams/teams.js";
+import { questionRoute } from "./questions/questions.js";
+import { startTeamRuntime } from "./teams/team-runtime.js";
 
 const config = loadServerConfig();
 
@@ -25,11 +34,18 @@ app.use("/api/*", csrfProtection);
 
 app.route("/api/auth", authRoute);
 app.route("/api/chats", chatRoute);
+app.route("/api/chats", questionRoute);
+app.route("/api/teams", teamRoute);
+app.route("/api/team-mcp", teamMcpRoute);
+app.route("/api/images", imageRoute);
 app.route("/api/agents", agentRoute);
 app.route("/api/projects", projectRoute);
 app.route("/api/models", modelRoute);
 app.route("/api/preferences", preferencesRoute);
 app.route("/api/profile", profileRoute);
+app.route("/api/integrations", integrationsRoute);
+app.route("/api/integrations/skills", skillsRoute);
+app.route("/api/memories", memoryRoute);
 
 app.get("/api/health", async (context) => {
   await db.all(sql`select 1`);
@@ -54,6 +70,9 @@ app.get("/api/me", requireAuth, (context) => {
 
 app.notFound((context) => context.json({ error: "Not found" }, 404));
 
+startTeamRuntime();
+failInterruptedGenerations();
+
 const server = serve(
   {
     fetch: app.fetch,
@@ -65,6 +84,10 @@ const server = serve(
     console.log(`SQLite database: ${config.databaseUrl}`);
   },
 );
+
+if (server instanceof Server) {
+  server.requestTimeout = 0;
+}
 
 const transcriptionSockets = new WebSocketServer({
   noServer: true,

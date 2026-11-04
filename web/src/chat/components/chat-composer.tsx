@@ -1,6 +1,8 @@
 import { useWorkStore } from "../../work/work-store.ts";
 import AgentPicker from "../../work/components/agent-picker.tsx";
-import ProjectComposerContext from "../../work/components/project-composer-context.tsx";
+import ComposerFrame from "./composer-frame.tsx";
+import { composerAction } from "../composer-mode.ts";
+import { useTeamStore } from "../../teams/team-store.ts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUpIcon,
@@ -13,6 +15,7 @@ import { usePreferencesStore } from "../../workspace/preferences-store.ts";
 import Dialog from "../../components/dialog/dialog.tsx";
 import LoadingSpinner from "../../components/loading-spinner/loading-spinner.tsx";
 import ComposerPanel from "./composer-panel.tsx";
+import { visibleOrphanedQuestions } from "../question-drafts.ts";
 import EffortPicker from "./effort-picker.tsx";
 import ModelPicker from "./model-picker.tsx";
 import PermissionPicker from "./permission-picker.tsx";
@@ -46,7 +49,6 @@ function ChatComposer(props: Props) {
   const cancelTurn = useChatStore((s) => s.cancelTurn);
   const streaming = useChatStore((s) => s.streaming);
   const pendingApprovals = useChatStore((s) => s.pendingApprovals);
-  const todos = useChatStore((s) => s.todos);
   const queuedMessages = useChatStore((s) => s.queuedMessages);
   const composerRestore = useChatStore((s) => s.composerRestore);
   const composerImages = useChatStore((s) => s.composerImages);
@@ -67,15 +69,31 @@ function ChatComposer(props: Props) {
   const voicePrefixRef = useRef("");
   const voiceRunRef = useRef(0);
 
+  const taskCount = useTeamStore((state) =>
+    state.snapshot.members.reduce(
+      (count, member) => count + member.todos.length,
+      0,
+    ),
+  );
+  const pendingQuestions = useChatStore((s) => s.pendingQuestions);
+  const recentQuestions = useChatStore((s) => s.recentQuestions);
+  const dismissedQuestions = useChatStore((s) => s.dismissedQuestions);
+  const attention = visibleOrphanedQuestions(
+    recentQuestions,
+    dismissedQuestions,
+  );
   const panelOpen =
     pendingApprovals.length > 0 ||
-    todos.length > 0 ||
-    queuedMessages.length > 0;
+    queuedMessages.length > 0 ||
+    taskCount > 0 ||
+    pendingQuestions.length > 0 ||
+    attention.length > 0;
   const canSend =
     (draft.trim() !== "" || composerImages.length > 0) &&
     !projectRequired &&
     (!agentMode || !!agentId || activeChatId !== null);
-  const showStop = streaming && !canSend;
+  const action = composerAction(streaming, canSend, interruptionBehavior);
+  const showStop = action === "stop";
   const sendTitle = streaming
     ? interruptionBehavior === "steer"
       ? "Steer the running turn"
@@ -99,6 +117,12 @@ function ChatComposer(props: Props) {
     textarea.style.height = "auto";
     textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
   }
+
+  useEffect(() => {
+    if (voiceError !== "") {
+      console.log(voiceError);
+    }
+  }, [voiceError]);
 
   useEffect(() => {
     if (composerRestore.seq === 0) {
@@ -317,24 +341,11 @@ function ChatComposer(props: Props) {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-4">
-      {voiceError !== "" && (
-        <p className="pb-2 text-sm font-light text-rose-400" role="alert">
-          {voiceError}
-        </p>
-      )}
-
       <ComposerPanel />
 
-      <div
-        className={
-          agentMode
-            ? panelOpen
-              ? "rounded-t-none border border-t-0 border-zinc-700 bg-zinc-900 shadow-xl"
-              : "rounded-t-3xl border border-zinc-700 bg-zinc-900 shadow-xl"
-            : panelOpen
-              ? "rounded-3xl rounded-t-none border border-t-0 border-zinc-700 bg-zinc-900 shadow-xl"
-              : "rounded-3xl border border-zinc-700 bg-zinc-900 shadow-xl"
-        }
+      <ComposerFrame
+        mode={agentMode ? "project" : "chat"}
+        panelOpen={panelOpen}
       >
         <textarea
           className="max-h-50 w-full resize-none bg-transparent px-4 pt-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
@@ -465,9 +476,7 @@ function ChatComposer(props: Props) {
             )}
           </div>
         </div>
-      </div>
-
-      {agentMode && <ProjectComposerContext />}
+      </ComposerFrame>
 
       {micBlocked && (
         <Dialog

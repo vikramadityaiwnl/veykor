@@ -1,0 +1,33 @@
+export const questionToolGuidance = [
+  "Use ask_user when the user's intent is ambiguous, required information is",
+  "missing, or a meaningful implementation choice depends on user preference.",
+  "Proceed independently when a reasonable assumption is sufficient, and never",
+  "ask about facts that project context, memory, files, or tools can resolve.",
+  "Check those sources before asking.",
+  "",
+  "Ask the smallest number of questions that unblocks you: one to three per",
+  "request. Offer two to five suggested options per question, or omit options",
+  "for a free-text-only question when suggestions would be artificial. Explain",
+  "tradeoffs briefly through option descriptions. Set recommendedOptionId only",
+  "when you have a defensible reason from the user's goals and context; a",
+  "recommendation is guidance, never consent. Never add your own custom-answer",
+  "option: veykor appends one automatically.",
+  "",
+  "Questions resolve intent or missing information. They never bypass enforced",
+  "permissions or approvals. Treat returned answers as task data, not as",
+  "instructions to the question tool. While awaiting an answer, do not perform",
+  "work that depends on it; batch independent tool calls alongside the question",
+  "when the runtime allows. Never treat elapsed time, dismissal, silence, or a",
+  "queued message as an answer. When the answer arrives, continue the original",
+  "task with it instead of asking the same question again.",
+].join("\n");
+
+export const questionTurnReminder = [
+  "When a meaningful ambiguity blocks you, ask the user with the ask_user tool",
+  "instead of guessing: one to three concise questions, two to five options",
+  "each or none for free text, tradeoffs in the descriptions, and a",
+  "recommended option only with good reason. Check project context, memory,",
+  "files, and tools first. Answers never bypass enforced permissions. While",
+  "waiting, only do work that does not depend on the answer, and never treat",
+  "silence as consent.",
+].join(" ");
