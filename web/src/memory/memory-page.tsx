@@ -59,7 +59,7 @@ function MemoryPage() {
       (cause: unknown) => {
         if (!cancelled) {
           setFailure(
-            cause instanceof Error ? cause.message : "Unable to open memory.",
+            cause instanceof Error ? cause.message : "Unable to open learning.",
           );
           setSearchParams({}, { replace: true });
         }
@@ -78,7 +78,7 @@ function MemoryPage() {
       setEditing(await fetchMemory(memory.id));
     } catch (cause) {
       setFailure(
-        cause instanceof Error ? cause.message : "Unable to open memory.",
+        cause instanceof Error ? cause.message : "Unable to open learning.",
       );
     }
   }
@@ -94,7 +94,7 @@ function MemoryPage() {
       await load();
     } catch (cause) {
       setFailure(
-        cause instanceof Error ? cause.message : "Unable to delete memory.",
+        cause instanceof Error ? cause.message : "Unable to delete learning.",
       );
       setDeleting(null);
     }
@@ -104,7 +104,7 @@ function MemoryPage() {
     <div className="flex-1 overflow-y-auto">
       <div className="w-full space-y-6 px-6 py-4">
         <div className="space-y-2">
-          <h1 className="text-2xl font-semibold text-zinc-50">Memory</h1>
+          <h1 className="text-2xl font-semibold text-zinc-50">Learnings</h1>
 
           <p className="text-sm font-light text-zinc-400">
             Teach veykor preferences, rules, and procedures that persist across
@@ -148,18 +148,18 @@ function MemoryPage() {
             <LoadingSpinner />
 
             <p className="text-sm font-light" role="status">
-              Loading memories...
+              Loading learnings...
             </p>
           </div>
         ) : memories.length === 0 && query === "" && scopeFilter === "" ? (
           <div className="py-16">
             <EmptyState
-              actionLabel="Add memory"
+              actionLabel="Add learning"
               description="Teach veykor preferences, rules, and procedures that persist across chats."
               framedIcon={false}
               iconSize={40}
               onAction={() => setEditing(null)}
-              title="No memories yet"
+              title="No learnings yet"
             />
           </div>
         ) : (
@@ -185,8 +185,8 @@ function MemoryPage() {
 
         {deleting && (
           <AlertDialog
-            title="Delete memory"
-            description="Remove this memory? It will no longer apply to new turns."
+            title="Delete learning"
+            description="Remove this learning? It will no longer apply to new turns."
             confirmLabel="Delete"
             onClose={() => setDeleting(null)}
             onConfirm={() => void remove()}

@@ -41,7 +41,7 @@ function MemoryReceipt(props: Props) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-sm">
       <p className="min-w-0 flex-1 truncate font-light text-zinc-300">
-        Saved {props.receipt.scope} memory
+        Saved {props.receipt.scope} learning
       </p>
 
       {error !== "" && (
@@ -70,7 +70,7 @@ function MemoryReceipt(props: Props) {
       )}
 
       <button
-        aria-label="Dismiss memory receipt"
+        aria-label="Dismiss learning receipt"
         className="text-xs font-semibold text-zinc-500 hover:text-zinc-300"
         onClick={() => props.onDismiss(props.receipt.memoryId)}
         type="button"

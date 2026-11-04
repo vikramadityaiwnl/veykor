@@ -69,15 +69,8 @@ function MemoryCard(props: Props) {
         )}
 
         {memory.origin === "conversation" && !sourceAvailable && (
-          <span
-            aria-disabled="true"
-            className="flex cursor-not-allowed items-center gap-1 font-light text-zinc-600"
-          >
+          <span aria-disabled="true" className="font-light text-zinc-600">
             Source unavailable
-            <ArrowTopRightOnSquareIcon
-              aria-hidden="true"
-              className="size-3.5 shrink-0"
-            />
           </span>
         )}
 

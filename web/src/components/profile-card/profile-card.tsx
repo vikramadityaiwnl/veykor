@@ -1,11 +1,11 @@
 import { useState } from "react";
 import {
   ArrowRightStartOnRectangleIcon,
+  BookOpenIcon,
   ChevronUpDownIcon,
   Cog6ToothIcon,
   CpuChipIcon,
   PuzzlePieceIcon,
-  SparklesIcon,
   UserIcon,
 } from "@heroicons/react/24/solid";
 import { useNavigate } from "react-router";
@@ -73,9 +73,9 @@ function ProfileCard(props: Props) {
           {
             kind: "item",
             id: "memory",
-            label: "Memory",
+            label: "Learnings",
             icon: (
-              <SparklesIcon
+              <BookOpenIcon
                 aria-hidden="true"
                 className="size-4 text-zinc-400"
               />

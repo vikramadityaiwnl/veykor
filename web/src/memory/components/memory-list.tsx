@@ -15,12 +15,12 @@ function MemoryList(props: Props) {
     return (
       <div className="py-16">
         <EmptyState
-          actionLabel="Add memory"
+          actionLabel="Add learning"
           description="Teach veykor preferences, rules, and procedures that persist across chats."
           framedIcon={false}
           iconSize={40}
           onAction={props.onAdd}
-          title="No memories yet"
+          title="No learnings yet"
         />
       </div>
     );
@@ -29,7 +29,7 @@ function MemoryList(props: Props) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       <button
-        aria-label="Add memory"
+        aria-label="Add learning"
         className="grid min-h-28 place-items-center rounded-2xl border border-dashed border-zinc-700 transition hover:bg-zinc-900"
         onClick={props.onAdd}
         type="button"
@@ -38,7 +38,7 @@ function MemoryList(props: Props) {
           icon={
             <PlusIcon aria-hidden="true" className="size-5 text-zinc-500" />
           }
-          title="Add memory"
+          title="Add learning"
         />
       </button>
 

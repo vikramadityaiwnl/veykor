@@ -39,7 +39,7 @@ function failure(c: Context, cause: unknown) {
     return c.json({ error: cause.message }, cause.status as 400);
   }
 
-  return c.json({ error: "Unable to load memories." }, 500);
+  return c.json({ error: "Unable to load learnings." }, 500);
 }
 
 export const memoryRoute = new Hono<AuthEnv>();
@@ -90,7 +90,7 @@ memoryRoute.get("/:id", requireAuth, (c) => {
     const row = readMemory(c.get("user").id, c.req.param("id"));
 
     if (!row) {
-      return c.json({ error: "Memory not found." }, 404);
+      return c.json({ error: "Learning not found." }, 404);
     }
 
     return c.json(toMemorySummary(row));
