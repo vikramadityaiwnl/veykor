@@ -1,6 +1,7 @@
 import { useWorkStore } from "../../work/work-store.ts";
 import ProjectGreeting from "../../work/components/project-greeting.tsx";
 import ProjectNotFound from "../../work/components/project-not-found.tsx";
+import MemoryReceipt from "../../memory/components/memory-receipt.tsx";
 import { useEffect } from "react";
 import { usePreferencesStore } from "../../workspace/preferences-store.ts";
 import { useChatStore } from "../chat-store.ts";
@@ -30,6 +31,10 @@ function MainChatContent() {
   const thinkingSnapshots = useChatStore((state) => state.thinkingSnapshots);
   const turnDurations = useChatStore((state) => state.turnDurations);
   const error = useChatStore((state) => state.error);
+  const memoryReceipts = useChatStore((state) => state.memoryReceipts);
+  const dismissMemoryReceipt = useChatStore(
+    (state) => state.dismissMemoryReceipt,
+  );
   const loadCatalog = useChatStore((state) => state.loadCatalog);
   const syncDraftPreferences = useChatStore(
     (state) => state.syncDraftPreferences,
@@ -91,6 +96,18 @@ function MainChatContent() {
           turnDurations={turnDurations}
           streamingStartedAt={streamingStartedAt}
         />
+      )}
+
+      {memoryReceipts.length > 0 && (
+        <div className="mx-auto w-full max-w-3xl space-y-2 px-4 pb-2">
+          {memoryReceipts.map((receipt) => (
+            <MemoryReceipt
+              key={receipt.memoryId}
+              onDismiss={dismissMemoryReceipt}
+              receipt={receipt}
+            />
+          ))}
+        </div>
       )}
 
       <ChatComposer key={projectId} />

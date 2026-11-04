@@ -126,6 +126,7 @@ function toTurnEvent(name: string, data: unknown): TurnEvent | null {
       case "todos":
       case "turn-completed":
       case "error":
+      case "memory-saved":
         return typed as TurnEvent;
       default:
         return null;
@@ -202,6 +203,15 @@ function toTurnEvent(name: string, data: unknown): TurnEvent | null {
 
     case "error":
       return { type: "error", message: readString(data, "message") };
+
+    case "memory-saved": {
+      const receipt = isRecord(data.receipt) ? data.receipt : data;
+
+      return {
+        type: "memory-saved",
+        receipt: receipt as unknown as import("@veykor/shared").MemoryReceipt,
+      };
+    }
 
     default:
       return null;

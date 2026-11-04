@@ -20,7 +20,7 @@ import { requireAuth } from "../auth/auth.js";
 import type { AuthEnv } from "../auth/auth.js";
 import { isHostRequest } from "../auth/host-access.js";
 import { db } from "../db/client.js";
-import { agents, projects, chats } from "../db/schema.js";
+import { agents, projects, chats, memories } from "../db/schema.js";
 import { isMuseTurnRunning, leaveMuseSession } from "../muse/chat-service.js";
 
 export function readAgent(
@@ -403,6 +403,15 @@ projectRoute.delete("/:id", async (c) => {
     db.transaction((tx) => {
       tx.delete(chats)
         .where(and(eq(chats.projectId, id), eq(chats.userId, userId)))
+        .run();
+      tx.delete(memories)
+        .where(
+          and(
+            eq(memories.userId, userId),
+            eq(memories.scope, "project"),
+            eq(memories.projectId, id),
+          ),
+        )
         .run();
       tx.delete(projects)
         .where(and(eq(projects.id, id), eq(projects.userId, userId)))

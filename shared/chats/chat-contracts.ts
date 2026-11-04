@@ -1,3 +1,5 @@
+import type { MemoryReceipt } from "../memory/memory-contracts.js";
+
 export type ChatPermission = "read-only" | "approved" | "full-access";
 
 export type ChatMode = "chat" | "agent";
@@ -150,4 +152,5 @@ export type ChatTurnEvent =
       error?: string;
       durationMs: number;
     }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "memory-saved"; receipt: MemoryReceipt };

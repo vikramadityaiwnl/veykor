@@ -139,6 +139,40 @@ export function runMigrations(sqlite: Database.Database): void {
     CREATE INDEX IF NOT EXISTS skills_user_idx ON skills(user_id);
   `);
 
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS memories (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL DEFAULT 0 REFERENCES users(id) ON DELETE CASCADE,
+      scope TEXT NOT NULL DEFAULT 'global',
+      project_id TEXT NOT NULL DEFAULT '',
+      instruction TEXT NOT NULL DEFAULT '',
+      instruction_hash TEXT NOT NULL DEFAULT '',
+      origin TEXT NOT NULL DEFAULT 'manual',
+      source_chat_id TEXT NOT NULL DEFAULT '',
+      source_message_id TEXT NOT NULL DEFAULT '',
+      source_excerpt TEXT NOT NULL DEFAULT '',
+      idempotency_key TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT ''
+    );
+  `);
+
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS memories_user_idx ON memories(user_id);
+  `);
+
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS memories_user_scope_idx ON memories(user_id, scope, project_id);
+  `);
+
+  sqlite.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS memories_user_key_idx ON memories(user_id, idempotency_key) WHERE idempotency_key != '';
+  `);
+
+  sqlite.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS memories_user_dupe_idx ON memories(user_id, scope, project_id, instruction_hash) WHERE instruction_hash != '';
+  `);
+
   for (const [name, value] of [
     ["project_id", ""],
     ["parent_chat_id", ""],

@@ -9,6 +9,7 @@ import type {
   ChatPermission,
   ChatSummary,
   DecideApprovalRequest,
+  MemoryReceipt,
   UpdateChatSettingsRequest,
 } from "@veykor/shared";
 import { usePreferencesStore } from "../workspace/preferences-store.ts";
@@ -92,6 +93,8 @@ interface ChatState {
   composerRestore: ComposerRestore;
   catalog: ChatModelCatalog | null;
   catalogLoading: boolean;
+  memoryReceipts: Array<MemoryReceipt>;
+  dismissMemoryReceipt: (memoryId: string) => void;
   loadChats: () => Promise<void>;
   startDraft: (sectionId: string) => void;
   syncDraftPreferences: () => void;
@@ -478,6 +481,15 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   composerRestore: { seq: 0, text: "" },
   catalog: null,
   catalogLoading: false,
+  memoryReceipts: [],
+
+  dismissMemoryReceipt: (memoryId) => {
+    set((current) => ({
+      memoryReceipts: current.memoryReceipts.filter(
+        (receipt) => receipt.memoryId !== memoryId,
+      ),
+    }));
+  },
 
   loadChats: async () => {
     if (chatsLoading) {
@@ -1203,6 +1215,17 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             break;
 
           case "error":
+            break;
+
+          case "memory-saved":
+            set((current) => ({
+              memoryReceipts: [
+                ...current.memoryReceipts.filter(
+                  (receipt) => receipt.memoryId !== event.receipt.memoryId,
+                ),
+                event.receipt,
+              ].slice(-3),
+            }));
             break;
         }
       });

@@ -9,6 +9,14 @@ import { requireAuth } from "../auth/auth.js";
 import type { AuthEnv } from "../auth/auth.js";
 import { museErrorMessage, readMuseChat } from "../muse/chat-service.js";
 import {
+  MemoryFailure,
+  deleteMemory,
+  eligibleMemoryRows,
+  listMemories,
+  saveConversationMemory,
+  updateConversationMemory,
+} from "../memory/memory-service.js";
+import {
   chatSummary,
   delegateTeamMember,
   messageTeamMember,
@@ -135,6 +143,62 @@ const tools = [
       additionalProperties: false,
     },
   },
+  {
+    name: "memory_save",
+    description:
+      "Persist a durable user preference, rule, or procedure for future chats. Use only for clear instructions intended for future use such as remember this, always do this for this project, or an unambiguous ongoing preference. Inside a project default to project scope; use global only when the user clearly wants it across projects or chats. Never save credentials, secrets, temporary task instructions, quoted text, tool output, or speculation. Only claim a memory was saved after this tool succeeds.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        instruction: { type: "string", minLength: 1, maxLength: 2000 },
+        scope: { type: "string", enum: ["global", "project"] },
+        sourceMessageId: { type: "string", maxLength: 200 },
+        excerpt: { type: "string", maxLength: 500 },
+        idempotencyKey: { type: "string", maxLength: 200 },
+      },
+      required: ["instruction", "scope"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "memory_list",
+    description:
+      "List saved memories available to this chat. Global memories apply across chats; project memories apply only within this chat's project.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", maxLength: 500 },
+        scope: { type: "string", enum: ["global", "project"] },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "memory_update",
+    description:
+      "Update a saved memory when an explicit correction clearly replaces it. Preserve the original meaning unless the user explicitly changes it. Do not overwrite unrelated instructions on vague similarity.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", minLength: 1, maxLength: 200 },
+        instruction: { type: "string", minLength: 1, maxLength: 2000 },
+        scope: { type: "string", enum: ["global", "project"] },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "memory_delete",
+    description:
+      "Delete a saved memory that the user explicitly asked to forget. Use only on explicit instruction.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", minLength: 1, maxLength: 200 } },
+      required: ["id"],
+      additionalProperties: false,
+    },
+  },
 ];
 
 export const teamMcpRoute = new Hono();
@@ -229,6 +293,177 @@ teamMcpRoute.post("/:id", async (c) => {
       result = await readMuseChat(chatSummary(member), {
         mcpServers: sessionMcp(member),
       });
+    } else if (params?.name === "memory_save") {
+      if (
+        typeof args.instruction !== "string" ||
+        args.instruction.trim() === "" ||
+        args.instruction.length > 2000 ||
+        (args.scope !== "global" && args.scope !== "project")
+      ) {
+        throw new Error(
+          "instruction under 2,000 characters and a global or project scope are required.",
+        );
+      }
+
+      if (
+        (args.sourceMessageId !== undefined &&
+          typeof args.sourceMessageId !== "string") ||
+        (typeof args.sourceMessageId === "string" &&
+          args.sourceMessageId.length > 200) ||
+        (args.excerpt !== undefined && typeof args.excerpt !== "string") ||
+        (typeof args.excerpt === "string" && args.excerpt.length > 500) ||
+        (args.idempotencyKey !== undefined &&
+          typeof args.idempotencyKey !== "string") ||
+        (typeof args.idempotencyKey === "string" &&
+          args.idempotencyKey.length > 200)
+      ) {
+        throw new Error("That memory metadata is invalid.");
+      }
+
+      if (args.scope === "project" && row.projectId === "") {
+        throw new Error(
+          "Project memories need a project chat. Use global scope here.",
+        );
+      }
+
+      try {
+        const saved = saveConversationMemory(row.userId, {
+          instruction: args.instruction,
+          scope: args.scope,
+          projectId: row.projectId,
+          sourceChatId: row.id,
+          sourceMessageId:
+            typeof args.sourceMessageId === "string"
+              ? args.sourceMessageId
+              : "",
+          excerpt: typeof args.excerpt === "string" ? args.excerpt : "",
+          idempotencyKey:
+            typeof args.idempotencyKey === "string" ? args.idempotencyKey : "",
+        });
+
+        result = {
+          memory: saved.summary,
+          reused: saved.reused,
+          receipt: saved.receipt,
+        };
+      } catch (cause) {
+        if (cause instanceof MemoryFailure) {
+          throw new Error(cause.message);
+        }
+
+        throw cause;
+      }
+    } else if (params?.name === "memory_list") {
+      if (
+        (args.query !== undefined && typeof args.query !== "string") ||
+        (typeof args.query === "string" && args.query.length > 500) ||
+        (args.scope !== undefined &&
+          args.scope !== "global" &&
+          args.scope !== "project")
+      ) {
+        throw new Error("That memory query is invalid.");
+      }
+
+      const scope =
+        args.scope === "global" || args.scope === "project"
+          ? args.scope
+          : undefined;
+
+      if (scope === "project" && row.projectId === "") {
+        result = { memories: [] };
+      } else {
+        const listed = listMemories(row.userId, {
+          scope,
+          projectId: scope === "project" ? row.projectId : undefined,
+          query: typeof args.query === "string" ? args.query : "",
+        });
+
+        if (scope === undefined) {
+          const eligible = new Set(
+            eligibleMemoryRows(row.userId, row.projectId).map(
+              (entry) => entry.id,
+            ),
+          );
+
+          result = {
+            memories: listed.memories.filter((entry) => eligible.has(entry.id)),
+          };
+        } else {
+          result = listed;
+        }
+      }
+    } else if (params?.name === "memory_update") {
+      if (
+        typeof args.id !== "string" ||
+        args.id === "" ||
+        args.id.length > 200
+      ) {
+        throw new Error("A memory id is required.");
+      }
+
+      if (
+        (args.instruction !== undefined &&
+          (typeof args.instruction !== "string" ||
+            args.instruction.trim() === "" ||
+            args.instruction.length > 2000)) ||
+        (args.scope !== undefined &&
+          args.scope !== "global" &&
+          args.scope !== "project")
+      ) {
+        throw new Error("That memory update is invalid.");
+      }
+
+      if (args.instruction === undefined && args.scope === undefined) {
+        throw new Error("Provide an instruction or scope to update.");
+      }
+
+      if (args.scope === "project" && row.projectId === "") {
+        throw new Error(
+          "Project memories need a project chat. Use global scope here.",
+        );
+      }
+
+      try {
+        const updated = updateConversationMemory(row.userId, args.id, {
+          instruction:
+            typeof args.instruction === "string" ? args.instruction : undefined,
+          scope:
+            args.scope === "global" || args.scope === "project"
+              ? args.scope
+              : undefined,
+          projectId: row.projectId,
+        });
+
+        result = {
+          memory: updated.summary,
+          receipt: updated.receipt,
+        };
+      } catch (cause) {
+        if (cause instanceof MemoryFailure) {
+          throw new Error(cause.message);
+        }
+
+        throw cause;
+      }
+    } else if (params?.name === "memory_delete") {
+      if (
+        typeof args.id !== "string" ||
+        args.id === "" ||
+        args.id.length > 200
+      ) {
+        throw new Error("A memory id is required.");
+      }
+
+      try {
+        deleteMemory(row.userId, args.id);
+        result = { deleted: true };
+      } catch (cause) {
+        if (cause instanceof MemoryFailure) {
+          throw new Error(cause.message);
+        }
+
+        throw cause;
+      }
     } else {
       throw new Error("Unknown team tool.");
     }

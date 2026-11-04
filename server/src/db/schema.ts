@@ -103,6 +103,25 @@ export const projects = sqliteTable("projects", {
   agentIds: text("agent_ids").notNull().default("[]"),
 });
 
+export const memories = sqliteTable("memories", {
+  id: text("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .default(0)
+    .references(() => users.id, { onDelete: "cascade" }),
+  scope: text("scope").notNull().default("global"),
+  projectId: text("project_id").notNull().default(""),
+  instruction: text("instruction").notNull().default(""),
+  instructionHash: text("instruction_hash").notNull().default(""),
+  origin: text("origin").notNull().default("manual"),
+  sourceChatId: text("source_chat_id").notNull().default(""),
+  sourceMessageId: text("source_message_id").notNull().default(""),
+  sourceExcerpt: text("source_excerpt").notNull().default(""),
+  idempotencyKey: text("idempotency_key").notNull().default(""),
+  createdAt: text("created_at").notNull().default(""),
+  updatedAt: text("updated_at").notNull().default(""),
+});
+
 export const teamEvents = sqliteTable("team_events", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   rootId: text("root_id")
