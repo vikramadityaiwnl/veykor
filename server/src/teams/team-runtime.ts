@@ -3,8 +3,6 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { and, asc, desc, eq, max, or, sql } from "drizzle-orm";
 import type { SessionMcpServerConfig } from "@muse-code/sdk/dist/src/msp.js";
 import {
-  extractMemoryCandidate,
-  memoryIdempotencyKey,
   normalizeTeamTodos,
   veykorRequestHeaderName,
   veykorRequestHeaderValue,
@@ -38,11 +36,7 @@ import {
 } from "../muse/chat-service.js";
 import type { NativeTodoSnapshot } from "../muse/chat-service.js";
 import { agentTurnInput, compileAgentContext } from "../work/agent-context.js";
-import {
-  buildMemoryContext,
-  saveConversationMemory,
-} from "../memory/memory-service.js";
-import type { MemoryReceipt } from "@veykor/shared";
+import { buildMemoryContext } from "../memory/memory-service.js";
 
 export type TeamChat = typeof chats.$inferSelect;
 
@@ -916,41 +910,6 @@ export async function runTeamTurn(
 ): Promise<string> {
   assertTeamAvailable(row);
 
-  let harnessReceipt: MemoryReceipt | null = null;
-
-  if (!readTeamMessage(text)) {
-    const candidate = extractMemoryCandidate(text, {
-      inProject: row.projectId !== "",
-    });
-
-    if (candidate) {
-      try {
-        const scope =
-          candidate.global || row.projectId === "" ? "global" : "project";
-
-        const saved = saveConversationMemory(row.userId, {
-          instruction: candidate.instruction,
-          scope,
-          projectId: row.projectId,
-          sourceChatId: row.id,
-          sourceMessageId: "",
-          excerpt: text.trim().slice(0, 500),
-          idempotencyKey: memoryIdempotencyKey(
-            row.id,
-            "harness",
-            candidate.instruction,
-          ),
-        });
-
-        if (!saved.reused) {
-          harnessReceipt = saved.receipt;
-        }
-      } catch {
-        harnessReceipt = null;
-      }
-    }
-  }
-
   const snapshot = teamSnapshot(row);
   const memory = buildMemoryContext(row.userId, row.projectId, text);
   const context = [
@@ -1022,10 +981,6 @@ export async function runTeamTurn(
 
           if (!readTeamMessage(text)) {
             void broadcastTeamEvent(row, event);
-          }
-
-          if (harnessReceipt) {
-            await onEvent({ type: "memory-saved", receipt: harnessReceipt });
           }
         } else if (event.type === "item") {
           items.set(event.item.itemId, { ...event.item });

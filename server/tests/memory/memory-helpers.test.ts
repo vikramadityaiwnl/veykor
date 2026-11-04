@@ -3,7 +3,6 @@ import { test } from "node:test";
 import {
   buildMemoryContextBlock,
   emptyMemoryList,
-  extractMemoryCandidate,
   memoryContainsSecret,
   memoryIdempotencyKey,
   memoryValidationError,
@@ -73,59 +72,6 @@ test("secret detection refuses credentials while allowing ordinary instructions"
   );
 });
 
-test("durable teaching extraction keeps task-local notes out of memory", () => {
-  const project = extractMemoryCandidate(
-    "Remember this: always run the tests for this project.",
-    { inProject: true },
-  );
-
-  assert.ok(project);
-  assert.equal(project.global, false);
-  assert.match(project.instruction, /always run the tests/i);
-
-  const global = extractMemoryCandidate(
-    "Remember this across all projects: prefer tabs everywhere.",
-    { inProject: true },
-  );
-
-  assert.ok(global);
-  assert.equal(global.global, true);
-
-  assert.equal(
-    extractMemoryCandidate("Fix the typo in this file.", { inProject: true }),
-    null,
-  );
-
-  assert.equal(
-    extractMemoryCandidate("Remember this for this task: use port 9.", {
-      inProject: true,
-    }),
-    null,
-  );
-
-  assert.equal(
-    extractMemoryCandidate("Remember to fix this task today.", {
-      inProject: false,
-    }),
-    null,
-  );
-
-  const outside = extractMemoryCandidate(
-    "Always sign off as Veykor Test Bot in every chat.",
-    { inProject: false },
-  );
-
-  assert.ok(outside);
-  assert.equal(outside.global, true);
-
-  assert.equal(
-    extractMemoryCandidate("Remember this api_key: sk-abcdef1234567890", {
-      inProject: true,
-    }),
-    null,
-  );
-});
-
 test("memory scoring counts keyword overlap deterministically", () => {
   assert.equal(
     scoreMemoryInstruction(
@@ -159,6 +105,9 @@ test("memory context block labels scope and precedence", () => {
   assert.match(block, /project instruction id=b/);
   assert.match(block, /Project instructions override conflicting global/);
   assert.match(block, /current request overrides saved memory/);
+  assert.match(block, /Treat each memory as conditional/);
+  assert.match(block, /Never invoke a skill or tool just because/);
+  assert.match(block, /explicitly say every response, each turn/);
 
   assert.equal(buildMemoryContextBlock([]), "");
 });

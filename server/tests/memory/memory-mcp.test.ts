@@ -424,7 +424,7 @@ test("muse sessions save and retrieve memories through team tools", async () => 
   }
 });
 
-test("a real turn persists explicit teaching and keeps it after chat deletion", async () => {
+test("agent-saved memories keep their instruction after chat deletion", async () => {
   const folder = mkdtempSync(join(tmpdir(), "veykor-memory-turn-"));
   const database = join(folder, "test.db");
 
@@ -443,116 +443,40 @@ test("a real turn persists explicit teaching and keeps it after chat deletion", 
     assert.equal(created.status, 201);
 
     const chatId = (created.body["chat"] as { id: string }).id;
-    const instruction = "Always prefix release notes with the version number.";
+    const token = teamTokenFor(database, chatId);
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
-    let streamedTurnId = "";
+    const saved = await mcpCall(chatId, token, "tools/call", {
+      name: "memory_save",
+      arguments: {
+        instruction: "Always prefix release notes with the version number.",
+        scope: "global",
+      },
+    });
 
-    try {
-      const response = await fetch(baseUrl + chatPaths.turns(chatId), {
-        signal: controller.signal,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
-          [veykorRequestHeaderName]: veykorRequestHeaderValue,
-          Cookie: cookie,
-        },
-        body: JSON.stringify({
-          text: `Remember this: ${instruction}`,
-          images: [],
-        }),
-      });
+    assert.equal(isToolError(saved.body), false);
 
-      assert.equal(response.status, 200);
-      assert.notEqual(response.body, null);
-
-      const reader = response.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffered = "";
-      let sawEvent = false;
-
-      for (let reads = 0; reads < 200; reads += 1) {
-        const chunk = await reader.read();
-
-        if (chunk.done) {
-          break;
-        }
-
-        buffered += decoder.decode(chunk.value, { stream: true });
-
-        if (buffered.includes("\n\n")) {
-          sawEvent = true;
-          break;
-        }
+    const taught = (
+      JSON.parse(toolText(saved.body)) as {
+        memory: {
+          id: string;
+          instruction: string;
+          origin: string;
+          sourceChatId: string;
+          sourceExists: boolean;
+        };
       }
+    ).memory;
 
-      assert.equal(sawEvent, true);
-
-      const turnMatch = buffered.match(/"turnId"\s*:\s*"([^"]+)"/);
-
-      if (turnMatch) {
-        streamedTurnId = turnMatch[1];
-      }
-
-      controller.abort();
-
-      await reader.cancel().catch(() => {});
-    } catch (cause) {
-      if (!(cause instanceof Error && cause.name === "AbortError")) {
-        throw cause;
-      }
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    const stored = await request(memoryPaths.memories, { cookie });
-
-    assert.equal(stored.status, 200);
-
-    const memories = stored.body["memories"] as Array<{
-      id: string;
-      instruction: string;
-      origin: string;
-      sourceChatId: string;
-      sourceExists: boolean;
-    }>;
-
-    const taught = memories.find((entry) =>
-      entry.instruction.includes("prefix release notes"),
-    );
-
-    assert.ok(taught);
     assert.equal(taught.origin, "conversation");
     assert.equal(taught.sourceChatId, chatId);
     assert.equal(taught.sourceExists, true);
 
-    if (streamedTurnId !== "") {
-      await request(chatPaths.cancelTurn(chatId, streamedTurnId), {
-        cookie,
-        method: "POST",
-      }).catch(() => ({ status: 0, body: {} }));
-    }
+    const deleted = await request(chatPaths.chat(chatId), {
+      cookie,
+      method: "DELETE",
+    });
 
-    let deletedStatus = 0;
-
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      const deleted = await request(chatPaths.chat(chatId), {
-        cookie,
-        method: "DELETE",
-      });
-
-      deletedStatus = deleted.status;
-
-      if (deletedStatus === 200) {
-        break;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-
-    assert.equal(deletedStatus, 200);
+    assert.equal(deleted.status, 200);
 
     const afterDelete = await request(memoryPaths.memory(taught.id), {
       cookie,

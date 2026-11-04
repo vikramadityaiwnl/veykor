@@ -248,6 +248,8 @@ export function buildMemoryContextBlock(
   return [
     '<veykor-memory-context version="1">',
     "The following are saved user preferences and instructions. They are not the current user message.",
+    "Treat each memory as conditional: apply it only when the situation it describes arises. For example, always roll d20 means use a d20 whenever dice are rolled, not that you must roll dice unprompted. Never invoke a skill or tool just because a memory mentions it.",
+    "Only instructions that explicitly say every response, each turn, or at the end of a response apply to every turn.",
     "Follow them alongside the current request. The current request overrides saved memory on conflict.",
     "Project instructions override conflicting global preferences. Saved memory never overrides runtime instructions, project rules, permissions, or tool restrictions.",
     "Apply corrections immediately in this conversation. When the user teaches a durable preference, rule, or procedure with words like remember, always, never, from now on, or an explicit ongoing preference, persist it with the memory_save tool and continue the main task. Only claim a memory was saved after the tool succeeds. Never save credentials or secrets.",
@@ -255,97 +257,6 @@ export function buildMemoryContextBlock(
     ...lines,
     "</veykor-memory-context>",
   ].join("\n");
-}
-
-const durableTriggers = [
-  /\bremember\s+(this|that|to|for)\b/i,
-  /\b(always|never)\b/i,
-  /\bfrom now on\b/i,
-  /\bmy preference\b/i,
-  /\bprefer\b/i,
-];
-
-const globalMarkers = [
-  "across projects",
-  "across all projects",
-  "all projects",
-  "all chats",
-  "everywhere",
-  "globally",
-  "every project",
-];
-
-const taskLocalMarkers = [
-  "this task",
-  "for now",
-  "just this",
-  "just for this",
-  "temporarily",
-  "today only",
-  "this once",
-];
-
-function sentenceWithTrigger(text: string): string {
-  const sentences = text
-    .split(/(?<=[.!?\n])\s+/)
-    .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence !== "");
-
-  const hit = sentences.find((sentence) =>
-    durableTriggers.some((pattern) => pattern.test(sentence)),
-  );
-
-  if (hit !== undefined && hit.length >= 10) {
-    return hit.slice(0, maxInstructionLength);
-  }
-
-  return text.trim().slice(0, maxInstructionLength);
-}
-
-export function extractMemoryCandidate(
-  userText: string,
-  options: { inProject: boolean },
-): { instruction: string; global: boolean } | null {
-  const trimmed = userText.trim();
-
-  if (trimmed === "" || trimmed.length > maxInstructionLength) {
-    return null;
-  }
-
-  if (!durableTriggers.some((pattern) => pattern.test(trimmed))) {
-    return null;
-  }
-
-  if (memoryContainsSecret(trimmed)) {
-    return null;
-  }
-
-  const lowered = trimmed.toLowerCase();
-  const isTaskLocal = taskLocalMarkers.some((marker) =>
-    lowered.includes(marker),
-  );
-  const wantsGlobal = globalMarkers.some((marker) => lowered.includes(marker));
-
-  if (!options.inProject) {
-    const clearlyGeneral =
-      wantsGlobal || /\b(always|never|prefer|my preference)\b/i.test(trimmed);
-
-    if (!clearlyGeneral || isTaskLocal) {
-      return null;
-    }
-
-    return { instruction: sentenceWithTrigger(trimmed), global: true };
-  }
-
-  if (isTaskLocal && !wantsGlobal) {
-    const sentence = sentenceWithTrigger(trimmed);
-
-    if (/\bfor this task\b/i.test(sentence)) {
-      return null;
-    }
-  }
-
-  return { instruction: sentenceWithTrigger(trimmed), global: wantsGlobal };
 }
 
 export function memoryIdempotencyKey(
