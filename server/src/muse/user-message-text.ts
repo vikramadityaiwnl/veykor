@@ -1,12 +1,13 @@
+import { questionTurnReminder } from "@veykor/shared";
 import { readTeamMessage } from "../teams/team-messages.js";
 
 export function userMessageText(rawText: string, displayText: unknown): string {
-  if (typeof displayText === "string") {
-    return readTeamMessage(displayText) ? "" : displayText;
-  }
-
-  let text = rawText;
+  let text = typeof displayText === "string" ? displayText : rawText;
   const wrappers = [
+    {
+      prefix: '<veykor-memory-context version="1">',
+      suffix: "</veykor-memory-context>",
+    },
     {
       prefix: '<veykor-agent-context version="1">',
       suffix: "</veykor-agent-context>",
@@ -25,6 +26,11 @@ export function userMessageText(rawText: string, displayText: unknown): string {
     const wrapper = wrappers.find((entry) => text.startsWith(entry.prefix));
 
     if (!wrapper) {
+      if (text.startsWith(questionTurnReminder)) {
+        text = text.slice(questionTurnReminder.length).replace(/^\n+/, "");
+        continue;
+      }
+
       break;
     }
 

@@ -1,3 +1,4 @@
+import { questionTurnReminder } from "@veykor/shared";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { userMessageText } from "../../src/muse/user-message-text.ts";
@@ -44,4 +45,16 @@ test("team protocol inputs stay internal in restored and live transcripts", () =
     userMessageText("Tell Planner I need Java", undefined),
     "Tell Planner I need Java",
   );
+});
+
+test("memory and legacy question guidance stay hidden around team inputs", () => {
+  const context =
+    '<veykor-memory-context version="1">\npreferences\n</veykor-memory-context>\n<veykor-team-context version="1">\nroster\n</veykor-team-context>\n';
+  const message =
+    '<veykor-team-message version="1">\n{"id":201,"kind":"completed","text":"SQLite"}\n</veykor-team-message>';
+  const raw = context + questionTurnReminder + "\n\n" + message;
+
+  assert.equal(userMessageText(raw, undefined), "");
+  assert.equal(userMessageText(raw, raw), "");
+  assert.equal(userMessageText(context + "Hello", undefined), "Hello");
 });

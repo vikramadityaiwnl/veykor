@@ -447,6 +447,19 @@ test("linked sessions coordinate, share interruptions, isolate ownership and pre
       assert.ok(turns.has(testerRow.museSessionId));
     }
 
+    await eventually(() =>
+      steers.some(
+        (entry) =>
+          entry.sessionId === plannerRow.museSessionId &&
+          entry.text.includes(`Result from ${testerRow.museSessionId}`),
+      ),
+    );
+    assert.equal(
+      inputs.filter((entry) => entry.sessionId === plannerRow.museSessionId)
+        .length,
+      1,
+    );
+
     const legacy = db
       .insert(chats)
       .values({

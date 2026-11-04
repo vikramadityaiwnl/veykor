@@ -638,6 +638,31 @@ function queueEvent(row: TeamChat, targetId: string, event: TeamEvent): void {
     })
     .onConflictDoNothing()
     .run();
+
+  const turnId = activeMuseTurn(target.museSessionId);
+
+  if (turnId && ["completed", "failed", "stopped"].includes(event.kind)) {
+    const jobId = `${event.id}:${targetId}`;
+    inFlightJobs.add(jobId);
+
+    void steerMuseTurn({
+      museSessionId: target.museSessionId,
+      expectedTurnId: turnId,
+      text: eventInput(event),
+      images: [],
+    })
+      .then(() => {
+        db.update(teamJobs)
+          .set({ status: "delivered" })
+          .where(eq(teamJobs.id, jobId))
+          .run();
+      })
+      .catch(() => {})
+      .finally(() => {
+        inFlightJobs.delete(jobId);
+        void pumpTeamJobs();
+      });
+  }
 }
 
 export function messageTeamMember(
@@ -952,8 +977,8 @@ export async function runTeamTurn(
         }),
       ),
     }),
-    "</veykor-team-context>",
     questionTurnReminder,
+    "</veykor-team-context>",
   ]
     .filter(Boolean)
     .join("\n");
