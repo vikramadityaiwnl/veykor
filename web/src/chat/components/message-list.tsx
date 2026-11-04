@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import type { ChatHistoryItem } from "@veykor/shared";
+import type { ChatHistoryItem, QuestionRequest } from "@veykor/shared";
 import type { SentAttachment } from "../chat-store.ts";
 import AgentMessage from "./agent-message.tsx";
+import QuestionHistoryRecord from "./question-history-record.tsx";
 import ThinkingBlock from "./thinking-block.tsx";
 import ToolCallBlock from "./tool-call-block.tsx";
 import UserMessage from "./user-message.tsx";
@@ -10,11 +11,18 @@ import UserMessage from "./user-message.tsx";
 interface Props {
   imageUrls: Array<SentAttachment>;
   items: Array<ChatHistoryItem>;
+  questions: Array<QuestionRequest>;
   streaming: boolean;
   streamingTurnId: string;
   streamingStartedAt: number;
   thinkingSnapshots: Record<string, Array<string>>;
   turnDurations: Record<string, number>;
+}
+
+interface TimelineEntry {
+  at: string;
+  order: number;
+  node: ReactNode;
 }
 
 interface ThinkingGroup {
@@ -116,7 +124,7 @@ function MessageList(props: Props) {
     }
 
     container.scrollTop = container.scrollHeight;
-  }, [props.items, props.streaming]);
+  }, [props.items, props.questions, props.streaming]);
 
   const imageByItem = allocateImages(props.items, props.imageUrls);
   const thinkingByTurn = collectThinking(props.items);
@@ -224,6 +232,26 @@ function MessageList(props: Props) {
     return null;
   }
 
+  const timeline: Array<TimelineEntry> = [];
+
+  props.items.forEach((item, order) => {
+    const node = renderItem(item);
+
+    if (node !== null) {
+      timeline.push({ at: item.recordedAt || "", order, node });
+    }
+  });
+
+  props.questions.forEach((request, index) => {
+    timeline.push({
+      at: request.settledAt || request.createdAt,
+      order: props.items.length + index,
+      node: <QuestionHistoryRecord key={request.id} request={request} />,
+    });
+  });
+
+  timeline.sort((a, b) => a.at.localeCompare(b.at) || a.order - b.order);
+
   return (
     <div
       className="flex-1 overflow-y-auto"
@@ -231,7 +259,7 @@ function MessageList(props: Props) {
       ref={containerRef}
     >
       <div className="mx-auto w-full max-w-3xl space-y-6 px-4 pb-24 pt-6">
-        {props.items.map((item) => renderItem(item))}
+        {timeline.map((entry) => entry.node)}
 
         {props.streaming && !liveAnchored && !liveHasThinking
           ? thinkingBlock(liveKey, true, [])

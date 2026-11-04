@@ -22,6 +22,7 @@ function MainChatContent() {
   const activeChatId = useChatStore((state) => state.activeChatId);
   const draftSeq = useChatStore((state) => state.draftSeq);
   const items = useChatStore((state) => state.items);
+  const recentQuestions = useChatStore((state) => state.recentQuestions);
   const historyLoading = useChatStore((state) => state.historyLoading);
   const chatNotFound = useChatStore((state) => state.chatNotFound);
   const streaming = useChatStore((state) => state.streaming);
@@ -90,6 +91,7 @@ function MainChatContent() {
         <MessageList
           imageUrls={imageUrls}
           items={items}
+          questions={recentQuestions}
           streaming={streaming}
           streamingTurnId={streamingTurnId}
           thinkingSnapshots={thinkingSnapshots}

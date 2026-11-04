@@ -8,3 +8,4 @@ export * from "./transcription/index.js";
 export * from "./work/index.js";
 export * from "./teams/index.js";
 export * from "./memory/index.js";
+export * from "./questions/index.js";

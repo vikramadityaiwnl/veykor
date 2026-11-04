@@ -26,6 +26,8 @@ import {
   saveAttachment,
 } from "../../chat/attachment-store.ts";
 import type { SentAttachment } from "../../chat/chat-store.ts";
+import { useChatStore } from "../../chat/chat-store.ts";
+import { visibleOrphanedQuestions } from "../../chat/question-drafts.ts";
 import MessageList from "../../chat/components/message-list.tsx";
 import LoadingSpinner from "../../components/loading-spinner/loading-spinner.tsx";
 import { useTeamStore } from "../team-store.ts";
@@ -78,10 +80,18 @@ function MemberSession(props: Props) {
       0,
     ),
   );
+  const pendingQuestions = detail?.pendingQuestions ?? [];
+  const dismissedQuestions = useChatStore((state) => state.dismissedQuestions);
+  const attention = visibleOrphanedQuestions(
+    detail?.recentQuestions ?? [],
+    dismissedQuestions,
+  );
   const panelOpen =
     taskCount > 0 ||
     props.member.queuedMessages.length > 0 ||
-    (detail?.pendingApprovals.length ?? 0) > 0;
+    (detail?.pendingApprovals.length ?? 0) > 0 ||
+    pendingQuestions.length > 0 ||
+    attention.length > 0;
   const composerError = error || voice.error || props.member.error;
 
   useEffect(() => {
@@ -495,6 +505,7 @@ function MemberSession(props: Props) {
         <MessageList
           imageUrls={sentImages}
           items={detail.items}
+          questions={detail.recentQuestions}
           streaming={running && props.active}
           streamingTurnId={detail.activeTurnId}
           streamingStartedAt={detail.activeTurnStartedAt}
@@ -511,7 +522,12 @@ function MemberSession(props: Props) {
         <MemberComposerPanel
           member={props.member}
           approvals={detail?.pendingApprovals ?? []}
+          pendingQuestions={detail?.pendingQuestions ?? []}
+          recentQuestions={detail?.recentQuestions ?? []}
           onDecided={() => {
+            void refresh();
+          }}
+          onQuestionsSettled={() => {
             void refresh();
           }}
           onSteerQueuedMessage={(id) => {

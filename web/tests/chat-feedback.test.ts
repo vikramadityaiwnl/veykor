@@ -23,6 +23,8 @@ function detail() {
     items: [],
     turnDurations: {},
     pendingApprovals: [],
+    pendingQuestions: [],
+    recentQuestions: [],
     activeTurnId: "",
     activeTurnStartedAt: 0,
     running: false,

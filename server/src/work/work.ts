@@ -22,6 +22,7 @@ import { isHostRequest } from "../auth/host-access.js";
 import { db } from "../db/client.js";
 import { agents, projects, chats, memories } from "../db/schema.js";
 import { isMuseTurnRunning, leaveMuseSession } from "../muse/chat-service.js";
+import { settleRootQuestions } from "../questions/question-store.js";
 
 export function readAgent(
   userId: number,
@@ -397,6 +398,10 @@ projectRoute.delete("/:id", async (c) => {
   }
 
   try {
+    for (const root of doomed.filter((chat) => !chat.parentChatId)) {
+      settleRootQuestions(root.id, "cancelled", "The project was deleted.");
+    }
+
     await Promise.all(
       doomed.map((chat) => leaveMuseSession(chat.museSessionId)),
     );

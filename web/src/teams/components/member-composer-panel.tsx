@@ -1,5 +1,12 @@
-import type { ChatApprovalRequest, TeamMember } from "@veykor/shared";
+import type {
+  ChatApprovalRequest,
+  QuestionRequest,
+  TeamMember,
+} from "@veykor/shared";
 import ComposerActivityPanel from "../../chat/components/composer-activity-panel.tsx";
+import QuestionPanel from "../../chat/components/question-panel.tsx";
+import { useChatStore } from "../../chat/chat-store.ts";
+import { visibleOrphanedQuestions } from "../../chat/question-drafts.ts";
 import { useTeamStore } from "../team-store.ts";
 import MemberApproval from "./member-approval.tsx";
 import MemberQueue from "./member-queue.tsx";
@@ -8,7 +15,10 @@ import TeamTodos from "./team-todos.tsx";
 interface Props {
   member: TeamMember;
   approvals: ChatApprovalRequest[];
+  pendingQuestions: Array<QuestionRequest>;
+  recentQuestions: Array<QuestionRequest>;
   onDecided: () => void;
+  onQuestionsSettled: () => void;
   onSteerQueuedMessage: (id: string) => void;
   onEditQueuedMessage: (id: string) => void;
 }
@@ -21,12 +31,29 @@ function MemberComposerPanel(props: Props) {
     ),
   );
 
+  const dismissed = useChatStore((state) => state.dismissedQuestions);
+
   const showApprovals = props.approvals.length > 0;
   const showQueue = props.member.queuedMessages.length > 0;
   const showTasks = taskCount > 0;
+  const showQuestions =
+    props.pendingQuestions.length > 0 ||
+    visibleOrphanedQuestions(props.recentQuestions, dismissed).length > 0;
 
-  const first = showApprovals ? "approvals" : showQueue ? "queue" : "tasks";
-  const last = showTasks ? "tasks" : showQueue ? "queue" : "approvals";
+  const first = showApprovals
+    ? "approvals"
+    : showQuestions
+      ? "questions"
+      : showQueue
+        ? "queue"
+        : "tasks";
+  const last = showTasks
+    ? "tasks"
+    : showQueue
+      ? "queue"
+      : showQuestions
+        ? "questions"
+        : "approvals";
 
   return (
     <>
@@ -48,6 +75,17 @@ function MemberComposerPanel(props: Props) {
             ))}
           </div>
         </ComposerActivityPanel>
+      ) : null}
+
+      {showQuestions ? (
+        <QuestionPanel
+          first={first === "questions"}
+          hideOrigin
+          last={last === "questions"}
+          onSettled={props.onQuestionsSettled}
+          pending={props.pendingQuestions}
+          recent={props.recentQuestions}
+        />
       ) : null}
 
       {showQueue ? (

@@ -2,6 +2,7 @@ import { useWorkStore } from "../work/work-store.ts";
 import { create } from "zustand";
 import { defaultChatTitle, preferredEffortKey } from "@veykor/shared";
 import type {
+  AnswerInput,
   ChatDetail,
   ChatApprovalRequest,
   ChatHistoryItem,
@@ -10,6 +11,7 @@ import type {
   ChatSummary,
   DecideApprovalRequest,
   MemoryReceipt,
+  QuestionRequest,
   UpdateChatSettingsRequest,
 } from "@veykor/shared";
 import { usePreferencesStore } from "../workspace/preferences-store.ts";
@@ -29,6 +31,12 @@ import {
   updateSettings,
 } from "./chat-client.ts";
 import type { TurnImageInput } from "./chat-client.ts";
+import { answerQuestions, cancelQuestions } from "./question-client.ts";
+import {
+  clearQuestionDraft,
+  readDismissedQuestions,
+  writeDismissedQuestions,
+} from "./question-drafts.ts";
 import {
   appendChatAttachmentIds,
   blobFromBase64,
@@ -78,6 +86,9 @@ interface ChatState {
   streamingStartedAt: number;
   error: string;
   pendingApprovals: Array<ChatApprovalRequest>;
+  pendingQuestions: Array<QuestionRequest>;
+  recentQuestions: Array<QuestionRequest>;
+  dismissedQuestions: Array<string>;
   turnDurations: Record<string, number>;
   thinkingSnapshots: Record<string, Array<string>>;
   todos: Array<Record<string, unknown>>;
@@ -112,6 +123,12 @@ interface ChatState {
     choiceId: string,
     feedback?: string,
   ) => Promise<void>;
+  answerQuestion: (
+    requestId: string,
+    answers: Array<AnswerInput>,
+  ) => Promise<void>;
+  cancelQuestion: (requestId: string) => Promise<void>;
+  dismissOrphaned: (requestId: string) => void;
   loadCatalog: (chatId?: string) => Promise<void>;
   setModel: (modelId: string, providerId: string) => void;
   setReasoningEffort: (effort: string) => void;
@@ -466,6 +483,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   streamingStartedAt: 0,
   error: "",
   pendingApprovals: [],
+  pendingQuestions: [],
+  recentQuestions: [],
+  dismissedQuestions: readDismissedQuestions(),
   turnDurations: {},
   thinkingSnapshots: {},
   todos: [],
@@ -580,6 +600,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       streamingStartedAt: 0,
       error: "",
       pendingApprovals: [],
+      pendingQuestions: [],
+      recentQuestions: [],
       todos: [],
       composerImages: [],
       queuedMessages: [],
@@ -612,6 +634,25 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
   syncChat: (detail) => {
     const current = get();
+
+    if (current.activeChatId !== detail.chat.id) {
+      return;
+    }
+
+    if (detail.chat.projectId !== useWorkStore.getState().projectId) {
+      return;
+    }
+
+    const stillPending = new Set(
+      detail.pendingQuestions.map((request) => request.id),
+    );
+
+    for (const previous of current.pendingQuestions) {
+      if (!stillPending.has(previous.id)) {
+        clearQuestionDraft(previous.id);
+      }
+    }
+
     const completedLocalTurn =
       current.streaming &&
       !detail.running &&
@@ -624,14 +665,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           item.status === "completed",
       );
 
-    if (
-      current.activeChatId !== detail.chat.id ||
-      (localTurns.has(detail.chat.id) && !completedLocalTurn)
-    ) {
-      return;
-    }
+    if (localTurns.has(detail.chat.id) && !completedLocalTurn) {
+      set({
+        pendingQuestions: detail.pendingQuestions,
+        recentQuestions: detail.recentQuestions,
+      });
 
-    if (detail.chat.projectId !== useWorkStore.getState().projectId) {
       return;
     }
 
@@ -652,6 +691,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         items: detail.items,
         turnDurations: detail.turnDurations,
         pendingApprovals: detail.pendingApprovals,
+        pendingQuestions: detail.pendingQuestions,
+        recentQuestions: detail.recentQuestions,
         streaming: detail.running,
         streamingTurnId: detail.activeTurnId,
         streamingStartedAt: detail.activeTurnStartedAt,
@@ -698,6 +739,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       chatNotFound: false,
       items: [],
       pendingApprovals: [],
+      pendingQuestions: [],
+      recentQuestions: [],
       todos: [],
       error: "",
       queuedMessages: [],
@@ -728,6 +771,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
               error: "",
               items: [],
               pendingApprovals: [],
+              pendingQuestions: [],
+              recentQuestions: [],
               todos: [],
             });
 
@@ -741,6 +786,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             items: detail.items,
             turnDurations: detail.turnDurations,
             pendingApprovals: detail.pendingApprovals,
+            pendingQuestions: detail.pendingQuestions,
+            recentQuestions: detail.recentQuestions,
             permission: detail.permission,
             historyLoading: false,
             chatNotFound: false,
@@ -1003,6 +1050,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           items: current.items,
           turnDurations: detail.turnDurations,
           pendingApprovals: detail.pendingApprovals,
+          pendingQuestions: detail.pendingQuestions,
+          recentQuestions: detail.recentQuestions,
         }));
       }
 
@@ -1405,6 +1454,76 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     } catch (cause) {
       set({ error: errorMessage(cause, "Unable to cancel turn.") });
     }
+  },
+
+  answerQuestion: async (requestId, answers) => {
+    const state = get();
+
+    if (state.activeChatId === null) {
+      throw new Error("Open a chat first.");
+    }
+
+    const { request } = await answerQuestions(
+      state.activeChatId,
+      requestId,
+      answers,
+    );
+
+    clearQuestionDraft(requestId);
+
+    set((current) => ({
+      pendingQuestions: current.pendingQuestions.filter(
+        (entry) => entry.id !== requestId,
+      ),
+      recentQuestions: request.isMain
+        ? [
+            request,
+            ...current.recentQuestions.filter(
+              (entry) => entry.id !== requestId,
+            ),
+          ].slice(0, 50)
+        : current.recentQuestions,
+    }));
+  },
+
+  cancelQuestion: async (requestId) => {
+    const state = get();
+
+    if (state.activeChatId === null) {
+      throw new Error("Open a chat first.");
+    }
+
+    const { request } = await cancelQuestions(state.activeChatId, requestId);
+
+    clearQuestionDraft(requestId);
+
+    set((current) => ({
+      pendingQuestions: current.pendingQuestions.filter(
+        (entry) => entry.id !== requestId,
+      ),
+      recentQuestions: request.isMain
+        ? [
+            request,
+            ...current.recentQuestions.filter(
+              (entry) => entry.id !== requestId,
+            ),
+          ].slice(0, 50)
+        : current.recentQuestions,
+    }));
+  },
+
+  dismissOrphaned: (requestId) => {
+    set((current) => {
+      if (current.dismissedQuestions.includes(requestId)) {
+        return current;
+      }
+
+      const dismissedQuestions = [...current.dismissedQuestions, requestId];
+
+      writeDismissedQuestions(dismissedQuestions);
+
+      return { dismissedQuestions };
+    });
   },
 
   decideApproval: async (approvalId, choiceId, feedback) => {

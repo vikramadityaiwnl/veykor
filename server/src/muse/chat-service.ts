@@ -283,7 +283,7 @@ export async function readMuseChat(
     mcpServers?: Record<string, SessionMcpServerConfig>;
     onTodoSnapshot?: (snapshot: NativeTodoSnapshot) => void;
   } = {},
-): Promise<Omit<ChatDetail, "chat">> {
+): Promise<Omit<ChatDetail, "chat" | "pendingQuestions" | "recentQuestions">> {
   const connection = await museHost.connection();
 
   const mcpServers = options.mcpServers ?? {};

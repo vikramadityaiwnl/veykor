@@ -5,11 +5,16 @@ import TeamTodos from "../../teams/components/team-todos.tsx";
 import { useTeamStore } from "../../teams/team-store.ts";
 import ApprovalCard from "./approval-card.tsx";
 import QueuedMessages from "./queued-messages.tsx";
+import QuestionPanel from "./question-panel.tsx";
 import { useChatStore } from "../chat-store.ts";
+import { visibleOrphanedQuestions } from "../question-drafts.ts";
 
 function ComposerPanel() {
   const pendingApprovals = useChatStore((s) => s.pendingApprovals);
   const queuedMessages = useChatStore((s) => s.queuedMessages);
+  const pendingQuestions = useChatStore((s) => s.pendingQuestions);
+  const recentQuestions = useChatStore((s) => s.recentQuestions);
+  const dismissedQuestions = useChatStore((s) => s.dismissedQuestions);
 
   const activeChatId = useChatStore((state) => state.activeChatId);
   const taskCount = useTeamStore((state) =>
@@ -28,10 +33,17 @@ function ComposerPanel() {
     setIndex(0);
   }
 
+  const attention = visibleOrphanedQuestions(
+    recentQuestions,
+    dismissedQuestions,
+  );
+  const showQuestions = pendingQuestions.length > 0 || attention.length > 0;
+
   if (
     pendingApprovals.length === 0 &&
     queuedMessages.length === 0 &&
-    taskCount === 0
+    taskCount === 0 &&
+    !showQuestions
   ) {
     return null;
   }
@@ -44,8 +56,20 @@ function ComposerPanel() {
   const showQueue = queuedMessages.length > 0;
   const showTasks = taskCount > 0;
 
-  const first = showApprovals ? "approvals" : showQueue ? "queue" : "tasks";
-  const last = showTasks ? "tasks" : showQueue ? "queue" : "approvals";
+  const first = showApprovals
+    ? "approvals"
+    : showQuestions
+      ? "questions"
+      : showQueue
+        ? "queue"
+        : "tasks";
+  const last = showTasks
+    ? "tasks"
+    : showQueue
+      ? "queue"
+      : showQuestions
+        ? "questions"
+        : "approvals";
 
   return (
     <>
@@ -89,6 +113,15 @@ function ComposerPanel() {
             <ApprovalCard approval={current} />
           ) : null}
         </ComposerActivityPanel>
+      ) : null}
+
+      {showQuestions ? (
+        <QuestionPanel
+          first={first === "questions"}
+          last={last === "questions"}
+          pending={pendingQuestions}
+          recent={recentQuestions}
+        />
       ) : null}
 
       {showQueue ? (

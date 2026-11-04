@@ -26,6 +26,7 @@ export interface TeamMember {
   isMain: boolean;
   todos: TeamTodo[];
   queuedMessages: TeamQueuedMessage[];
+  pendingQuestions: number;
 }
 
 export interface TeamEvent {

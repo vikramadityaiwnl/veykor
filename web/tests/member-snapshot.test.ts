@@ -23,6 +23,8 @@ function detail(turnId: string): ChatDetail {
     },
     items: [],
     pendingApprovals: [],
+    pendingQuestions: [],
+    recentQuestions: [],
     modelId: "",
     providerId: "",
     reasoningEffort: "",

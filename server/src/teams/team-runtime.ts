@@ -4,6 +4,7 @@ import { and, asc, desc, eq, max, or, sql } from "drizzle-orm";
 import type { SessionMcpServerConfig } from "@muse-code/sdk/dist/src/msp.js";
 import {
   normalizeTeamTodos,
+  questionTurnReminder,
   veykorRequestHeaderName,
   veykorRequestHeaderValue,
 } from "@veykor/shared";
@@ -37,6 +38,11 @@ import {
 import type { NativeTodoSnapshot } from "../muse/chat-service.js";
 import { agentTurnInput, compileAgentContext } from "../work/agent-context.js";
 import { buildMemoryContext } from "../memory/memory-service.js";
+import {
+  pendingQuestionCount,
+  settleMemberQuestions,
+  sweepOrphanedRequests,
+} from "../questions/question-store.js";
 
 export type TeamChat = typeof chats.$inferSelect;
 
@@ -200,6 +206,7 @@ function teamMember(row: TeamChat): TeamMember {
     error: row.teamError,
     isMain: !row.parentChatId,
     todos: normalizeTeamTodos(JSON.parse(row.todos)),
+    pendingQuestions: pendingQuestionCount(row.id),
     queuedMessages: db
       .select()
       .from(teamJobs)
@@ -887,6 +894,12 @@ export async function stopTeamMember(
     throw new Error("That turn is no longer running.");
   }
 
+  settleMemberQuestions(
+    row.id,
+    "cancelled",
+    "The user stopped this session before answering.",
+  );
+
   await cancelMuseTurn(row.museSessionId, turnId);
   db.update(teamJobs)
     .set({ status: "cancelled" })
@@ -940,6 +953,7 @@ export async function runTeamTurn(
       ),
     }),
     "</veykor-team-context>",
+    questionTurnReminder,
   ]
     .filter(Boolean)
     .join("\n");
@@ -1013,6 +1027,14 @@ export async function runTeamTurn(
     throw cause;
   } finally {
     preparingTurns.delete(row.id);
+
+    if (admitted) {
+      settleMemberQuestions(
+        row.id,
+        "orphaned",
+        "The turn ended before this question was answered.",
+      );
+    }
 
     if (admitted || admissionFailed) {
       const stopped =
@@ -1196,6 +1218,9 @@ export async function pumpTeamJobs(): Promise<void> {
 }
 
 export function startTeamRuntime(): void {
+  sweepOrphanedRequests(
+    "The server restarted while this question was waiting. The agent is no longer waiting for it; send a message to continue.",
+  );
   db.update(teamJobs)
     .set({ status: "failed" })
     .where(eq(teamJobs.status, "running"))

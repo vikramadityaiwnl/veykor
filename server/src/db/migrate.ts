@@ -238,6 +238,29 @@ export function runMigrations(sqlite: Database.Database): void {
     );
   }
 
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS question_requests (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL DEFAULT 0 REFERENCES users(id) ON DELETE CASCADE,
+      root_id TEXT NOT NULL DEFAULT '' REFERENCES chats(id) ON DELETE CASCADE,
+      member_id TEXT NOT NULL DEFAULT '',
+      agent_id TEXT NOT NULL DEFAULT '',
+      agent_name TEXT NOT NULL DEFAULT '',
+      muse_session_id TEXT NOT NULL DEFAULT '',
+      turn_id TEXT NOT NULL DEFAULT '',
+      call_key TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      payload TEXT NOT NULL DEFAULT '[]',
+      answers TEXT NOT NULL DEFAULT '[]',
+      notice TEXT NOT NULL DEFAULT '',
+      reason TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT '',
+      settled_at TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS question_requests_root_idx ON question_requests(root_id, status, created_at);
+    CREATE INDEX IF NOT EXISTS question_requests_member_idx ON question_requests(member_id, status);
+  `);
+
   sqlite
     .prepare(
       "INSERT OR IGNORE INTO preferences (user_id, data) SELECT id, ? FROM users",

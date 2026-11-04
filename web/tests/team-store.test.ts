@@ -17,6 +17,7 @@ function snapshot(rootId: string, name: string): TeamSnapshot {
         isMain: true,
         todos: [],
         queuedMessages: [],
+        pendingQuestions: 0,
       },
     ],
     events: [],
@@ -54,6 +55,43 @@ test("late team responses cannot replace the latest visit to the same chat", asy
     );
   } finally {
     cleanups.forEach((cleanup) => cleanup());
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a member waiting on a question opens its panel tab", async () => {
+  const originalFetch = globalThis.fetch;
+  const team = snapshot("waiting", "Main");
+  team.members.push({
+    id: "tester",
+    agentId: "agent-tester",
+    name: "Tester",
+    task: "Test things",
+    status: "running",
+    error: "",
+    isMain: false,
+    todos: [],
+    queuedMessages: [],
+    pendingQuestions: 1,
+  });
+  globalThis.fetch = async () => Response.json(team);
+  let cleanup = () => {};
+
+  try {
+    useTeamStore.setState({ tabs: [], selectedId: "" });
+    cleanup = useTeamStore.getState().watch("waiting");
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(useTeamStore.getState().tabs, ["tester"]);
+    assert.equal(useTeamStore.getState().selectedId, "tester");
+
+    team.members[1].pendingQuestions = 0;
+    await useTeamStore.getState().refresh();
+
+    assert.deepEqual(useTeamStore.getState().tabs, ["tester"]);
+    assert.equal(useTeamStore.getState().selectedId, "tester");
+  } finally {
+    cleanup();
     globalThis.fetch = originalFetch;
   }
 });

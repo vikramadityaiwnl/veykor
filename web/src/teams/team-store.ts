@@ -124,15 +124,25 @@ export const useTeamStore = create<TeamState>((set, get) => ({
                 .filter((id) => id !== "" && id !== snapshot.rootId),
             ),
           ];
+          const waiting = snapshot.members
+            .filter(
+              (member) =>
+                !member.isMain &&
+                (member.pendingQuestions ?? 0) > 0 &&
+                !tabs.includes(member.id),
+            )
+            .map((member) => member.id);
+          const opened = waiting.length > 0 ? waiting[0] : "";
+          const resolved =
+            resolve(state.selectedId) === snapshot.rootId
+              ? ""
+              : resolve(state.selectedId);
 
           return {
             snapshot,
             error: "",
-            tabs,
-            selectedId:
-              resolve(state.selectedId) === snapshot.rootId
-                ? ""
-                : resolve(state.selectedId),
+            tabs: [...tabs, ...waiting],
+            selectedId: resolved === "" && opened !== "" ? opened : resolved,
           };
         });
         saveView(get());

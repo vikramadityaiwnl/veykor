@@ -1,4 +1,5 @@
 import type { MemoryReceipt } from "../memory/memory-contracts.js";
+import type { QuestionRequest } from "../questions/question-contracts.js";
 
 export type ChatPermission = "read-only" | "approved" | "full-access";
 
@@ -66,6 +67,8 @@ export interface ChatDetail {
   chat: ChatSummary;
   items: Array<ChatHistoryItem>;
   pendingApprovals: Array<ChatApprovalRequest>;
+  pendingQuestions: Array<QuestionRequest>;
+  recentQuestions: Array<QuestionRequest>;
   modelId: string;
   providerId: string;
   reasoningEffort: string;

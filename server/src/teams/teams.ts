@@ -21,12 +21,19 @@ import {
   delegateTeamMember,
   messageTeamMember,
   ownedChat,
+  recordTeamEvent,
   sessionMcp,
   teamRoot,
   teamRows,
   teamSnapshot,
   updateTeamTodos,
 } from "./team-runtime.js";
+import {
+  createQuestionRequest,
+  questionAskedText,
+  waitForSettlement,
+} from "../questions/question-store.js";
+import { questionToolGuidance } from "@veykor/shared";
 
 async function readBody(c: Context): Promise<Record<string, unknown>> {
   const body: unknown = await c.req.json().catch(() => ({}));
@@ -129,6 +136,72 @@ const tools = [
         },
       },
       required: ["items"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "ask_user",
+    description: `Ask the user concise clarification questions through a structured prompt. This call waits until the user answers or cancels, then returns the answers.\n\n${questionToolGuidance}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        questions: {
+          type: "array",
+          minItems: 1,
+          maxItems: 3,
+          items: {
+            type: "object",
+            properties: {
+              id: {
+                type: "string",
+                description:
+                  "Unique id for this question: letters, numbers, underscore, or hyphen, at most 64 characters.",
+              },
+              question: {
+                type: "string",
+                description:
+                  "The full question text shown to the user, under 500 characters.",
+              },
+              options: {
+                type: "array",
+                maxItems: 5,
+                description:
+                  "Two to five suggested options, or an empty array for a free-text-only question.",
+                items: {
+                  type: "object",
+                  properties: {
+                    id: {
+                      type: "string",
+                      description:
+                        "Unique option id within this question: letters, numbers, underscore, or hyphen.",
+                    },
+                    label: {
+                      type: "string",
+                      description:
+                        "Short option label shown to the user, under 80 characters.",
+                    },
+                    description: {
+                      type: "string",
+                      description:
+                        "Optional tradeoff explanation, under 240 characters.",
+                    },
+                  },
+                  required: ["id", "label"],
+                  additionalProperties: false,
+                },
+              },
+              recommendedOptionId: {
+                type: "string",
+                description:
+                  "Optional id of the recommended option. Only recommend with a defensible reason.",
+              },
+            },
+            required: ["id", "question"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["questions"],
       additionalProperties: false,
     },
   },
@@ -283,6 +356,39 @@ teamMcpRoute.post("/:id", async (c) => {
       result = messageTeamMember(row, args.memberId, args.message);
     } else if (params?.name === "team_update_todos") {
       result = { todos: updateTeamTodos(row, args.items) };
+    } else if (params?.name === "ask_user") {
+      const created = createQuestionRequest(row, args, String(id));
+
+      if (!created.duplicate) {
+        recordTeamEvent(
+          row,
+          "question-asked",
+          questionAskedText(created.record),
+        );
+      }
+
+      const settlement = await waitForSettlement(
+        created.record.id,
+        c.req.raw.signal,
+      );
+
+      if (settlement.status === "answered") {
+        result = {
+          requestId: created.record.id,
+          status: "answered",
+          answers: settlement.answers,
+          ...(settlement.notice === "" ? {} : { notice: settlement.notice }),
+        };
+      } else {
+        result = {
+          requestId: created.record.id,
+          status: "cancelled",
+          reason:
+            settlement.reason === ""
+              ? "The user cancelled this question without answering."
+              : settlement.reason,
+        };
+      }
     } else if (params?.name === "team_read_session") {
       const member = teamRows(row).find((entry) => entry.id === args.memberId);
 

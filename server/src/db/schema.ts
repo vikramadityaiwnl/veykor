@@ -135,6 +135,31 @@ export const teamEvents = sqliteTable("team_events", {
   createdAt: text("created_at").notNull().default(""),
 });
 
+export const questionRequests = sqliteTable("question_requests", {
+  id: text("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .default(0)
+    .references(() => users.id, { onDelete: "cascade" }),
+  rootId: text("root_id")
+    .notNull()
+    .default("")
+    .references(() => chats.id, { onDelete: "cascade" }),
+  memberId: text("member_id").notNull().default(""),
+  agentId: text("agent_id").notNull().default(""),
+  agentName: text("agent_name").notNull().default(""),
+  museSessionId: text("muse_session_id").notNull().default(""),
+  turnId: text("turn_id").notNull().default(""),
+  callKey: text("call_key").notNull().default(""),
+  status: text("status").notNull().default("pending"),
+  payload: text("payload").notNull().default("[]"),
+  answers: text("answers").notNull().default("[]"),
+  notice: text("notice").notNull().default(""),
+  reason: text("reason").notNull().default(""),
+  createdAt: text("created_at").notNull().default(""),
+  settledAt: text("settled_at").notNull().default(""),
+});
+
 export const teamJobs = sqliteTable("team_jobs", {
   id: text("id").primaryKey(),
   rootId: text("root_id")

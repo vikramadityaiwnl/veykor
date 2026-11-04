@@ -1,4 +1,5 @@
 import { serve } from "@hono/node-server";
+import { Server } from "node:http";
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { WebSocketServer } from "ws";
@@ -20,6 +21,7 @@ import {
 } from "./transcription/transcription-upgrade.js";
 import { agentRoute, projectRoute } from "./work/work.js";
 import { teamRoute, teamMcpRoute } from "./teams/teams.js";
+import { questionRoute } from "./questions/questions.js";
 import { startTeamRuntime } from "./teams/team-runtime.js";
 
 const config = loadServerConfig();
@@ -30,6 +32,7 @@ app.use("/api/*", csrfProtection);
 
 app.route("/api/auth", authRoute);
 app.route("/api/chats", chatRoute);
+app.route("/api/chats", questionRoute);
 app.route("/api/teams", teamRoute);
 app.route("/api/team-mcp", teamMcpRoute);
 app.route("/api/agents", agentRoute);
@@ -77,6 +80,10 @@ const server = serve(
     console.log(`SQLite database: ${config.databaseUrl}`);
   },
 );
+
+if (server instanceof Server) {
+  server.requestTimeout = 0;
+}
 
 const transcriptionSockets = new WebSocketServer({
   noServer: true,

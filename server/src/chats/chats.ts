@@ -20,8 +20,13 @@ import {
   shareInterruption,
   stopTeamMember,
   teamHasWork,
+  teamRoot,
   teamRows,
 } from "../teams/team-runtime.js";
+import {
+  listQuestions,
+  settleRootQuestions,
+} from "../questions/question-store.js";
 import { defaultChatTitle } from "@veykor/shared";
 import type {
   ChatDetail,
@@ -128,6 +133,14 @@ function readChat(userId: number, id: string): ChatRow | undefined {
     .get();
 
   return row?.parentChatId ? canonicalTeamChat(row) : row;
+}
+
+function questionState(
+  row: ChatRow,
+): Pick<ChatDetail, "pendingQuestions" | "recentQuestions"> {
+  const listed = listQuestions(row.userId, teamRoot(row), row.id);
+
+  return { pendingQuestions: listed.pending, recentQuestions: listed.settled };
 }
 
 async function readJson(c: Context): Promise<Record<string, unknown>> {
@@ -382,6 +395,8 @@ chatRoute.post("/", requireAuth, async (c) => {
     items: [],
     turnDurations: {},
     pendingApprovals: [],
+    pendingQuestions: [],
+    recentQuestions: [],
     modelId: agent?.modelId ?? "",
     providerId: agent?.providerId ?? "",
     reasoningEffort: agent?.reasoningEffort ?? "",
@@ -404,6 +419,7 @@ chatRoute.get("/:id", requireAuth, async (c) => {
     const response: ChatDetail = {
       chat: toSummary(row),
       ...detail,
+      ...questionState(row),
     };
 
     return c.json(response);
@@ -457,6 +473,7 @@ chatRoute.get("/:id/events", requireAuth, async (c) => {
           const detail: ChatDetail = {
             chat: toSummary(current),
             ...(await readTeamChat(current)),
+            ...questionState(current),
           };
           const snapshot = JSON.stringify(detail);
 
@@ -535,6 +552,8 @@ chatRoute.delete("/:id", requireAuth, async (c) => {
 
   try {
     const members = teamRows(row);
+
+    settleRootQuestions(teamRoot(row), "cancelled", "The chat was deleted.");
 
     await Promise.all(
       members.map((member) => leaveMuseSession(member.museSessionId)),
@@ -827,7 +846,7 @@ chatRoute.put("/:id/settings", requireAuth, async (c) => {
     try {
       const detail = await readTeamChat(row);
 
-      return c.json({ chat: toSummary(row), ...detail });
+      return c.json({ chat: toSummary(row), ...detail, ...questionState(row) });
     } catch (cause) {
       return museFailure(c, cause);
     }
@@ -860,6 +879,7 @@ chatRoute.put("/:id/settings", requireAuth, async (c) => {
     const response: ChatDetail = {
       chat: toSummary(row),
       ...detail,
+      ...questionState(row),
     };
 
     return c.json(response);

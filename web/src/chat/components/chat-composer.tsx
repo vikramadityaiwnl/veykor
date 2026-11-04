@@ -15,6 +15,7 @@ import { usePreferencesStore } from "../../workspace/preferences-store.ts";
 import Dialog from "../../components/dialog/dialog.tsx";
 import LoadingSpinner from "../../components/loading-spinner/loading-spinner.tsx";
 import ComposerPanel from "./composer-panel.tsx";
+import { visibleOrphanedQuestions } from "../question-drafts.ts";
 import EffortPicker from "./effort-picker.tsx";
 import ModelPicker from "./model-picker.tsx";
 import PermissionPicker from "./permission-picker.tsx";
@@ -74,8 +75,19 @@ function ChatComposer(props: Props) {
       0,
     ),
   );
+  const pendingQuestions = useChatStore((s) => s.pendingQuestions);
+  const recentQuestions = useChatStore((s) => s.recentQuestions);
+  const dismissedQuestions = useChatStore((s) => s.dismissedQuestions);
+  const attention = visibleOrphanedQuestions(
+    recentQuestions,
+    dismissedQuestions,
+  );
   const panelOpen =
-    pendingApprovals.length > 0 || queuedMessages.length > 0 || taskCount > 0;
+    pendingApprovals.length > 0 ||
+    queuedMessages.length > 0 ||
+    taskCount > 0 ||
+    pendingQuestions.length > 0 ||
+    attention.length > 0;
   const canSend =
     (draft.trim() !== "" || composerImages.length > 0) &&
     !projectRequired &&

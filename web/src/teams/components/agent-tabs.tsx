@@ -65,6 +65,14 @@ function AgentTabs() {
               }}
             >
               {member.name}
+              {member.pendingQuestions > 0 ? (
+                <span
+                  className="ml-1.5 inline-block rounded-full bg-amber-500/20 px-1.5 py-px text-[10px] font-medium text-amber-300"
+                  title="Waiting for your answer"
+                >
+                  {member.pendingQuestions}
+                </span>
+              ) : null}
             </button>
             <button
               aria-label={`Close ${member.name} tab`}
