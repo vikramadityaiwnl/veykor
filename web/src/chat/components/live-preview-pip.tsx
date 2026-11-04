@@ -157,7 +157,7 @@ function LivePreviewPip() {
   const currentImageSize =
     imageSize?.itemId === previewItemId ? imageSize : null;
   const previewWidth =
-    currentImageSize?.width ?? savedLayout.width ?? defaultPreviewWidth;
+    imageSize?.width ?? savedLayout.width ?? defaultPreviewWidth;
 
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest("button")) {
@@ -342,7 +342,6 @@ function LivePreviewPip() {
       </div>
 
       <img
-        key={previewItemId}
         alt="Live tool image preview"
         className="block h-auto max-h-[70vh] w-full object-contain"
         draggable={false}
@@ -359,7 +358,7 @@ function LivePreviewPip() {
               ? Math.min(320 * ratio, window.innerWidth * 0.8)
               : defaultPreviewWidth;
           const width = Math.min(
-            savedLayout.width ?? defaultWidth,
+            imageSizeRef.current?.width ?? savedLayout.width ?? defaultWidth,
             maximumWidth,
           );
           const nextSize = { itemId: previewItemId, ratio, width };
