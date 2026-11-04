@@ -10,6 +10,7 @@ import type {
   ChatPermission,
   ChatSummary,
   DecideApprovalRequest,
+  GeneratedImageArtifact,
   MemoryReceipt,
   QuestionRequest,
   UpdateChatSettingsRequest,
@@ -88,6 +89,7 @@ interface ChatState {
   pendingApprovals: Array<ChatApprovalRequest>;
   pendingQuestions: Array<QuestionRequest>;
   recentQuestions: Array<QuestionRequest>;
+  generatedImages: Array<GeneratedImageArtifact>;
   dismissedQuestions: Array<string>;
   turnDurations: Record<string, number>;
   thinkingSnapshots: Record<string, Array<string>>;
@@ -485,6 +487,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   pendingApprovals: [],
   pendingQuestions: [],
   recentQuestions: [],
+  generatedImages: [],
   dismissedQuestions: readDismissedQuestions(),
   turnDurations: {},
   thinkingSnapshots: {},
@@ -602,6 +605,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       pendingApprovals: [],
       pendingQuestions: [],
       recentQuestions: [],
+      generatedImages: [],
       todos: [],
       composerImages: [],
       queuedMessages: [],
@@ -693,6 +697,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         pendingApprovals: detail.pendingApprovals,
         pendingQuestions: detail.pendingQuestions,
         recentQuestions: detail.recentQuestions,
+        generatedImages: detail.generatedImages,
         streaming: detail.running,
         streamingTurnId: detail.activeTurnId,
         streamingStartedAt: detail.activeTurnStartedAt,
@@ -741,6 +746,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       pendingApprovals: [],
       pendingQuestions: [],
       recentQuestions: [],
+      generatedImages: [],
       todos: [],
       error: "",
       queuedMessages: [],
@@ -773,6 +779,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
               pendingApprovals: [],
               pendingQuestions: [],
               recentQuestions: [],
+              generatedImages: [],
               todos: [],
             });
 
@@ -788,6 +795,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             pendingApprovals: detail.pendingApprovals,
             pendingQuestions: detail.pendingQuestions,
             recentQuestions: detail.recentQuestions,
+            generatedImages: detail.generatedImages,
             permission: detail.permission,
             historyLoading: false,
             chatNotFound: false,
@@ -1822,6 +1830,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           streamingTurnId: "",
           streamingStartedAt: 0,
           pendingApprovals: [],
+          generatedImages: [],
           todos: [],
           composerImages: [],
           queuedMessages: [],

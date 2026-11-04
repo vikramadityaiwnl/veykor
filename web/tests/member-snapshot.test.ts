@@ -25,6 +25,7 @@ function detail(turnId: string): ChatDetail {
     pendingApprovals: [],
     pendingQuestions: [],
     recentQuestions: [],
+    generatedImages: [],
     modelId: "",
     providerId: "",
     reasoningEffort: "",

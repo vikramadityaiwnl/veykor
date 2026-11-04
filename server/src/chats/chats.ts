@@ -45,6 +45,10 @@ import type { AuthEnv } from "../auth/auth.js";
 import { db } from "../db/client.js";
 import { chats } from "../db/schema.js";
 import {
+  deleteChatImages,
+  generatedImagesForChat,
+} from "../images/image-service.js";
+import {
   McpRestoreError,
   buildSessionMcp,
 } from "../integrations/integrations.js";
@@ -397,6 +401,7 @@ chatRoute.post("/", requireAuth, async (c) => {
     pendingApprovals: [],
     pendingQuestions: [],
     recentQuestions: [],
+    generatedImages: [],
     modelId: agent?.modelId ?? "",
     providerId: agent?.providerId ?? "",
     reasoningEffort: agent?.reasoningEffort ?? "",
@@ -420,6 +425,7 @@ chatRoute.get("/:id", requireAuth, async (c) => {
       chat: toSummary(row),
       ...detail,
       ...questionState(row),
+      generatedImages: generatedImagesForChat(row.id, detail.items),
     };
 
     return c.json(response);
@@ -470,10 +476,15 @@ chatRoute.get("/:id/events", requireAuth, async (c) => {
             break;
           }
 
+          const teamDetail = await readTeamChat(current);
           const detail: ChatDetail = {
             chat: toSummary(current),
-            ...(await readTeamChat(current)),
+            ...teamDetail,
             ...questionState(current),
+            generatedImages: generatedImagesForChat(
+              current.id,
+              teamDetail.items,
+            ),
           };
           const snapshot = JSON.stringify(detail);
 
@@ -554,6 +565,8 @@ chatRoute.delete("/:id", requireAuth, async (c) => {
     const members = teamRows(row);
 
     settleRootQuestions(teamRoot(row), "cancelled", "The chat was deleted.");
+
+    deleteChatImages(members.map((member) => member.id));
 
     await Promise.all(
       members.map((member) => leaveMuseSession(member.museSessionId)),
@@ -846,7 +859,12 @@ chatRoute.put("/:id/settings", requireAuth, async (c) => {
     try {
       const detail = await readTeamChat(row);
 
-      return c.json({ chat: toSummary(row), ...detail, ...questionState(row) });
+      return c.json({
+        chat: toSummary(row),
+        ...detail,
+        ...questionState(row),
+        generatedImages: generatedImagesForChat(row.id, detail.items),
+      });
     } catch (cause) {
       return museFailure(c, cause);
     }
@@ -880,6 +898,7 @@ chatRoute.put("/:id/settings", requireAuth, async (c) => {
       chat: toSummary(row),
       ...detail,
       ...questionState(row),
+      generatedImages: generatedImagesForChat(row.id, detail.items),
     };
 
     return c.json(response);

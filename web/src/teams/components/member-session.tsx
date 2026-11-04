@@ -503,6 +503,7 @@ function MemberSession(props: Props) {
     >
       {detail ? (
         <MessageList
+          generatedImages={detail.generatedImages}
           imageUrls={sentImages}
           items={detail.items}
           questions={detail.recentQuestions}

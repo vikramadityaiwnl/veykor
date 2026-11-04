@@ -9,6 +9,8 @@ import type { AuthEnv } from "./auth/auth.js";
 import { loadServerConfig } from "./auth/config.js";
 import { chatRoute, modelRoute } from "./chats/chats.js";
 import { db } from "./db/client.js";
+import { failInterruptedGenerations } from "./images/image-service.js";
+import { imageRoute } from "./images/images.js";
 import { integrationsRoute } from "./integrations/integrations.js";
 import { skillsRoute } from "./integrations/skills.js";
 import { memoryRoute } from "./memory/memories.js";
@@ -35,6 +37,7 @@ app.route("/api/chats", chatRoute);
 app.route("/api/chats", questionRoute);
 app.route("/api/teams", teamRoute);
 app.route("/api/team-mcp", teamMcpRoute);
+app.route("/api/images", imageRoute);
 app.route("/api/agents", agentRoute);
 app.route("/api/projects", projectRoute);
 app.route("/api/models", modelRoute);
@@ -68,6 +71,7 @@ app.get("/api/me", requireAuth, (context) => {
 app.notFound((context) => context.json({ error: "Not found" }, 404));
 
 startTeamRuntime();
+failInterruptedGenerations();
 
 const server = serve(
   {

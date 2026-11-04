@@ -261,6 +261,28 @@ export function runMigrations(sqlite: Database.Database): void {
     CREATE INDEX IF NOT EXISTS question_requests_member_idx ON question_requests(member_id, status);
   `);
 
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS generated_images (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL DEFAULT 0 REFERENCES users(id) ON DELETE CASCADE,
+      chat_id TEXT NOT NULL DEFAULT '' REFERENCES chats(id) ON DELETE CASCADE,
+      root_id TEXT NOT NULL DEFAULT '',
+      call_key TEXT NOT NULL DEFAULT '',
+      turn_id TEXT NOT NULL DEFAULT '',
+      tool_item_id TEXT NOT NULL DEFAULT '',
+      prompt TEXT NOT NULL DEFAULT '',
+      size TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'generating',
+      error TEXT NOT NULL DEFAULT '',
+      media_type TEXT NOT NULL DEFAULT '',
+      byte_size INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT '',
+      completed_at TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS generated_images_chat_idx ON generated_images(chat_id, created_at);
+    CREATE INDEX IF NOT EXISTS generated_images_user_idx ON generated_images(user_id);
+  `);
+
   sqlite
     .prepare(
       "INSERT OR IGNORE INTO preferences (user_id, data) SELECT id, ? FROM users",

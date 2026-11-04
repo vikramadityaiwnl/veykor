@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { and, asc, desc, eq, max, or, sql } from "drizzle-orm";
 import type { SessionMcpServerConfig } from "@muse-code/sdk/dist/src/msp.js";
 import {
+  generateImageAgentGuidance,
   normalizeTeamTodos,
   questionTurnReminder,
   veykorRequestHeaderName,
@@ -22,6 +23,7 @@ import type {
 } from "@veykor/shared";
 import { db } from "../db/client.js";
 import { agents, chats, projects, teamEvents, teamJobs } from "../db/schema.js";
+import { imageGenerationAvailable } from "../images/image-service.js";
 import { restoreSessionMcp } from "../integrations/integrations.js";
 import {
   activeMuseTurn,
@@ -977,6 +979,7 @@ export async function runTeamTurn(
         }),
       ),
     }),
+    imageGenerationAvailable() ? generateImageAgentGuidance : "",
     questionTurnReminder,
     "</veykor-team-context>",
   ]

@@ -1,3 +1,4 @@
+import type { GeneratedImageArtifact } from "../images/image-contracts.js";
 import type { MemoryReceipt } from "../memory/memory-contracts.js";
 import type { QuestionRequest } from "../questions/question-contracts.js";
 
@@ -69,6 +70,7 @@ export interface ChatDetail {
   pendingApprovals: Array<ChatApprovalRequest>;
   pendingQuestions: Array<QuestionRequest>;
   recentQuestions: Array<QuestionRequest>;
+  generatedImages: Array<GeneratedImageArtifact>;
   modelId: string;
   providerId: string;
   reasoningEffort: string;

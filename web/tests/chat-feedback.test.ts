@@ -25,6 +25,7 @@ function detail() {
     pendingApprovals: [],
     pendingQuestions: [],
     recentQuestions: [],
+    generatedImages: [],
     activeTurnId: "",
     activeTurnStartedAt: 0,
     running: false,

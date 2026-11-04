@@ -22,6 +22,7 @@ function MainChatContent() {
   const activeChatId = useChatStore((state) => state.activeChatId);
   const draftSeq = useChatStore((state) => state.draftSeq);
   const items = useChatStore((state) => state.items);
+  const generatedImages = useChatStore((state) => state.generatedImages);
   const recentQuestions = useChatStore((state) => state.recentQuestions);
   const historyLoading = useChatStore((state) => state.historyLoading);
   const chatNotFound = useChatStore((state) => state.chatNotFound);
@@ -89,6 +90,7 @@ function MainChatContent() {
         </div>
       ) : (
         <MessageList
+          generatedImages={generatedImages}
           imageUrls={imageUrls}
           items={items}
           questions={recentQuestions}

@@ -160,6 +160,30 @@ export const questionRequests = sqliteTable("question_requests", {
   settledAt: text("settled_at").notNull().default(""),
 });
 
+export const generatedImages = sqliteTable("generated_images", {
+  id: text("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .default(0)
+    .references(() => users.id, { onDelete: "cascade" }),
+  chatId: text("chat_id")
+    .notNull()
+    .default("")
+    .references(() => chats.id, { onDelete: "cascade" }),
+  rootId: text("root_id").notNull().default(""),
+  callKey: text("call_key").notNull().default(""),
+  turnId: text("turn_id").notNull().default(""),
+  toolItemId: text("tool_item_id").notNull().default(""),
+  prompt: text("prompt").notNull().default(""),
+  size: text("size").notNull().default(""),
+  status: text("status").notNull().default("generating"),
+  error: text("error").notNull().default(""),
+  mediaType: text("media_type").notNull().default(""),
+  byteSize: integer("byte_size").notNull().default(0),
+  createdAt: text("created_at").notNull().default(""),
+  completedAt: text("completed_at").notNull().default(""),
+});
+
 export const teamJobs = sqliteTable("team_jobs", {
   id: text("id").primaryKey(),
   rootId: text("root_id")

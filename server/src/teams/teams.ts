@@ -8,6 +8,12 @@ import { eq } from "drizzle-orm";
 import { requireAuth } from "../auth/auth.js";
 import type { AuthEnv } from "../auth/auth.js";
 import { museErrorMessage, readMuseChat } from "../muse/chat-service.js";
+import { imageGenerationAvailable } from "../images/image-service.js";
+import {
+  callGenerateImageTool,
+  generateImageToolDefinition,
+} from "../images/images.js";
+import { generateImageToolName } from "@veykor/shared";
 import {
   MemoryFailure,
   deleteMemory,
@@ -316,7 +322,11 @@ teamMcpRoute.post("/:id", async (c) => {
   }
 
   if (body.method === "tools/list") {
-    return respond({ tools });
+    return respond({
+      tools: imageGenerationAvailable()
+        ? [...tools, generateImageToolDefinition]
+        : tools,
+    });
   }
 
   if (body.method !== "tools/call") {
@@ -551,6 +561,8 @@ teamMcpRoute.post("/:id", async (c) => {
 
         throw cause;
       }
+    } else if (params?.name === generateImageToolName) {
+      result = await callGenerateImageTool(row, args, String(id));
     } else if (params?.name === "memory_delete") {
       if (
         typeof args.id !== "string" ||

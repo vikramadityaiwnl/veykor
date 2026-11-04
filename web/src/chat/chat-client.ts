@@ -1,5 +1,6 @@
 import {
   chatPaths,
+  imagePaths,
   veykorRequestHeaderName,
   veykorRequestHeaderValue,
 } from "@veykor/shared";
@@ -11,6 +12,7 @@ import type {
   ChatSummary,
   ChatTurnEvent,
   DecideApprovalRequest,
+  GeneratedImageArtifact,
   SteerTurnRequest,
   UpdateChatSettingsRequest,
 } from "@veykor/shared";
@@ -270,6 +272,12 @@ export async function createChat(
 
 export async function fetchChat(id: string): Promise<ChatDetail> {
   return fetchJson<ChatDetail>(chatPaths.chat(id));
+}
+
+export async function fetchGeneratedImage(
+  id: string,
+): Promise<GeneratedImageArtifact> {
+  return fetchJson<GeneratedImageArtifact>(imagePaths.meta(id));
 }
 
 export async function renameChat(
