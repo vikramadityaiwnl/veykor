@@ -6,6 +6,7 @@ import { useNavigate } from "react-router";
 import AlertDialog from "../../components/alert-dialog/alert-dialog.tsx";
 import ContextMenu from "../../components/context-menu/context-menu.tsx";
 import Dialog from "../../components/dialog/dialog.tsx";
+import EmptyState from "../../components/empty-state/empty-state.tsx";
 import LoadingSpinner from "../../components/loading-spinner/loading-spinner.tsx";
 import { useChatStore } from "../../chat/chat-store.ts";
 
@@ -81,6 +82,8 @@ function ProjectSessions(props: Props) {
 
   return (
     <div className="ml-5 space-y-1">
+      {sessions.length === 0 && <EmptyState title="Nothing here" />}
+
       {shown.map((chat) => {
         const active = chat.id === activeChatId;
         const finished = !chat.running && finishedChatIds.includes(chat.id);
